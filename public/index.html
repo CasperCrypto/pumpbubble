@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070a">
+<title>pumpbubble.fun — live pump.fun bubble map</title>
+<style>
+:root{
+  --bg:#040508;
+  --ink:#eef2f7;
+  --dim:#7d8699;
+  --line:rgba(255,255,255,.08);
+  --glass:rgba(255,255,255,.045);
+  --glass2:rgba(255,255,255,.075);
+  --mint:#28e08c;
+  --mint2:#5ff7b4;
+  --rose:#ff4d6a;
+  --gold:#ffc93c;
+  --r:14px;
+  --safe:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{
+  background:var(--bg);color:var(--ink);
+  font:500 14px/1.35 ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;
+  overflow:hidden;display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+button,input{font-family:inherit}
+::-webkit-scrollbar{height:0;width:0}
+
+/* ============ ambient ============ */
+#aura{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+#aura b{position:absolute;display:block;border-radius:50%;filter:blur(110px);opacity:.16}
+#aura b:nth-child(1){width:52vmax;height:52vmax;left:-18vmax;top:-22vmax;background:#0d6b4a}
+#aura b:nth-child(2){width:46vmax;height:46vmax;right:-20vmax;bottom:-24vmax;background:#5a1030}
+#aura b:nth-child(3){width:34vmax;height:34vmax;left:38%;top:34%;background:#123f5a;opacity:.12}
+#grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.045;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* ============ top bar ============ */
+#top{
+  position:relative;z-index:20;flex:0 0 auto;
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px calc(10px) 12px;
+  background:linear-gradient(180deg,rgba(5,7,10,.92),rgba(5,7,10,.55));
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--line);
+}
+.mark{
+  width:26px;height:26px;border-radius:50%;flex:0 0 auto;position:relative;
+  background:radial-gradient(circle at 32% 26%,#c8ffe6,var(--mint) 42%,#0a8a52 78%,#053a24);
+  box-shadow:0 0 18px rgba(40,224,140,.55),inset 0 -3px 6px rgba(0,0,0,.35);
+}
+.mark::after{content:"";position:absolute;left:22%;top:16%;width:26%;height:20%;border-radius:50%;
+  background:rgba(255,255,255,.85);filter:blur(1px)}
+.wordmark{font-weight:800;letter-spacing:-.035em;font-size:17px;white-space:nowrap}
+.wordmark span{background:linear-gradient(92deg,var(--mint2),#fff 55%,var(--mint2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.wordmark i{font-style:normal;color:var(--dim);font-weight:700}
+
+.pill{
+  display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;
+  border-radius:999px;background:var(--glass);border:1px solid var(--line);
+  font-size:11px;font-weight:700;color:var(--dim);white-space:nowrap;
+}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:var(--mint);
+  box-shadow:0 0 8px var(--mint);animation:bp 1.5s infinite}
+.pill.off .dot{background:var(--gold);box-shadow:0 0 8px var(--gold);animation:none}
+@keyframes bp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+
+#stats{display:none;gap:8px;margin-left:auto}
+#stats .s{text-align:right;line-height:1.15}
+#stats .s u{display:block;text-decoration:none;font-size:9px;letter-spacing:.09em;color:var(--dim);text-transform:uppercase}
+#stats .s b{font-size:13px;font-variant-numeric:tabular-nums}
+
+#boostTop{
+  margin-left:auto;flex:0 0 auto;height:32px;padding:0 14px;border:0;border-radius:999px;
+  background:linear-gradient(180deg,#ffe07a,var(--gold) 55%,#e09b00);
+  color:#2b1c00;font-weight:900;font-size:12px;letter-spacing:.01em;cursor:pointer;
+  box-shadow:0 4px 18px rgba(255,201,60,.35);white-space:nowrap;
+  transition:transform .12s,box-shadow .12s;
+}
+#boostTop:active{transform:scale(.95)}
+#boostTop:hover{box-shadow:0 6px 26px rgba(255,201,60,.5)}
+
+/* ============ sponsor rail ============ */
+#rail{
+  position:relative;z-index:19;flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:8px 12px;overflow-x:auto;scroll-snap-type:x proximity;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.015);
+}
+#rail::before{content:"AD";flex:0 0 auto;font-size:9px;font-weight:900;letter-spacing:.1em;
+  color:#2b1c00;background:var(--gold);padding:3px 6px;border-radius:5px}
+.slot{
+  flex:0 0 auto;scroll-snap-align:start;display:flex;align-items:center;gap:7px;
+  height:30px;padding:0 12px 0 4px;border-radius:999px;
+  background:var(--glass);border:1px solid var(--line);font-size:12px;cursor:pointer;
+  transition:.15s;text-decoration:none;color:inherit;
+}
+.slot:hover{background:var(--glass2)}
+.slot.gold{
+  border-color:rgba(255,201,60,.45);
+  background:linear-gradient(180deg,rgba(255,201,60,.16),rgba(255,201,60,.05));
+  box-shadow:0 0 16px rgba(255,201,60,.18);
+}
+.slot .av{width:22px;height:22px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+  display:grid;place-items:center;font-size:10px;font-weight:900;color:#08110c}
+.slot b{font-weight:800}
+.slot small{color:var(--dim);font-size:10px;font-weight:700}
+.slot.gold small{color:var(--gold)}
+
+/* ============ chips ============ */
+#chips{
+  position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
+}
+.seg{display:flex;flex:0 0 auto;padding:3px;gap:2px;border-radius:999px;
+  background:var(--glass);border:1px solid var(--line)}
+.seg button{
+  border:0;background:none;color:var(--dim);font-weight:800;font-size:12px;
+  padding:5px 11px;border-radius:999px;cursor:pointer;transition:.14s;white-space:nowrap;
+}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.07));
+  color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.12) inset}
+#chips .seg.acc button.on{background:linear-gradient(180deg,rgba(40,224,140,.28),rgba(40,224,140,.12));
+  color:var(--mint2);box-shadow:0 0 12px rgba(40,224,140,.22) inset}
+.iconbtn{
+  flex:0 0 auto;height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);
+  background:var(--glass);color:var(--ink);font-weight:800;font-size:12px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;transition:.14s;white-space:nowrap;
+}
+.iconbtn:hover{background:var(--glass2)}
+.iconbtn.act{border-color:rgba(40,224,140,.5);color:var(--mint2)}
+.spacer{flex:1 0 8px}
+
+/* ============ stage ============ */
+#stage{position:relative;z-index:5;flex:1;min-height:0}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+
+#hud{
+  position:absolute;left:0;right:0;bottom:calc(8px + var(--safe));z-index:8;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  pointer-events:none;padding:0 12px;flex-wrap:wrap;
+}
+#hud .tagline{
+  display:flex;align-items:center;gap:10px;padding:6px 12px;border-radius:999px;
+  background:rgba(8,11,16,.66);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);font-size:10.5px;color:var(--dim);font-weight:700;
+}
+#hud .tagline i{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+#hud .tagline em{font-style:normal;color:var(--ink)}
+
+/* hover tooltip (desktop) */
+#tip{
+  position:absolute;z-index:12;pointer-events:none;opacity:0;transform:translateY(4px);
+  transition:opacity .12s,transform .12s;
+  width:210px;padding:12px;border-radius:var(--r);
+  background:rgba(10,13,19,.93);backdrop-filter:blur(16px);
+  border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.65);
+}
+#tip.on{opacity:1;transform:translateY(0)}
+.tk{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.tk .im{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+  display:grid;place-items:center;font-weight:900;font-size:12px;color:#08110c}
+.tk .nm{font-weight:900;letter-spacing:-.01em}
+.tk .sb{font-size:10px;color:var(--dim);font-weight:600}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2.5px 0;color:var(--dim);font-weight:600}
+.kv b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:800}
+.up{color:var(--mint)!important}.dn{color:var(--rose)!important}
+.hint{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);font-size:10px;color:#5d6577}
+
+/* ============ token card (touch) ============ */
+#card{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;
+  transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.9,.25,1);
+  background:linear-gradient(180deg,rgba(16,20,28,.98),rgba(8,10,15,.99));
+  border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+  padding:14px 16px calc(16px + var(--safe));
+  box-shadow:0 -20px 60px rgba(0,0,0,.7);
+}
+#card.on{transform:translateY(0)}
+#card .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 12px}
+#card .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px}
+#card .box{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+#card .box u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--dim);font-weight:800;margin-bottom:2px}
+#card .box b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:900}
+#card .acts{display:flex;gap:9px}
+#card .acts button{
+  flex:1;height:46px;border-radius:13px;border:1px solid var(--line);background:var(--glass2);
+  color:var(--ink);font-weight:900;font-size:14px;cursor:pointer
+}
+#card .acts button.pf{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0;
+  box-shadow:0 6px 22px rgba(40,224,140,.35)}
+#card .acts button.bo{background:linear-gradient(180deg,#ffe07a,var(--gold));color:#2b1c00;border:0;
+  box-shadow:0 6px 22px rgba(255,201,60,.32);flex:0 0 108px}
+
+/* ============ bottom sheet (filters) ============ */
+#sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:41;
+  transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.9,.25,1);
+  background:linear-gradient(180deg,rgba(16,20,28,.98),rgba(8,10,15,.99));
+  border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+  padding:14px 16px calc(18px + var(--safe));
+}
+#sheet.on{transform:translateY(0)}
+#sheet .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 14px}
+.frow{margin-bottom:16px}
+.frow>label{display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--dim);font-weight:800;margin-bottom:8px}
+.frow .seg{display:inline-flex}
+#q{
+  width:100%;height:42px;border-radius:12px;border:1px solid var(--line);
+  background:var(--glass);color:var(--ink);padding:0 14px;font-size:15px;outline:none;font-weight:600;
+}
+#q:focus{border-color:rgba(40,224,140,.5)}
+input[type=range]{width:100%;accent-color:var(--mint);height:26px}
+.rngv{float:right;font-size:12px;font-weight:800;color:var(--mint2);font-variant-numeric:tabular-nums}
+#sheetDone{width:100%;height:46px;border-radius:13px;border:0;
+  background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;font-weight:900;font-size:15px;cursor:pointer}
+
+#scrim{position:fixed;inset:0;z-index:35;background:rgba(3,5,8,.6);backdrop-filter:blur(2px);
+  opacity:0;pointer-events:none;transition:opacity .25s}
+#scrim.on{opacity:1;pointer-events:auto}
+
+/* ============ boost modal ============ */
+#veil{position:fixed;inset:0;z-index:60;display:none;place-items:end center;padding:0}
+#veil.on{display:grid}
+#veil .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px)}
+.modal{
+  position:relative;width:100%;max-width:440px;
+  background:linear-gradient(180deg,rgba(19,23,32,.99),rgba(8,10,15,.99));
+  border:1px solid var(--line);border-top-color:rgba(255,201,60,.3);
+  border-radius:22px 22px 0 0;padding:18px 18px calc(20px + var(--safe));
+  box-shadow:0 -26px 70px rgba(0,0,0,.8);
+  animation:up .32s cubic-bezier(.2,.9,.25,1);
+}
+@keyframes up{from{transform:translateY(60px);opacity:.4}to{transform:none;opacity:1}}
+.modal .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 14px}
+.modal h3{margin:0 0 4px;font-size:19px;font-weight:900;letter-spacing:-.02em}
+.modal h3 em{font-style:normal;color:var(--gold)}
+.modal .sub{margin:0 0 16px;color:var(--dim);font-size:12.5px;line-height:1.5;font-weight:600}
+.tier{
+  display:flex;align-items:center;gap:12px;padding:13px 14px;margin-bottom:9px;
+  border:1px solid var(--line);border-radius:14px;cursor:pointer;background:var(--glass);
+  transition:.15s;position:relative;overflow:hidden;
+}
+.tier:hover{background:var(--glass2)}
+.tier.on{border-color:rgba(255,201,60,.55);
+  background:linear-gradient(180deg,rgba(255,201,60,.15),rgba(255,201,60,.04));
+  box-shadow:0 0 22px rgba(255,201,60,.14)}
+.tier .b{font-weight:900;font-size:14.5px}
+.tier .d{color:var(--dim);font-size:11px;font-weight:600;margin-top:1px}
+.tier .p{margin-left:auto;font-weight:900;font-size:16px;color:var(--gold);font-variant-numeric:tabular-nums}
+.pay{margin-top:13px;padding:13px;border-radius:13px;border:1px dashed rgba(255,255,255,.14);
+  background:rgba(255,255,255,.02);font-size:11.5px;color:var(--dim);line-height:1.65;font-weight:600}
+.pay b{color:var(--ink)}
+.pay code{color:#7fd7ff;font-size:10.5px;word-break:break-all;font-weight:700}
+.mbtns{display:flex;gap:9px;margin-top:15px}
+.mbtns button{flex:1;height:48px;border-radius:14px;border:1px solid var(--line);
+  background:var(--glass2);color:var(--ink);font-weight:900;font-size:14px;cursor:pointer}
+.mbtns button.go{border:0;background:linear-gradient(180deg,#ffe07a,var(--gold) 60%,#e6a400);
+  color:#2b1c00;box-shadow:0 8px 26px rgba(255,201,60,.35)}
+.mnote{text-align:center;font-size:10px;color:#5d6577;margin-top:11px;font-weight:600}
+
+/* ============ desktop ============ */
+@media (min-width:820px){
+  #top{padding:12px 18px}
+  .wordmark{font-size:19px}
+  #stats{display:flex;gap:18px}
+  #boostTop{margin-left:0}
+  #rail,#chips{padding-left:18px;padding-right:18px}
+  #card{display:none!important}
+  #sheet{left:auto;right:18px;bottom:18px;width:330px;border-radius:18px;
+    border:1px solid var(--line);transform:translateY(calc(100% + 40px))}
+  #sheet.on{transform:none}
+  #veil{place-items:center;padding:20px}
+  .modal{border-radius:22px;animation:pop .3s cubic-bezier(.2,.9,.25,1)}
+  @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
+  .modal .grab{display:none}
+}
+@media (max-width:560px){
+  #hud .tagline{font-size:9.5px;gap:7px;padding:5px 10px}
+  #hud .tagline .lg{display:none}
+}
+@media (max-width:400px){
+  .wordmark i{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="aura"><b></b><b></b><b></b></div>
+<div id="grain"></div>
+
+<!-- ================= top bar ================= -->
+<div id="top">
+  <div class="mark"></div>
+  <div class="wordmark"><span>pumpbubble</span><i>.fun</i></div>
+  <div class="pill" id="live"><span class="dot"></span><span id="livetxt">syncing</span></div>
+
+  <div id="stats">
+    <div class="s"><u>Tracked cap</u><b id="stCap">—</b></div>
+    <div class="s"><u>Green / Red</u><b id="stGR">—</b></div>
+    <div class="s"><u>Top mover</u><b id="stTop">—</b></div>
+  </div>
+
+  <button id="boostTop">⚡ Boost</button>
+</div>
+
+<!-- ================= sponsor rail ================= -->
+<div id="rail"></div>
+
+<!-- ================= chips ================= -->
+<div id="chips">
+  <div class="seg acc" id="tf">
+    <button data-tf="m5">5M</button>
+    <button data-tf="h1" class="on">1H</button>
+    <button data-tf="h6">6H</button>
+    <button data-tf="h24">24H</button>
+  </div>
+  <div class="seg" id="sz">
+    <button data-sz="mcap" class="on">Mcap</button>
+    <button data-sz="gain">Gain</button>
+    <button data-sz="vol">Vol</button>
+  </div>
+  <button class="iconbtn" id="openSheet">☰ Filters</button>
+  <div class="spacer"></div>
+</div>
+
+<!-- ================= stage ================= -->
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="tip"></div>
+  <div id="hud">
+    <div class="tagline">
+      <span class="lg"><i style="background:var(--mint)"></i>gainers</span>
+      <span class="lg"><i style="background:var(--rose)"></i>losers</span>
+      <span><i style="background:var(--gold);box-shadow:0 0 8px var(--gold)"></i>boosted = paid, not mcap</span>
+      <span id="cnt"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= token card ================= -->
+<div id="card">
+  <div class="grab"></div>
+  <div class="tk">
+    <div class="im" id="cIm">?</div>
+    <div><div class="nm" id="cSym">—</div><div class="sb" id="cName">—</div></div>
+    <div style="margin-left:auto;text-align:right">
+      <div style="font-size:22px;font-weight:900" id="cChg">—</div>
+      <div class="sb" id="cTf">1h</div>
+    </div>
+  </div>
+  <div class="row2">
+    <div class="box"><u>Market cap</u><b id="cMc">—</b></div>
+    <div class="box"><u>24h volume</u><b id="cVol">—</b></div>
+    <div class="box"><u>5m / 1h</u><b id="cA">—</b></div>
+    <div class="box"><u>6h / 24h</u><b id="cB">—</b></div>
+  </div>
+  <div class="acts">
+    <button class="pf" id="cOpen">Open on pump.fun ↗</button>
+    <button class="bo" id="cBoost">⚡ Boost</button>
+  </div>
+</div>
+
+<!-- ================= filter sheet ================= -->
+<div id="sheet">
+  <div class="grab"></div>
+  <div class="frow"><label>Search</label><input id="q" placeholder="ticker or name…" autocomplete="off"></div>
+  <div class="frow"><label>Minimum market cap <span class="rngv" id="mcv">any</span></label>
+    <input type="range" id="mc" min="0" value="0"></div>
+  <div class="frow"><label>Bubbles on screen</label>
+    <div class="seg" id="cntSeg">
+      <button data-n="25">25</button>
+      <button data-n="50">50</button>
+      <button data-n="100" class="on">100</button>
+      <button data-n="200">200</button>
+    </div>
+  </div>
+  <div class="frow"><label>Movement</label>
+    <div class="seg" id="mvSeg">
+      <button data-mv="all" class="on">All</button>
+      <button data-mv="up">Gainers</button>
+      <button data-mv="down">Losers</button>
+    </div>
+  </div>
+  <button id="sheetDone">Show bubbles</button>
+</div>
+
+<div id="scrim"></div>
+
+<!-- ================= boost modal ================= -->
+<div id="veil">
+  <div class="bg"></div>
+  <div class="modal">
+    <div class="grab"></div>
+    <h3>⚡ Pump <em id="mtk">your bubble</em></h3>
+    <p class="sub">Boosted bubbles turn gold and grow past everyone. Size comes from what the community pays — not market cap. Boosts decay, so the biggest bubble is whoever keeps pumping.</p>
+
+    <div class="tier" data-tier="spark" data-mult="1.5" data-price="9"><div><div class="b">Spark ×1.5</div><div class="d">6h · gold shell</div></div><div class="p">$9</div></div>
+    <div class="tier on" data-tier="pump" data-mult="2.4" data-price="49"><div><div class="b">Pump ×2.4</div><div class="d">24h · gold + glow + pinned on screen</div></div><div class="p">$49</div></div>
+    <div class="tier" data-tier="whale" data-mult="4.0" data-price="149"><div><div class="b">Whale ×4.0</div><div class="d">72h · everything + top ad rail</div></div><div class="p">$149</div></div>
+
+    <div class="pay" id="mpay">
+      <b>Solana Pay · settles itself</b><br>
+      Pick a tier, then send <b style="color:var(--gold)" id="mamt">$49</b> in SOL.
+      We watch the chain and light the bubble up in the next block.
+      No processor, no KYC, no chargebacks.
+    </div>
+
+    <div class="mbtns">
+      <button id="mcancel">Cancel</button>
+      <button class="go" id="mgo">Get pay link →</button>
+    </div>
+    <div class="mnote" id="mnote">Payment is on-chain — only send from a wallet you control.</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   pumpbubble.fun — live liquid bubble map for pump.fun tokens
+   Single file, zero dependencies. Canvas2D soft-body blobs.
+   ========================================================================== */
+const TAU=Math.PI*2;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const TOUCH=matchMedia('(hover:none)').matches;
+
+const S={
+  tokens:[], view:[], tf:'h1', sizeBy:'mcap', limit: innerWidth<640?50:100,
+  minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
+  target:null, parts:[]
+};
+const MC_STEPS=[0,1e3,5e3,1e4,2.5e4,5e4,1e5,2.5e5,5e5,1e6,2.5e6,1e7,5e7];
+
+function fmtUsd(n){
+  if(!isFinite(n)||n<=0)return'—';
+  if(n>=1e9)return'$'+(n/1e9).toFixed(2)+'B';
+  if(n>=1e6)return'$'+(n/1e6).toFixed(2)+'M';
+  if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';
+  return'$'+n.toFixed(0);
+}
+const fmtPct=n=>(n>=0?'+':'')+n.toFixed(n>=100||n<=-100?0:2)+'%';
+function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)%360}
+
+/* ---------------------------------------------------------------- colours */
+function tone(t){
+  if(t.boost>0)return{h:44,s:96,l:56,gold:true};
+  const m=clamp(Math.abs(t.chg)/40,.10,1);
+  return t.chg>=0
+    ? {h:152,s:lerp(52,86,m),l:lerp(30,50,m),gold:false}
+    : {h:349,s:lerp(52,88,m),l:lerp(32,55,m),gold:false};
+}
+
+/* ============================================================== DATA LAYER */
+/* Everything comes from our own /api. pump.fun answers 403 to any request that
+   carries an Origin header — i.e. to every browser fetch — so the token feed
+   can only be read server-side. See CLAUDE.md → Data. */
+async function jget(u,ms=12000){
+  const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
+  try{const r=await fetch(u,{signal:c.signal,headers:{Accept:'application/json'}});
+    if(!r.ok)throw new Error(r.status);return await r.json()}
+  finally{clearTimeout(t)}
+}
+async function fetchLive(){
+  const j=await jget('/api/tokens');
+  if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
+  S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
+  return j.tokens.map(t=>({
+    id:t.mint, mint:t.mint, sym:t.sym, name:t.name,
+    img:t.img||null,                     // already a signed, cached proxy URL
+    mcap:+t.mcap||0, vol:+t.vol||0,
+    pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0},
+    boost:+t.boost||0,                   // server owns this: it is paid for
+    boostUsd:+t.boostUsd||0, boostUntil:t.boostUntil||0,
+    grad:!!t.grad, ath:+t.ath||0, liveStream:!!t.liveStream
+  }));
+}
+
+const NAMES=['PEPE2','WOJAK','BONKY','MOONER','GIGA','FROGZ','SIGMA','CHAD','MEWTWO','SOLBOY','RETARDIO',
+'FARTS','BASED','CATWIF','DOGWIF','SNEK','TURBO','APEX','PONZI','GOBLIN','SHREK','MYRO','NEIRO','BILLY',
+'MICHI','BOME','SLERF','POPCAT','MUMU','HARAMBE','ZEREBRO','GOAT','FWOG','LOCKIN','PNUT','ACT','SPX',
+'MOODENG','LUCE','CHILLGUY','BAN','AVA','SWARMS','ARC','TRUMP','MELANIA','VINE','AI16Z','GRIFFAIN','TANK',
+'ALCH','BUZZ','DOLOS','ANON','MASK','NOBODY','JELLY','TITCOIN','HOUSE','GORK','BOOP','FARTCOIN','USELESS',
+'TROLL','SPARK','RFC','AURA','HOSICO','BAGWORK','WYNN','NYAN','KLED','ZORA','ELIZA','DUPE','PIPPIN','QUDE',
+'SHOGGOTH','BULLY','SLOP','RIZZ','COPE','JEET','FOMO','NGMI','WAGMI','REKT','DEGEN','OMEGA','KEKW','MONKE',
+'BANANA','ROCKET','LASER','HODL','SAFU','PUMPIT','SENDIT','MOONBOY','BEARISH','MOG2','ROBUX','TIKTOK',
+'POOP','MIGARA','PIXELS','ELON','CHIP','NYANCAT','UNITREE','BBCATE','RWA','MEMEFUND'];
+function demo(){
+  let s=20260819;
+  const R=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff};
+  return NAMES.map((n,i)=>{
+    const t=R();
+    const mcap=t>.95?1.2e7+R()*2.2e8:t>.78?7e5+R()*8e6:t>.42?7e4+R()*6e5:5e3+R()*8e4;
+    const b=(R()-.44), h1=b*95*(.35+R());
+    return{id:'d'+i,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
+      vol:mcap*(.12+R()*2.6),
+      pc:{m5:h1*(.12+R()*.5),h1,h6:h1*(.65+R()*1.7),h24:h1*(.45+R()*2.8)},boost:0}
+  });
+}
+
+async function refresh(first){
+  try{
+    merge(await fetchLive()); S.live=true;
+    const s=Math.round((S.age||0)/1000);
+    setLive(true, S.serverStale ? 'live · '+s+'s old' : 'live');
+  }
+  catch(e){ if(first)merge(demo()); S.live=false; setLive(false,'demo data'); }
+  rebuild(); rail();
+}
+function merge(fresh){
+  const old=new Map(S.tokens.map(t=>[t.id,t]));
+  /* Carry physics across a refresh so bubbles keep their place and momentum.
+     Boost is deliberately NOT carried: it is paid for, so the server owns it.
+     In demo mode there is no server, so the local value stands. */
+  fresh.forEach(t=>{const o=old.get(t.id);
+    if(o){t.x=o.x;t.y=o.y;t.vx=o.vx;t.vy=o.vy;t.r=o.r;t.ph=o.ph;
+      if(!S.live)t.boost=o.boost}});
+  old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
+  S.tokens=fresh;
+}
+function setLive(on,txt){
+  document.getElementById('live').classList.toggle('off',!on);
+  document.getElementById('livetxt').textContent=txt;
+}
+/* Demo data has to move on its own or the map looks frozen. Live data must
+   never be nudged — an invented number on a screener is a lie, and the whole
+   product is "these are the real caps right now". */
+function tick(){
+  if(S.live)return;
+  S.tokens.forEach(t=>{
+    const d=()=>Math.random()-.5;
+    t.pc.m5+=d()*.9; t.pc.h1+=d()*.3; t.pc.h6+=d()*.15; t.pc.h24+=d()*.09;
+    t.mcap*=1+d()*.003;
+  });
+}
+
+/* ======================================================= SELECT + SIZING */
+function rebuild(){
+  const min=MC_STEPS[S.minMc];
+  let L=S.tokens.filter(t=>t.mcap>=min);
+  if(S.q){const q=S.q.toLowerCase();
+    L=L.filter(t=>t.sym.toLowerCase().includes(q)||(t.name||'').toLowerCase().includes(q))}
+  if(S.mv!=='all')L=L.filter(t=>S.mv==='up'?(t.pc[S.tf]||0)>=0:(t.pc[S.tf]||0)<0);
+  const M=t=>S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1:S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
+  L.sort((a,b)=>M(b)-M(a));
+  let P=L.slice(0,S.limit);
+  S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
+  P.forEach(t=>{t.chg=t.pc[S.tf]||0;t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
+  S.view=P;
+  sizes();
+  document.getElementById('cnt').textContent=
+    `${P.length} bubbles · size = ${S.sizeBy==='mcap'?'mcap':S.sizeBy==='gain'?'|change|':'volume'}`;
+  stats();
+}
+function stats(){
+  const v=S.view; if(!v.length)return;
+  const cap=v.reduce((s,t)=>s+t.mcap,0);
+  const up=v.filter(t=>t.chg>=0).length;
+  const top=v.reduce((a,t)=>Math.abs(t.chg)>Math.abs(a.chg)?t:a,v[0]);
+  const e=id=>document.getElementById(id);
+  e('stCap').textContent=fmtUsd(cap);
+  e('stGR').innerHTML=`<span class="up">${up}</span> / <span class="dn">${v.length-up}</span>`;
+  e('stTop').innerHTML=`${top.sym} <span class="${top.chg>=0?'up':'dn'}">${fmtPct(top.chg)}</span>`;
+}
+
+let W=0,H=0,DPR=1,GX=.002,GY=.002,PT=4,PB=36;
+function sizes(){
+  const v=S.view; if(!v.length)return;
+  const val=v.map(t=>Math.max(t.base,1e-9));
+  const lo=Math.log(Math.min(...val)),hi=Math.log(Math.max(...val));
+  const sp=Math.max(hi-lo,1e-6);
+  const raw=v.map((t,i)=>(.30+.70*Math.pow((Math.log(val[i])-lo)/sp,.85))*(1+t.boost*.6));
+  const A=W*Math.max(H-PT-PB,80);
+  const fill=clamp(.80-(v.length-60)*.0005,.58,.80);
+  const ss=raw.reduce((s,r)=>s+r*r,0);
+  let k=Math.sqrt(A*fill/(Math.PI*ss));
+  const maxR=Math.min(W,H)*.30,mx=Math.max(...raw);
+  if(mx*k>maxR)k=maxR/mx;
+  v.forEach((t,i)=>{
+    t.tr=clamp(raw[i]*k,11,maxR);
+    if(t.r==null)t.r=t.tr*.15;
+    if(t.x==null){const a=Math.random()*TAU,d=Math.random()*Math.min(W,H)*.3;
+      t.x=W/2+Math.cos(a)*d;t.y=H/2+Math.sin(a)*d;t.vx=0;t.vy=0}
+  });
+}
+
+/* ============================================================== PHYSICS */
+function step(){
+  const v=S.view,n=v.length,cx=W/2,cy=(PT+(H-PB))/2;
+  for(let i=0;i<n;i++){
+    const a=v[i];
+    a.r=lerp(a.r,a.tr,.09);
+    a.nb=a.nb||[]; a.nb.length=0;
+    if(S.drag===a)continue;
+    a.vx+=(cx-a.x)*GX; a.vy+=(cy-a.y)*GY;
+    a.vx+=(Math.random()-.5)*.07; a.vy+=(Math.random()-.5)*.07;
+    a.vx*=.87; a.vy*=.87; a.x+=a.vx; a.y+=a.vy;
+  }
+  for(let pass=0;pass<3;pass++){
+    const last=pass===2;
+    for(let i=0;i<n;i++){
+      const a=v[i];
+      for(let j=i+1;j<n;j++){
+        const b=v[j];
+        let dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy;
+        const touch=a.r+b.r;
+        if(last&&d2<(touch+10)*(touch+10)){ a.nb.push(b); b.nb.push(a); }
+        const md=touch-Math.min(a.r,b.r)*.20;          // let surfaces merge a little
+        if(d2<md*md){
+          let d=Math.sqrt(d2)||.01;
+          if(d2===0){dx=Math.random()-.5;dy=Math.random()-.5;d=1}
+          const push=(md-d)/d*.5, ma=a.r*a.r, mb=b.r*b.r, tt=ma+mb;
+          if(S.drag!==a){a.x-=dx*push*(mb/tt);a.y-=dy*push*(mb/tt)}
+          if(S.drag!==b){b.x+=dx*push*(ma/tt);b.y+=dy*push*(ma/tt)}
+        }
+      }
+      if(a.x<a.r){a.x=a.r;a.vx*=-.35}
+      if(a.x>W-a.r){a.x=W-a.r;a.vx*=-.35}
+      if(a.y<a.r+PT){a.y=a.r+PT;a.vy*=-.35}
+      if(a.y>H-a.r-PB){a.y=H-a.r-PB;a.vy*=-.35}
+    }
+  }
+  for(let i=0;i<n;i++){const a=v[i];
+    a.x=clamp(a.x,a.r,Math.max(a.r,W-a.r));
+    a.y=clamp(a.y,a.r+PT,Math.max(a.r+PT,H-a.r-PB));
+    if(a.nb.length>7)a.nb.length=7;
+  }
+  // particles
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i];
+    p.vy+=.16; p.x+=p.vx; p.y+=p.vy; p.life-=1;
+    if(p.life<=0)S.parts.splice(i,1);
+  }
+}
+
+/* =============================================================== RENDER */
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const cache=new Map();
+function img(u){
+  if(!u)return null;
+  if(cache.has(u))return cache.get(u);
+  const im=new Image();im.crossOrigin='anonymous';im.decoding='async';
+  im.onerror=()=>cache.set(u,null);im.src=u;cache.set(u,im);return im;
+}
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  const st=document.getElementById('stage');
+  const w=st.clientWidth,h=st.clientHeight;
+  if(!w||!h)return;                       // layout not resolved yet — the observer will call back
+  if(w===W&&h===H&&cv.width)return;       // nothing changed; skip the reallocation
+  W=w;H=h;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  PB=W<820?44:40; PT=4;
+  const uh=Math.max(H-PT-PB,80),m=Math.min(W,uh);
+  GX=.0022*(m/W);GY=.0022*(m/uh);
+  sizes();
+}
+addEventListener('resize',resize);
+/* #stage is a flex child: its box is still 0 when this script first runs, so
+   sizing off it at boot leaves a 0x0 canvas and an empty map. Observe the box
+   instead of guessing when layout settles — this also covers late web fonts
+   and the mobile URL bar sliding away. */
+if(window.ResizeObserver)new ResizeObserver(resize).observe(document.getElementById('stage'));
+
+let T=0;
+/* soft-body outline: radius per angle, squashed by neighbours + jelly wobble */
+const VERTS=64;
+const RA=new Float32Array(VERTS), RB=new Float32Array(VERTS);
+const COS=new Float32Array(VERTS), SIN=new Float32Array(VERTS);
+for(let i=0;i<VERTS;i++){const a=i/VERTS*TAU;COS[i]=Math.cos(a);SIN[i]=Math.sin(a)}
+
+function blob(t,scale){
+  const R=t.r*(scale||1), nb=t.nb, nn=nb.length;
+  // 1. raw radius per vertex: jelly wobble minus neighbour squash
+  for(let i=0;i<VERTS;i++){
+    const a=i/VERTS*TAU;
+    let r=R*(1+.022*Math.sin(a*3+t.ph+T*1.9)+.014*Math.sin(a*5-t.ph*1.6+T*1.35));
+    let cut=0;
+    for(let k=0;k<nn;k++){
+      const n=nb[k];
+      const dx=n.x-t.x,dy=n.y-t.y,d=Math.hypot(dx,dy)||.001;
+      const ov=(t.r+n.r)-d; if(ov<=0)continue;
+      let da=a-Math.atan2(dy,dx);
+      da=Math.abs(Math.atan2(Math.sin(da),Math.cos(da)));
+      const wdt=Math.min(1.45,Math.atan2(n.r,d)+.55);
+      if(da>wdt)continue;
+      const u=1-da/wdt;
+      cut+=ov*.62*(u*u*(3-2*u));                  // smoothstep falloff
+    }
+    RA[i]=r-Math.min(cut,R*.40);                   // cap the squash
+  }
+  // 2. circular smoothing so facets melt into curves
+  for(let p=0;p<2;p++){
+    const src=p?RB:RA, dst=p?RA:RB;
+    for(let i=0;i<VERTS;i++){
+      dst[i]=.25*src[(i+VERTS-1)%VERTS]+.5*src[i]+.25*src[(i+1)%VERTS];
+    }
+  }
+  // 3. quadratic midpoint path = continuous tangents, no corners
+  const X=i=>t.x+COS[i]*RA[i], Y=i=>t.y+SIN[i]*RA[i];
+  ctx.beginPath();
+  let x0=X(VERTS-1),y0=Y(VERTS-1),x1=X(0),y1=Y(0);
+  ctx.moveTo((x0+x1)/2,(y0+y1)/2);
+  for(let i=0;i<VERTS;i++){
+    const cxp=X(i),cyp=Y(i),j=(i+1)%VERTS,nx=X(j),ny=Y(j);
+    ctx.quadraticCurveTo(cxp,cyp,(cxp+nx)/2,(cyp+ny)/2);
+  }
+  ctx.closePath();
+}
+
+function draw(){
+  T+=1/60;
+  ctx.clearRect(0,0,W,H);
+  const v=S.view;
+
+  // ---- glow pass (gold + strong movers) ----
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  for(const t of v){
+    const c=tone(t);
+    const inten=c.gold?1:clamp(Math.abs(t.chg)/45,0,1);
+    if(inten<.28||t.r<14)continue;
+    const g=ctx.createRadialGradient(t.x,t.y,t.r*.55,t.x,t.y,t.r*1.75);
+    const pl=c.gold?.55+.45*Math.sin(T*2.4+t.ph):1;
+    g.addColorStop(0,`hsla(${c.h},100%,60%,${.20*inten*pl})`);
+    g.addColorStop(1,`hsla(${c.h},100%,60%,0)`);
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(t.x,t.y,t.r*1.75,0,TAU);ctx.fill();
+  }
+  ctx.restore();
+
+  // ---- bodies ----
+  for(const t of v){
+    const c=tone(t),r=t.r,hov=S.hover===t;
+    if(r<3)continue;
+    blob(t);
+
+    const g=ctx.createRadialGradient(t.x-r*.34,t.y-r*.42,r*.06,t.x,t.y,r*1.08);
+    g.addColorStop(0,`hsla(${c.h},${c.s}%,${clamp(c.l+32,0,90)}%,.98)`);
+    g.addColorStop(.42,`hsla(${c.h},${c.s}%,${c.l+8}%,.90)`);
+    g.addColorStop(.86,`hsla(${c.h},${c.s}%,${Math.max(c.l-8,8)}%,.70)`);
+    g.addColorStop(1,`hsla(${c.h},${c.s}%,${Math.max(c.l-14,6)}%,.42)`);
+    ctx.fillStyle=g;ctx.fill();
+
+    ctx.save();ctx.clip();
+    // liquid sheen sweeping across
+    const sh=ctx.createLinearGradient(t.x-r,t.y-r,t.x+r*.4,t.y+r);
+    sh.addColorStop(0,'rgba(255,255,255,.20)');
+    sh.addColorStop(.35,'rgba(255,255,255,.05)');
+    sh.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=sh;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
+    // bottom bounce light
+    const bl=ctx.createRadialGradient(t.x,t.y+r*.72,r*.05,t.x,t.y+r*.72,r*.9);
+    bl.addColorStop(0,`hsla(${c.h},100%,72%,.30)`);
+    bl.addColorStop(1,`hsla(${c.h},100%,72%,0)`);
+    ctx.fillStyle=bl;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
+    ctx.restore();
+
+    ctx.lineWidth=c.gold?Math.max(1.5,r*.05):Math.max(1,r*.022);
+    ctx.strokeStyle=c.gold
+      ?`hsla(45,100%,${64+9*Math.sin(T*2.4+t.ph)}%,.95)`
+      :`hsla(${c.h},${Math.min(c.s+8,100)}%,${clamp(c.l+30,0,80)}%,${hov?.98:.62})`;
+    ctx.stroke();
+
+    // specular dot
+    if(r>16){
+      ctx.save();blob(t);ctx.clip();
+      const sp=ctx.createRadialGradient(t.x-r*.36,t.y-r*.46,0,t.x-r*.36,t.y-r*.46,r*.42);
+      sp.addColorStop(0,'rgba(255,255,255,.55)');sp.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=sp;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);ctx.restore();
+    }
+    if(hov){ blob(t,1.045);ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.3;ctx.stroke(); }
+  }
+
+  // ---- contents ----
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const t of v){
+    const r=t.r,c=tone(t);
+    if(r<11)continue;
+    const wLogo=r>=24,wPct=r>=27;
+    if(wLogo){
+      const ir=r*.40,iy=t.y-r*.31,im=img(t.img);
+      ctx.save();ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);ctx.clip();
+      if(im&&im.complete&&im.naturalWidth) ctx.drawImage(im,t.x-ir,iy-ir,ir*2,ir*2);
+      else{
+        const h=hue(t.sym);
+        const lg=ctx.createLinearGradient(t.x-ir,iy-ir,t.x+ir,iy+ir);
+        lg.addColorStop(0,`hsl(${h},38%,34%)`);lg.addColorStop(1,`hsl(${(h+40)%360},44%,18%)`);
+        ctx.fillStyle=lg;ctx.fillRect(t.x-ir,iy-ir,ir*2,ir*2);
+        ctx.fillStyle=`hsl(${h},72%,76%)`;
+        ctx.font=`900 ${ir*1.15}px ui-sans-serif,sans-serif`;
+        ctx.fillText(t.sym[0]||'?',t.x,iy+1);
+      }
+      ctx.restore();
+      ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);
+      ctx.strokeStyle='rgba(255,255,255,.28)';ctx.lineWidth=Math.max(1,r*.018);ctx.stroke();
+    }
+    const fs=clamp(r*(wLogo?.29:.40),9,30);
+    ctx.font=`900 ${fs}px ui-sans-serif,-apple-system,sans-serif`;
+    ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=4;
+    ctx.fillStyle='#fff';
+    ctx.fillText(t.sym,t.x,wLogo?t.y+r*.24:t.y-(wPct?r*.15:0));
+    ctx.shadowBlur=0;
+    if(wPct){
+      ctx.font=`800 ${clamp(r*.23,9,22)}px ui-sans-serif,sans-serif`;
+      ctx.fillStyle=c.gold?(t.chg>=0?'#0b3a20':'#4d0d17'):'rgba(255,255,255,.9)';
+      ctx.fillText(fmtPct(t.chg),t.x,t.y+r*.55);
+    }
+    if(c.gold&&r>=34){
+      ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
+      ctx.fillStyle='rgba(60,40,0,.85)';
+      ctx.fillText('★ ×'+(1+t.boost).toFixed(1),t.x,t.y-r*.74);
+    }
+  }
+
+  // ---- particles ----
+  for(const p of S.parts){
+    ctx.globalAlpha=clamp(p.life/p.max,0,1);
+    ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,TAU);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+/* Belt and braces on sizing: the resize event can be missed and ResizeObserver
+   callbacks only arrive with a rendering frame. Re-checking twice a second
+   costs two property reads and guarantees the canvas matches its box. */
+let frameN=0;
+function loop(){if((++frameN%30)===0)resize();step();draw();requestAnimationFrame(loop)}
+
+function burst(x,y,n){
+  for(let i=0;i<(n||34);i++){
+    const a=Math.random()*TAU,s=1.5+Math.random()*5.5;
+    S.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2.2,
+      r:1+Math.random()*2.6,life:38+Math.random()*28,max:60,
+      c:Math.random()<.5?'#ffd75e':'#fff3c4'});
+  }
+}
+
+/* =========================================================== INTERACTION */
+const tip=document.getElementById('tip');
+function hitTest(x,y){
+  for(let i=S.view.length-1;i>=0;i--){const t=S.view[i];
+    if((x-t.x)**2+(y-t.y)**2<=t.r*t.r)return t}
+  return null;
+}
+function pt(e){const b=cv.getBoundingClientRect();const p=e.touches?e.touches[0]:e;
+  return{x:p.clientX-b.left,y:p.clientY-b.top}}
+
+cv.addEventListener('pointermove',e=>{
+  const p=pt(e);
+  if(S.drag){S.drag.x=p.x;S.drag.y=p.y;S.drag.vx=0;S.drag.vy=0;S.dragged=true;return}
+  if(TOUCH)return;
+  const t=hitTest(p.x,p.y);S.hover=t;cv.style.cursor=t?'pointer':'default';
+  if(!t){tip.classList.remove('on');return}
+  const av=t.img?`<img class="im" src="${t.img}" alt="">`
+    :`<div class="im" style="background:hsl(${hue(t.sym)},38%,50%)">${t.sym[0]||'?'}</div>`;
+  const k=(l,n)=>`<div class="kv"><span>${l}</span><b class="${n>=0?'up':'dn'}">${fmtPct(n)}</b></div>`;
+  tip.innerHTML=`<div class="tk">${av}<div><div class="nm">${t.sym}${t.boost>0?' <span style="color:var(--gold)">★</span>':''}</div>
+      <div class="sb">${(t.name||'').slice(0,24)}</div></div></div>
+    <div class="kv"><span>Mcap</span><b>${fmtUsd(t.mcap)}</b></div>
+    <div class="kv"><span>Vol 24h</span><b>${fmtUsd(t.vol)}</b></div>
+    ${k('5m',t.pc.m5)}${k('1h',t.pc.h1)}${k('6h',t.pc.h6)}${k('24h',t.pc.h24)}
+    ${t.boost>0?`<div class="kv"><span>Boost</span><b style="color:var(--gold)">×${(1+t.boost).toFixed(1)}</b></div>`:''}
+    <div class="hint">click → pump.fun · drag to move · shift-click to boost</div>`;
+  const st=document.getElementById('stage');
+  let lx=p.x+20,ly=p.y+16;
+  if(lx+220>st.clientWidth)lx=p.x-230;
+  if(ly+250>st.clientHeight)ly=Math.max(6,p.y-250);
+  tip.style.left=lx+'px';tip.style.top=ly+'px';tip.classList.add('on');
+});
+cv.addEventListener('pointerleave',()=>{tip.classList.remove('on');S.hover=null});
+cv.addEventListener('pointerdown',e=>{
+  const p=pt(e);const t=hitTest(p.x,p.y);S.dragged=false;
+  if(t){S.drag=t;cv.setPointerCapture&&cv.setPointerCapture(e.pointerId)}
+});
+addEventListener('pointerup',e=>{
+  const t=S.drag;S.drag=null;
+  if(!t||S.dragged)return;
+  if(!TOUCH&&e.shiftKey){openBoost(t);return}
+  if(TOUCH)openCard(t);
+  else if(t.mint)open('https://pump.fun/coin/'+t.mint,'_blank','noopener');
+  else openCard(t);
+});
+
+/* ------------------------------------------------------------ token card */
+const card=document.getElementById('card'),scrim=document.getElementById('scrim');
+function openCard(t){
+  S.target=t;
+  const e=id=>document.getElementById(id);
+  const im=e('cIm');
+  if(t.img){im.outerHTML=`<img class="im" id="cIm" src="${t.img}" alt="">`}
+  else{const d=document.createElement('div');d.className='im';d.id='cIm';
+    d.style.background=`hsl(${hue(t.sym)},38%,50%)`;d.textContent=t.sym[0]||'?';
+    im.replaceWith(d)}
+  e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
+  e('cName').textContent=(t.name||'').slice(0,32);
+  e('cChg').textContent=fmtPct(t.chg);
+  e('cChg').className=t.chg>=0?'up':'dn';
+  e('cTf').textContent=({m5:'5 min',h1:'1 hour',h6:'6 hours',h24:'24 hours'})[S.tf];
+  e('cMc').textContent=fmtUsd(t.mcap);
+  e('cVol').textContent=fmtUsd(t.vol);
+  e('cA').innerHTML=`<span class="${t.pc.m5>=0?'up':'dn'}">${fmtPct(t.pc.m5)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h1>=0?'up':'dn'}">${fmtPct(t.pc.h1)}</span>`;
+  e('cB').innerHTML=`<span class="${t.pc.h6>=0?'up':'dn'}">${fmtPct(t.pc.h6)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h24>=0?'up':'dn'}">${fmtPct(t.pc.h24)}</span>`;
+  card.classList.add('on');scrim.classList.add('on');
+}
+function closeAll(){
+  card.classList.remove('on');sheet.classList.remove('on');scrim.classList.remove('on');
+}
+scrim.onclick=closeAll;
+document.getElementById('cOpen').onclick=()=>{
+  const t=S.target;if(t&&t.mint)open('https://pump.fun/coin/'+t.mint,'_blank','noopener');
+  closeAll();
+};
+document.getElementById('cBoost').onclick=()=>{const t=S.target;closeAll();openBoost(t)};
+
+/* ---------------------------------------------------------------- sheet */
+const sheet=document.getElementById('sheet');
+document.getElementById('openSheet').onclick=()=>{sheet.classList.add('on');scrim.classList.add('on')};
+document.getElementById('sheetDone').onclick=closeAll;
+
+function wire(id,fn){
+  document.getElementById(id).addEventListener('click',e=>{
+    const b=e.target.closest('button');if(!b)return;
+    [...b.parentNode.children].forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');fn(b);
+  });
+}
+wire('tf',b=>{S.tf=b.dataset.tf;rebuild()});
+wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
+wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
+wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});
+
+const mc=document.getElementById('mc');
+mc.max=MC_STEPS.length-1;
+mc.addEventListener('input',()=>{
+  S.minMc=+mc.value;
+  document.getElementById('mcv').textContent=S.minMc?fmtUsd(MC_STEPS[S.minMc])+'+':'any';
+  document.getElementById('openSheet').classList.toggle('act',S.minMc>0||!!S.q||S.mv!=='all');
+  rebuild();
+});
+document.getElementById('q').addEventListener('input',e=>{
+  S.q=e.target.value.trim();
+  document.getElementById('openSheet').classList.toggle('act',S.minMc>0||!!S.q||S.mv!=='all');
+  rebuild();
+});
+
+/* ------------------------------------------------------------ boost flow */
+/* Real money: an order is quoted server-side, paid on-chain with Solana Pay,
+   and only the chain decides whether it happened. Nothing here can grant a
+   boost by itself — the client just shows what the backend confirmed. */
+const veil=document.getElementById('veil');
+const payBox=document.getElementById('mpay');
+const goBtn=document.getElementById('mgo');
+const noteEl=document.getElementById('mnote');
+let tier={id:'pump',mult:2.4,price:49};
+let order=null,poll=null;
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function resetPay(){
+  clearInterval(poll);poll=null;order=null;
+  goBtn.disabled=false;goBtn.textContent='Get pay link →';
+  noteEl.textContent='Payment is on-chain — only send from a wallet you control.';
+  payBox.innerHTML=`<b>Solana Pay · settles itself</b><br>
+    Pick a tier, then send <b style="color:var(--gold)">$${tier.price}</b> worth of SOL.
+    We watch the chain and light the bubble up in the next block.
+    No processor, no KYC, no chargebacks.`;
+}
+function openBoost(t){
+  S.target=t||null;
+  document.getElementById('mtk').textContent=t?t.sym:'your bubble';
+  resetPay();
+  veil.classList.add('on');
+}
+function renderPay(o){
+  payBox.innerHTML=`<b>Send exactly <span style="color:var(--gold)">${o.amountSol} SOL</span></b><br>
+    to <code>${esc(o.treasury)}</code><br>
+    ref <code>${esc(o.reference.slice(0,12))}…</code><br>
+    <span id="mstat">waiting for payment…</span><br>
+    The amount is unique to this order, so a plain wallet send works too.`;
+  goBtn.textContent='Open wallet →';goBtn.disabled=false;
+  noteEl.textContent=`${o.tier} ×${o.mult} · ${o.hours}h · $${o.usd} at $${o.solPrice.toFixed(2)}/SOL`;
+}
+function startPoll(){
+  clearInterval(poll);
+  const started=Date.now();
+  poll=setInterval(async()=>{
+    if(!order)return clearInterval(poll);
+    if(Date.now()-started>31*60000){clearInterval(poll);return}
+    try{
+      const j=await jget('/api/boost/status?id='+encodeURIComponent(order.id),8000);
+      const st=document.getElementById('mstat');
+      if(j.status==='paid'){
+        clearInterval(poll);
+        if(st)st.innerHTML='<b style="color:var(--gold)">paid ✓ bubble is gold</b>';
+        await refresh(false);
+        const t=S.tokens.find(x=>x.mint===order.mint);
+        if(t&&t.x!=null)burst(t.x,t.y,46);
+        setTimeout(closeVeil,1400);
+      }else if(j.status==='expired'){
+        clearInterval(poll);
+        if(st)st.textContent='order expired — reopen to get a fresh quote';
+      }
+    }catch(e){/* keep waiting; the chain is the source of truth */}
+  },6000);
+}
+document.querySelectorAll('.tier').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('.tier').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on');
+  tier={id:el.dataset.tier,mult:+el.dataset.mult,price:+el.dataset.price};
+  if(!order)resetPay();
+}));
+const closeVeil=()=>{veil.classList.remove('on');clearInterval(poll);poll=null};
+document.getElementById('mcancel').onclick=closeVeil;
+veil.querySelector('.bg').onclick=closeVeil;
+document.getElementById('boostTop').onclick=()=>openBoost(S.target||null);
+goBtn.onclick=async()=>{
+  if(order&&order.payUrl){location.href=order.payUrl;return}
+  const t=S.target;
+  if(!t){payBox.innerHTML='<b>Pick a bubble first</b><br>Tap any bubble on the map, then hit ⚡ Boost.';return}
+  goBtn.disabled=true;goBtn.textContent='quoting…';
+  try{
+    const r=await fetch('/api/boost/order',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({mint:t.mint,sym:t.sym,tier:tier.id})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||'could not create the order');
+    order=j.order;renderPay(order);startPoll();
+  }catch(e){
+    payBox.innerHTML='<b>Boosts are not live yet</b><br>'+esc(e.message);
+    goBtn.disabled=false;goBtn.textContent='Get pay link →';
+  }
+};
+
+/* -------------------------------------------------------------- ad rail */
+/* Two kinds of inventory share the rail: boosts (self-serve, on-chain) and
+   sold ad slots (from KV, so a slot can be filled without a deploy). Empty
+   slots stay visible on purpose — they are the sales pitch. */
+let ADS=[],AD_CONTACT='';
+async function loadAds(){
+  try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';rail()}
+  catch(e){}
+}
+function rail(){
+  const b=S.tokens.filter(t=>t.boost>0).sort((x,y)=>y.boost-x.boost).slice(0,4)
+    .map(t=>({sym:t.sym,img:t.img,gold:true,tag:'★ ×'+(1+t.boost).toFixed(1)}));
+  const ads=ADS.slice(0,Math.max(0,4-b.length))
+    .map(a=>({sym:a.title||'AD',img:a.img,url:a.url,tag:a.sub||'sponsored'}));
+  const mail=AD_CONTACT?'mailto:'+AD_CONTACT+'?subject=pumpbubble.fun%20ad%20slot':'';
+  const openSlots=['YOUR TOKEN','SLOT OPEN','SLOT OPEN','SLOT OPEN']
+    .map(sym=>({sym,url:mail,tag:'ad here'}));
+  const slots=[...b,...ads,...openSlots].slice(0,4);
+  document.getElementById('rail').innerHTML=slots.map(t=>{
+    const av=t.img?`<img class="av" src="${esc(t.img)}" alt="" loading="lazy"
+        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av',textContent:'${esc(t.sym[0])}'}))">`
+      :`<span class="av" style="background:hsl(${hue(t.sym)},45%,55%)">${esc(t.sym[0])}</span>`;
+    const inner=`${av}<b>${esc(t.sym)}</b><small>${esc(t.tag||'ad here')}</small>`;
+    return t.url
+      ? `<a class="slot" href="${esc(t.url)}" target="_blank" rel="noopener nofollow sponsored">${inner}</a>`
+      : `<div class="slot ${t.gold?'gold':''}" ${t.gold?'':'data-open="1"'}>${inner}</div>`;
+  }).join('');
+}
+
+/* =================================================================== BOOT */
+if(innerWidth<640)document.querySelectorAll('#cntSeg button')
+  .forEach(b=>b.classList.toggle('on',b.dataset.n==='50'));
+resize();rail();loop();refresh(true);loadAds();
+/* The server caches pump.fun for 10s, so polling faster than that only costs
+   us bandwidth — 15s keeps the map live without hammering anything. */
+setInterval(()=>refresh(false),15000);
+setInterval(()=>{tick();rebuild()},2500);
+/* Boost decay lives on the server now (boosts.mjs → bonusOf): it has to be
+   the same number for everyone, and it must survive a page reload. */
+</script>
+</body>
+</html>

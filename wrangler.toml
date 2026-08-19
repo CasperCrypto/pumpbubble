@@ -1,0 +1,36 @@
+# pumpbubble.fun — Cloudflare Worker config
+#
+# First-time setup (see docs/deploy.md for the full walkthrough):
+#   npx wrangler login
+#   npx wrangler kv namespace create BUBBLE_KV     # paste the id below
+#   npx wrangler secret put IMG_SECRET             # any long random string
+#   npx wrangler secret put TREASURY_WALLET        # your Solana receiving wallet
+#   npx wrangler deploy
+
+name = "pumpbubble"
+main = "worker/index.js"
+compatibility_date = "2026-08-01"
+
+# Static files. Anything not matched by /api/* is served from here.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Keeps a warm snapshot + persists market-cap history when traffic is quiet.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# Public, non-secret config. Secrets go through `wrangler secret put`.
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+AD_CONTACT = "ads@pumpbubble.fun"
+
+# Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
+[[kv_namespaces]]
+binding = "BUBBLE_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Custom domain — uncomment once pumpbubble.fun is on Cloudflare.
+# [[routes]]
+# pattern = "pumpbubble.fun"
+# custom_domain = true

@@ -1,0 +1,16 @@
+{
+  "name": "pumpbubble",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live bubble map for pump.fun tokens — size is market cap, colour is change, gold is paid.",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/dev.mjs",
+    "check": "node scripts/check.mjs",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
