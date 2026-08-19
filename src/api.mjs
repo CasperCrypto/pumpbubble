@@ -6,13 +6,26 @@
 
 import { buildSnapshot, verifyUrl } from './core.mjs';
 import {
-  TIERS, createOrder, findPayment, activeBoosts, activateBoost,
+  TIERS, tierOf, createOrder, findPayment, activeBoosts, activateBoost,
   applyBoosts, goldShare,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
 const STALE_OK     = 120_000;     // serve stale rather than fail
 const IMG_TTL      = 604_800;     // a token's art never changes: cache a week
+const GOLD_CAP     = 0.25;        // hard ceiling on paid share of bubble area
+const VIEW_N       = 100;         // bubbles the default desktop view shows
+
+/* Gold share has to be measured against what is actually on screen. Measuring
+   it across all 300 fetched tokens would dilute it and quietly allow
+   over-selling, so use the default view — the top VIEW_N by market cap — plus
+   any boosted token, which is pinned into the view wherever its cap sits. */
+function visibleSet(tokens, byMint) {
+  const top = [...tokens].sort((a, b) => b.mcap - a.mcap).slice(0, VIEW_N);
+  const have = new Set(top.map(t => t.mint));
+  for (const t of tokens) if (byMint.has(t.mint) && !have.has(t.mint)) top.push(t);
+  return top;
+}
 
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), {
   status,
@@ -98,7 +111,7 @@ export async function handle(req, ctx) {
         sol: snap.sol,
         source: snap.source,
         enriched: snap.enriched,
-        goldShare: goldShare(tokens),
+        goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
@@ -143,6 +156,26 @@ export async function handle(req, ctx) {
       const body = await req.json().catch(() => ({}));
       const snap = await snapshot(ctx).catch(() => null);
       const tok = snap?.tokens.find(t => t.mint === body.mint);
+
+      /* Inventory cap. Gold is worth exactly what the traffic is worth, so
+         over-selling destroys the thing being sold — CLAUDE.md treats the ~25%
+         ceiling as non-negotiable. Refuse the sale that would breach it rather
+         than discovering it afterwards in the smoke test. */
+      if (snap) {
+        const { byMint } = await activeBoosts(ctx.store);
+        const onScreen = visibleSet(snap.tokens, byMint);
+        const projected = applyBoosts(onScreen.map(t => ({ ...t })), byMint);
+        const target = projected.find(t => t.mint === body.mint);
+        if (target) target.boost = (target.boost || 0) + (tierOf(body.tier).mult - 1);
+        if (goldShare(projected) > GOLD_CAP) {
+          return json({
+            ok: false,
+            error: 'boost slots are full right now — too much of the map is already gold. Try again as current boosts decay.',
+            goldShare: goldShare(projected),
+          }, 503);
+        }
+      }
+
       const order = await createOrder(ctx.store, {
         mint: body.mint,
         sym: tok?.sym || body.sym || '',

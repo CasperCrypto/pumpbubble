@@ -49,8 +49,14 @@ These exist because breaking them kills the product, not because of taste:
   saying "boosted = paid, not mcap". If a paid bubble can be mistaken for a real large-cap, the map
   is lying and traffic dies.
 - **Cap total gold at ~20–25% of on-screen bubble area.** Ad inventory is worth what the traffic is
-  worth; over-selling destroys the thing being sold. `/api/tokens` returns `goldShare` and
-  `scripts/check.mjs` fails the build above 25%.
+  worth; over-selling destroys the thing being sold. This is *enforced*: `/api/boost/order` refuses
+  a sale that would breach 25%, `/api/tokens` reports `goldShare`, and `scripts/check.mjs` fails
+  above the cap.
+  `goldShare()` **must mirror `sizes()`** — log-compress into the 0.30–1.00 band, *then* apply the
+  boost. Measuring raw `sqrt(mcap)` instead makes big caps look far more dominant than they are on
+  screen and refuses a single top-tier boost on exactly the tokens most likely to buy one.
+  Measured against the live distribution: one ×4.0 whale ≈ 21% (sells), two ≈ 34% (refused),
+  ~13–19 concurrent ×2.4 boosts fit. Decay reopens inventory continuously.
 - **The % inside a gold bubble still shows real direction** (green/red text), even though its size
   is paid. Size is the ad; the data stays honest.
 - **Never invent a number.** Live data is never nudged, smoothed or extrapolated — `tick()` only

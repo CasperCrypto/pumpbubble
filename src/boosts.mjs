@@ -241,15 +241,28 @@ export function applyBoosts(tokens, byMint) {
 }
 
 /* Guardrail from CLAUDE.md: total gold must stay under ~25% of bubble area, or
-   the inventory eats the thing being sold. Bubble area scales with r^2 and the
-   boost multiplies r, so this compares boosted vs unboosted area share. */
+   the inventory eats the thing being sold.
+
+   This has to mirror sizes() in index.html exactly, or it measures a map that
+   is not the one being drawn. Market caps span 4+ orders of magnitude, so the
+   renderer log-compresses them into a 0.30–1.00 radius band and only then
+   multiplies by the boost. Measuring raw sqrt(mcap) instead makes the largest
+   token look far more dominant than it is on screen, and would refuse a single
+   top-tier boost on exactly the tokens most likely to buy one. */
 export function goldShare(tokens) {
+  if (!tokens.length) return 0;
+  const vals = tokens.map(t => Math.max(t.mcap, 1e-9));
+  const lo = Math.log(Math.min(...vals));
+  const hi = Math.log(Math.max(...vals));
+  const sp = Math.max(hi - lo, 1e-6);
+
   let gold = 0, total = 0;
-  for (const t of tokens) {
-    const base = Math.sqrt(Math.max(t.mcap, 1));
-    const r = base * (1 + (t.boost || 0) * 0.6);
-    total += r * r;
-    if (t.boost > 0) gold += r * r;
+  for (let i = 0; i < tokens.length; i++) {
+    const norm = Math.pow((Math.log(vals[i]) - lo) / sp, 0.85);
+    const r = (0.30 + 0.70 * norm) * (1 + (tokens[i].boost || 0) * 0.6);
+    const area = r * r;
+    total += area;
+    if (tokens[i].boost > 0) gold += area;
   }
   return total > 0 ? gold / total : 0;
 }
