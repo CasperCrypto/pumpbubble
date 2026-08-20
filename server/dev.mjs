@@ -31,12 +31,18 @@ mem.set('ads', [
   { id: 'house-1', title: 'YOUR TOKEN HERE', sub: 'ad slot open', url: 'mailto:ads@pumpbubble.fun', img: '' },
 ]);
 
+/* A half-filled .env is worse than an empty one: a placeholder left in place
+   would be used as a URL and every payment check would fail for a reason that
+   looks nothing like "you forgot to paste the key". Treat it as unset. */
+const real = v => (v && !/REPLACE_ME|change-me/i.test(v) ? v : '');
+
 const env = {
-  IMG_SECRET: process.env.IMG_SECRET || 'dev-secret-not-for-production',
-  TREASURY_WALLET: process.env.TREASURY_WALLET || '6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C',
-  SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.mainnet-beta.solana.com',
-  AD_CONTACT: process.env.AD_CONTACT || 'https://t.me/casper_crypto',
+  IMG_SECRET: real(process.env.IMG_SECRET) || 'dev-secret-not-for-production',
+  TREASURY_WALLET: real(process.env.TREASURY_WALLET) || '6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C',
+  SOLANA_RPC: real(process.env.SOLANA_RPC) || 'https://api.mainnet-beta.solana.com',
+  AD_CONTACT: real(process.env.AD_CONTACT) || 'https://t.me/casper_crypto',
 };
+const usingPublicRpc = !real(process.env.SOLANA_RPC);
 
 const ctx = {
   env, store,
@@ -146,6 +152,9 @@ server.listen(PORT, () => {
   if (!env.TREASURY_WALLET) {
     console.log('  note: TREASURY_WALLET unset — boost checkout returns 503 (map still runs)');
   } else {
-    console.log(`  treasury      →  ${env.TREASURY_WALLET.slice(0, 8)}…  (dev RPC is the public one; it rate-limits)`);
+    console.log(`  treasury      →  ${env.TREASURY_WALLET.slice(0, 8)}…`);
   }
+  console.log(usingPublicRpc
+    ? '  rpc           →  public endpoint (slow, rate-limited). Put your Helius URL in .env'
+    : '  rpc           →  custom endpoint configured ✓');
 });
