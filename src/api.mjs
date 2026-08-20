@@ -7,7 +7,8 @@
 import { buildSnapshot, verifyUrl, isMint } from './core.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
-  activeBoosts, activateBoost, applyBoosts, goldShare, ORDER_TTL_MS,
+  activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
+  ORDER_TTL_MS,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
@@ -256,7 +257,13 @@ export async function handle(req, ctx) {
         const onScreen = visibleSet(snap.tokens, byMint);
         const projected = applyBoosts(onScreen.map(t => ({ ...t })), byMint);
         const target = projected.find(t => t.mint === body.mint);
-        if (target) target.boost = (target.boost || 0) + (tierOf(body.tier).mult - 1);
+        /* Project through the same pooled curve the map will actually use —
+           adding the tier's headline multiplier here would over-estimate the
+           new gold and refuse sales that are in fact within the cap. */
+        if (target) {
+          const cur = byMint.get(body.mint);
+          target.boost = bonusFromSpend((cur ? cur.liveUsd : 0) + tierOf(body.tier).usd);
+        }
         if (goldShare(projected) > GOLD_CAP) {
           return json({
             ok: false,
@@ -274,6 +281,31 @@ export async function handle(req, ctx) {
         solPrice: snap?.sol || 0,
         treasury: ctx.env.TREASURY_WALLET,
       });
+
+      /* Quote the actual result, not the headline multiplier. Boosts pool and
+         the curve flattens, so the tenth buyer on a token genuinely gets less
+         than the first — which is only fair if they can see it before paying. */
+      const { byMint: liveNow } = await activeBoosts(ctx.store);
+      const already = liveNow.get(body.mint);
+      const beforeUsd = already ? already.liveUsd : 0;
+      const before = bonusFromSpend(beforeUsd);
+      const after = bonusFromSpend(beforeUsd + order.usd);
+      order.projection = {
+        from: +(1 + before).toFixed(2),
+        to: +(1 + after).toFixed(2),
+        gain: +(after - before).toFixed(3),
+        stackedOn: already ? already.count : 0,
+      };
+
+      /* Refuse to sell something that would visibly do nothing. */
+      if (order.projection.gain < 0.05) {
+        return json({
+          ok: false,
+          error: `${tok?.sym || 'this token'} is already boosted to the maximum size. Boosts decay, so this frees up over the next hours.`,
+          projection: order.projection,
+        }, 409);
+      }
+
       const token = await signOrder(order, ctx.env.IMG_SECRET);
       return json({ ok: true, order, token });
     }

@@ -978,7 +978,7 @@ cv.addEventListener('pointermove',e=>{
     ${k('5m',t.pc.m5)}${k('1h',t.pc.h1)}${k('6h',t.pc.h6)}${k('24h',t.pc.h24)}
     ${t.boost>0?`<div class="kv"><span>Boost</span><b style="color:var(--gold)">×${(1+t.boost).toFixed(1)}</b></div>`:''}
     ${warnLine(t)}
-    <div class="hint">click → pump.fun · drag to move · shift-click to boost</div>`;
+    <div class="hint">click → details &amp; boost · drag to move · shift-click boosts directly</div>`;
   const st=document.getElementById('stage');
   let lx=p.x+20,ly=p.y+16;
   if(lx+220>st.clientWidth)lx=p.x-230;
@@ -994,9 +994,12 @@ addEventListener('pointerup',e=>{
   const t=S.drag;S.drag=null;
   if(!t||S.dragged)return;
   if(!TOUCH&&e.shiftKey){openBoost(t);return}
-  if(TOUCH)openCard(t);
-  else if(t.mint)open('https://pump.fun/coin/'+t.mint,'_blank','noopener');
-  else openCard(t);
+  /* Click selects, on every device. Desktop used to jump straight to pump.fun,
+     which meant a bubble could never be selected — so the Boost button's own
+     instruction ("pick a bubble, then hit Boost") was impossible to follow, and
+     the only route to a purchase was an undocumented shift-click. The card
+     carries both actions: open on pump.fun, or boost this one. */
+  openCard(t);
 });
 
 /* ------------------------------------------------------------ token card */
@@ -1118,7 +1121,12 @@ function renderPay(o){
     }catch(e){/* clipboard blocked — the text is selectable anyway */}
   });
   goBtn.textContent='Open wallet →';goBtn.disabled=false;
-  noteEl.textContent=`${o.tier} ×${o.mult} · ${o.hours}h · $${o.usd} at $${o.solPrice.toFixed(2)}/SOL`;
+  const p=o.projection;
+  noteEl.innerHTML=p
+    ? `takes <b>${esc(o.sym||'this bubble')}</b> from ×${p.from} to <b style="color:var(--gold)">×${p.to}</b>`
+      +(p.stackedOn?` · stacking on ${p.stackedOn} live boost${p.stackedOn>1?'s':''}`:'')
+      +` · ${o.hours}h, then it decays`
+    : `${esc(o.tier)} ×${o.mult} · ${o.hours}h · $${o.usd} at $${o.solPrice.toFixed(2)}/SOL`;
 }
 function startPoll(){
   clearInterval(poll);

@@ -273,15 +273,59 @@ export async function findPayment(rpcUrl, order) {
   return null;
 }
 
-/* ------------------------------------------------------------ active boosts */
-/* A boost's contribution decays linearly to zero across its lifetime, so
-   staying big means paying again. That decay is the product, not a detail. */
-export function bonusOf(b, now = Date.now()) {
+/* ============================================================== boost maths
+
+   Size comes from what was paid, and paid size has to stay proportional or the
+   map stops working. Two constraints pull against each other:
+
+     - many small buyers must be able to out-boost one whale (that is the
+       product: micro-boosts are expected to out-earn big packages)
+     - no amount of money may let one bubble swallow the screen
+
+   Adding bonuses linearly satisfied the first and violated the second. Modelled
+   on the real tiers: fifty $9 boosts on one token reached radius x16 — a 480px
+   bubble, larger than a phone screen — because nothing bounded the sum.
+
+   So bonus is a function of *total decayed spend*, not a sum of per-order
+   multipliers:
+
+       bonus = SPEND_K * spend^SPEND_EXP        (capped at BONUS_CAP)
+
+   The exponent is not invented. The existing price ladder — $9→x1.5, $49→x2.4,
+   $149→x4.0 — already follows spend^0.64 almost exactly, so this curve
+   reproduces every advertised tier for a single purchase (x1.46, x2.40, x3.92)
+   while making the tenth buyer add less than the first. Same prices, same
+   headline numbers, sane stacking. */
+
+/* Fitted to the two ends of the existing ladder, so all three advertised
+   multipliers come out within a rounding error:
+     exponent = ln(3.0/0.5) / ln(149/9) = 0.637,  K = 0.5 / 9^0.637
+   giving $9 -> x1.50, $49 -> x2.47, $149 -> x3.99 against advertised
+   x1.5 / x2.4 / x4.0. The tiers were never arbitrary; this just names the
+   curve they were already on and extends it to pooled spend. */
+const SPEND_EXP = 0.637;
+const SPEND_K = 0.1233;
+const BONUS_CAP = 5.0;       // radius x4 — beyond this one bubble owns the map
+
+export function bonusFromSpend(usd) {
+  if (!(usd > 0)) return 0;
+  return Math.min(BONUS_CAP, SPEND_K * Math.pow(usd, SPEND_EXP));
+}
+
+/* What one order still counts for. Decays linearly to zero across its lifetime,
+   so staying big means paying again — the decay is the product, not a detail.
+   It decays the *spend*, which then goes through the curve above; decaying the
+   bonus directly would make two half-spent boosts worth more than one whole. */
+export function liveSpend(b, now = Date.now()) {
   const span = b.until - b.startedAt;
   if (span <= 0) return 0;
   const left = (b.until - now) / span;
-  if (left <= 0) return 0;
-  return (b.mult - 1) * left;
+  return left <= 0 ? 0 : b.usd * left;
+}
+
+/* Kept for the single-order case and for tests. */
+export function bonusOf(b, now = Date.now()) {
+  return bonusFromSpend(liveSpend(b, now));
 }
 
 export async function activeBoosts(store, now = Date.now()) {
@@ -289,14 +333,18 @@ export async function activeBoosts(store, now = Date.now()) {
   const live = list.filter(b => b.until > now);
   const byMint = new Map();
   for (const b of live) {
-    const cur = byMint.get(b.mint) || { mint: b.mint, sym: b.sym, bonus: 0, spentUsd: 0, until: 0, count: 0 };
-    cur.bonus += bonusOf(b, now);      /* stacking: many small boosts beat one big one */
+    const cur = byMint.get(b.mint) ||
+      { mint: b.mint, sym: b.sym, bonus: 0, liveUsd: 0, spentUsd: 0, until: 0, count: 0 };
+    /* Pool the decayed spend; the curve is applied once, to the total. Summing
+       per-order bonuses instead is what made stacking unbounded. */
+    cur.liveUsd += liveSpend(b, now);
     cur.spentUsd += b.usd;
     cur.count++;
     cur.until = Math.max(cur.until, b.until);
     cur.sym = cur.sym || b.sym;
     byMint.set(b.mint, cur);
   }
+  for (const cur of byMint.values()) cur.bonus = bonusFromSpend(cur.liveUsd);
   return { live, byMint };
 }
 
