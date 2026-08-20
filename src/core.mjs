@@ -222,6 +222,13 @@ export async function enrich(tokens) {
     t.vol = num(p.volume && p.volume.h24);
     t.liq = num(p.liquidity && p.liquidity.usd);
     t.price = num(p.priceUsd);
+
+    /* A few pump.fun records carry no image_uri at all — the art lives only in
+       their metadata_uri, which would cost an extra fetch per token. Since
+       DexScreener has already been called for the price change, take its image
+       when pump.fun has none. pump.fun stays the preferred source; this only
+       fills a gap that would otherwise render as a blank circle. */
+    if (!t.rawImg && p.info && p.info.imageUrl) t.rawImg = fastImage(p.info.imageUrl);
   }
   return hit;
 }
