@@ -152,6 +152,15 @@ export async function handle(req, ctx) {
       const have = new Set(tokens.map(t => t.mint));
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
+        /* Re-add a paid bubble only to the feed it belongs to. A boosted
+           graduated token dropped into the bonding map arrives at a $250M cap
+           among $3K curves and swallows the whole view — the sizing is relative,
+           so one out-of-place token wrecks the scale for everything else.
+           Boosts recorded before this carried no stage, and graduated is the
+           safe assumption for those. */
+        const isGraduated = b.grad !== false;
+        if (mode === 'graduated' && !isGraduated) continue;
+        if (mode === 'bonding' && isGraduated) continue;
         tokens.push({
           id: mint, mint,
           sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
@@ -299,6 +308,9 @@ export async function handle(req, ctx) {
         name: tok?.name || '',
         img: tok?.img || '',
         mcap: tok?.mcap || 0,
+        /* which feed this bubble lives in, so a paid boost is re-added to the
+           right map if the token later drops out of it */
+        grad: tok ? !!tok.grad : true,
         tierId: body.tier,
         solPrice: snap?.sol || 0,
         treasury: ctx.env.TREASURY_WALLET,

@@ -87,7 +87,7 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice, treasury, taken = [] }) {
+export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, taken = [] }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
   if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
@@ -135,6 +135,7 @@ export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice
     id: 'ord_' + newReference().slice(0, 16),
     reference: newReference(),
     mint, sym: sym || '', name: name || '', img: img || '', mcap: mcap || 0,
+    grad: grad !== false,
     tier: tier.id, mult: tier.mult, hours: tier.hours,
     usd: tier.usd, solPrice, amountSol, lamports,
     treasury,
@@ -376,7 +377,7 @@ export async function addPending(store, order) {
   /* keep it bounded: this is a work queue, not an archive */
   const kept = all.slice(-400).concat({
     id: order.id, mint: order.mint, sym: order.sym, name: order.name, img: order.img,
-    mcap: order.mcap, tier: order.tier, mult: order.mult, hours: order.hours,
+    mcap: order.mcap, grad: order.grad, tier: order.tier, mult: order.mult, hours: order.hours,
     usd: order.usd, lamports: order.lamports, amountSol: order.amountSol,
     reference: order.reference, treasury: order.treasury,
     createdAt: order.createdAt, expiresAt: order.expiresAt,
@@ -447,6 +448,7 @@ export async function activeBoosts(store, now = Date.now()) {
     cur.name = cur.name || b.name || '';
     cur.img = cur.img || b.img || '';
     cur.mcap = cur.mcap || b.mcap || 0;
+    if (cur.grad === undefined) cur.grad = b.grad !== false;
     byMint.set(b.mint, cur);
   }
   for (const cur of byMint.values()) cur.bonus = bonusFromSpend(cur.liveUsd);
@@ -469,6 +471,8 @@ export async function activateBoost(store, order, payment) {
     name: order.name || '',
     img: order.img || '',
     mcap: order.mcap || 0,
+    /* which feed it belongs to, so the paid bubble is re-added to the right map */
+    grad: order.grad !== false,
     tier: order.tier,
     mult: order.mult,
     usd: order.usd,
