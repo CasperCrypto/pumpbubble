@@ -807,7 +807,28 @@ function sizes(){
   const val=v.map(t=>Math.max(t.base,1e-9));
   const lo=Math.log(Math.min(...val)),hi=Math.log(Math.max(...val));
   const sp=Math.max(hi-lo,1e-6);
-  const raw=v.map((t,i)=>(.30+.70*Math.pow((Math.log(val[i])-lo)/sp,.85))*(1+t.boost*.6));
+  /* Log-compressed market-cap radius, before boost. */
+  const shape=i=>.30+.70*Math.pow((Math.log(val[i])-lo)/sp,.85);
+
+  /* A paid bubble is sized by what was paid, not by its market cap — that is
+     the product, stated in CLAUDE.md, and it is the whole reason someone buys
+     one. Applying the boost to a tiny cap did not deliver it: a $9 boost on a
+     $3,215 token sat at the very bottom of a scale running to $250M, so ×1.3 of
+     nothing was still nothing and the buyer saw no bubble at all.
+     So a boosted bubble starts from the middle of the pack and grows from
+     there. Communities boosting a small coin are the expected customer; if
+     paying cannot make them visible, there is nothing to sell. The 25% gold
+     cap still bounds how much of the map this can consume.
+
+     The floor is the 40th percentile, not the median. Radii here span barely
+     1.4x end to end after log compression and area normalisation, so a floor
+     set any higher puts a $9 Spark at the top of the map and leaves nothing for
+     a $149 Whale to buy — the tiers have to stay visibly different from each
+     other, or the price ladder is decoration. */
+  const un=v.map((t,i)=>t.boost>0?null:shape(i)).filter(x=>x!=null).sort((a,b)=>a-b);
+  const floor=un.length?un[Math.floor(un.length*.40)]:.45;
+  const raw=v.map((t,i)=>
+    (t.boost>0?Math.max(shape(i),floor):shape(i))*(1+t.boost*.6));
   const A=W*Math.max(H-PT-PB,80);
   const fill=clamp(.80-(v.length-60)*.0005,.58,.80);
   const ss=raw.reduce((s,r)=>s+r*r,0);
@@ -1542,14 +1563,17 @@ async function loadAds(){
   try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';rail()}
   catch(e){}
 }
+/* Two products, two places. The golden bubble IS the boost — that is what the
+   money bought and where it has to show. The rail is sold ad inventory, a
+   separate thing with a separate price, and filling it with boosts we already
+   displayed on the map both double-counts one purchase and gives away
+   inventory that should be for sale. */
 function rail(){
-  const b=S.tokens.filter(t=>t.boost>0).sort((x,y)=>y.boost-x.boost).slice(0,4)
-    .map(t=>({sym:t.sym,img:t.img,gold:true,tag:'★ ×'+(1+t.boost).toFixed(1)}));
-  const ads=ADS.slice(0,Math.max(0,4-b.length))
+  const ads=ADS.slice(0,4)
     .map(a=>({sym:a.title||'AD',img:a.img,url:a.url,tag:a.sub||'sponsored'}));
-  const openSlots=['YOUR TOKEN','SLOT OPEN','SLOT OPEN','SLOT OPEN']
+  const openSlots=['YOUR AD HERE','SLOT OPEN','SLOT OPEN','SLOT OPEN']
     .map(sym=>({sym,url:AD_CONTACT,tag:'ad here'}));
-  const slots=[...b,...ads,...openSlots].slice(0,4);
+  const slots=[...ads,...openSlots].slice(0,4);
   document.getElementById('rail').innerHTML=slots.map(t=>{
     const av=t.img?`<img class="av" src="${esc(t.img)}" alt="" loading="lazy"
         onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av',textContent:'${esc(t.sym[0])}'}))">`

@@ -152,15 +152,15 @@ export async function handle(req, ctx) {
       const have = new Set(tokens.map(t => t.mint));
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
-        /* Re-add a paid bubble only to the feed it belongs to. A boosted
-           graduated token dropped into the bonding map arrives at a $250M cap
-           among $3K curves and swallows the whole view — the sizing is relative,
-           so one out-of-place token wrecks the scale for everything else.
-           Boosts recorded before this carried no stage, and graduated is the
-           safe assumption for those. */
-        const isGraduated = b.grad !== false;
-        if (mode === 'graduated' && !isGraduated) continue;
-        if (mode === 'bonding' && isGraduated) continue;
+        /* A paid bubble appears in whichever view the visitor is looking at,
+           regardless of which feed the token came from. Scoping it to its own
+           feed meant a boosted bonding token was invisible on the default map —
+           the buyer paid and saw nothing, which is the one outcome that cannot
+           happen here.
+           The scale problem that scoping was meant to solve is handled where it
+           belongs, in sizes(): a boosted bubble is sized by what was paid rather
+           than by its market cap, so an out-of-place cap no longer distorts
+           anything. */
         tokens.push({
           id: mint, mint,
           sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
