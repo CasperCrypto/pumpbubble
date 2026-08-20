@@ -53,3 +53,9 @@ id = "769139d9eb6d428bbe95b7341bb0f09f"
 [[routes]]
 pattern = "pumpbubble.fun"
 custom_domain = true
+
+# Declaring routes turns the workers.dev URL off unless this is set explicitly,
+# which takes the only reachable address away while the new domain's certificate
+# is still being issued. Keep it as a fallback for testing and for DNS changes.
+# Turn it off later if you would rather the site answer on one address only.
+workers_dev = true
