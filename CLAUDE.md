@@ -172,3 +172,40 @@ ResizeObserver callbacks are only delivered with a rendering frame.
    already lives server-side where the socket belongs
 4. Helius webhook instead of polling `/api/boost/status`, so boosts activate without a poll
 5. Pre-graduation "bonding" mode via Bitquery (bonding-curve market cap), as a separate toggle
+
+## Data quality — why bubbles get hidden
+
+A market cap is price × supply, and price is whatever the last trade said. With a thin pool that
+number is paper. Measured on a live snapshot: **fourteen separate mints shared the ticker UOTF**,
+the largest showing $250M of market cap against $1.2M of liquidity, eight hours old, with a
+706,399% "24h change". Ranked by market cap they owned the top of the map, which is what a first
+visitor saw.
+
+`scoreQuality()` in `src/core.mjs` scores every token on whether its cap is backed by anything:
+
+- **mcap / liquidity** — calibrated, not guessed. Median token ~14×, established names reach 99×
+  while trading millions a day, copycats 100–385×. Bar sits at 120×.
+- **24h volume** — but see below.
+- **copies** — how many mints in the snapshot share this ticker. This carries most of the weight.
+
+`solid` means all three pass. The front end's "Real only" chip filters on it, defaults **on**,
+**says how many it hid**, and turns off in one click.
+
+**Never delete a token over this.** A screener that silently drops real trades is lying in the
+other direction. Filter the view, disclose the count, keep the numbers visible, and never print the
+word "scam" — intent is unknowable, backing is measurable. Boosted bubbles are never filtered: they
+were paid for.
+
+**Volume is absent, not zero, for bonding-curve tokens.** DexScreener only indexes graduated mints,
+so a briskly trading curve reports $0. `last_trade_timestamp` from pump.fun stands in. If you ever
+tighten the volume rule, re-check bonding mode first — an earlier version hid 285 of 300.
+
+## Modes
+
+`?mode=graduated` (default) and `?mode=bonding`, cached separately, never mixed — a 24h axis means
+nothing to a token forty minutes old.
+
+**Bonding is sorted by `last_trade_timestamp`, not market cap.** Ranking live curves by size
+surfaces abandoned ones: by mcap the median age was 104 days with almost nothing trading; by last
+trade it is ~12 minutes with everything on screen traded inside the last minute. pump.fun's
+`complete=false` parameter is what splits the two feeds.
