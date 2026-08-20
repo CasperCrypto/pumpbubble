@@ -21,6 +21,15 @@ compatibility_date = "2026-08-01"
 # config rather than ignoring it.
 workers_dev = true
 
+# Keep values set in the dashboard instead of deleting them on deploy.
+#
+# This defaults to FALSE, which means a deploy wipes anything configured through
+# the Cloudflare UI that is not also in this file. Since every push to main
+# triggers a build, a secret added in the dashboard vanishes on the next commit —
+# it looks like the dashboard is not saving, when really it saved and was then
+# removed. That is what happened to SOLANA_RPC, repeatedly.
+keep_vars = true
+
 # Static files. Anything not matched by /api/* is served from here.
 [assets]
 directory = "./public"
