@@ -99,7 +99,33 @@ function imageFetcher(execCtx) {
   };
 }
 
+/* The image proxy needs a signing secret that every isolate agrees on. If none
+   was configured, images vanish entirely and nothing says why — which is a poor
+   trade for a value nobody has to choose. Generate one, keep it in KV, and let
+   every isolate load the same one. A configured IMG_SECRET always wins. */
+let SECRET = null;
+
+async function imgSecret(env) {
+  if (env.IMG_SECRET) return env.IMG_SECRET;
+  if (SECRET) return SECRET;
+  const kv = env.BUBBLE_KV;
+  if (!kv) return 'unconfigured-image-secret';
+  try {
+    SECRET = await kv.get('img_secret');
+    if (!SECRET) {
+      SECRET = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+      await kv.put('img_secret', SECRET);
+    }
+  } catch {
+    SECRET = SECRET || 'unconfigured-image-secret';
+  }
+  return SECRET;
+}
+
 async function makeCtx(env, execCtx) {
+  /* env is a frozen binding object, so hand the API a copy carrying the
+     resolved secret rather than trying to write back onto it */
+  env = { ...env, IMG_SECRET: await imgSecret(env) };
   return {
     env,
     store: makeStore(env),

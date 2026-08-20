@@ -321,6 +321,7 @@ export async function handle(req, ctx) {
         treasury: !!ctx.env.TREASURY_WALLET,
         rpc: !!ctx.env.SOLANA_RPC,
         kv: !!ctx.store.available,
+        imgSecret: !!ctx.env.IMG_SECRET,
         /* the one line that answers "why is nobody able to buy a boost?" */
         boostsOpen: !!(ctx.env.TREASURY_WALLET && ctx.env.SOLANA_RPC && ctx.store.available),
       });

@@ -44,7 +44,11 @@ try {
   withSym / snap.tokens.length > 0.98 ? pass('tickers', `${withSym}/${snap.tokens.length}`)
     : fail('tickers', `only ${withSym}/${snap.tokens.length}`);
   withImg / snap.tokens.length > 0.90 ? pass('images', `${withImg}/${snap.tokens.length}`)
-    : fail('images', `only ${withImg}/${snap.tokens.length}`);
+    /* zero is a different failure from a few: it means nothing was signed at
+       all, which points at the signing secret rather than at the token data */
+    : fail('images', withImg === 0
+      ? 'none at all — the image signing secret is missing, check /api/health'
+      : `only ${withImg}/${snap.tokens.length}`);
   withChg / snap.tokens.length > 0.80 ? pass('price change', `${withChg}/${snap.tokens.length}`)
     : fail('price change', `only ${withChg}/${snap.tokens.length} — DexScreener enrichment may be failing`);
 
