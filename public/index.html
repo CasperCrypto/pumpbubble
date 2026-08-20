@@ -391,7 +391,22 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
   #stats{display:flex;gap:18px}
   #boostTop{margin-left:0}
   #rail,#chips{padding-left:18px;padding-right:18px}
-  #card{display:none!important}
+  /* The card used to be mobile-only, because desktop clicks went straight to
+     pump.fun. Now a click selects on every device — so on desktop it becomes a
+     floating panel rather than a bottom sheet. Hiding it here left desktop
+     users with a blurred backdrop and nothing on it. */
+  #card{
+    left:auto;right:18px;bottom:18px;width:340px;
+    border:1px solid var(--line);border-radius:18px;border-top:1px solid var(--line);
+    padding:16px;
+    transform:translateY(calc(100% + 40px));
+    box-shadow:0 24px 70px rgba(0,0,0,.65);
+  }
+  /* translateY(0), not `none`: interpolating a length to a keyword is not
+     something every engine animates cleanly, and a card stuck mid-transition
+     lands just below the fold where it looks like nothing opened at all */
+  #card.on{transform:translateY(0)}
+  #card .grab{display:none}
   #sheet{left:auto;right:18px;bottom:18px;width:330px;border-radius:18px;
     border:1px solid var(--line);transform:translateY(calc(100% + 40px))}
   #sheet.on{transform:none}
