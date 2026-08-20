@@ -22,3 +22,18 @@
 # self-contained file by design (CLAUDE.md → Conventions). Moving the script to
 # its own file and dropping 'unsafe-inline' would be the strongest single
 # hardening step available, at the cost of that convention.
+
+# Generated art never changes without changing name, so cache it hard.
+/og.png
+  Cache-Control: public, max-age=604800
+/icon-*.png
+  Cache-Control: public, max-age=604800
+/favicon.svg
+  Cache-Control: public, max-age=604800
+
+# The map itself must not be stale — a screener showing yesterday's prices is
+# worse than one that takes an extra moment to load.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/
+  Cache-Control: public, max-age=0, must-revalidate

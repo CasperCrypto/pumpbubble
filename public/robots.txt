@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# The API is live market data, not content. Crawling it wastes our request
+# budget and puts nothing useful in an index.
+Disallow: /api/
+
+Sitemap: https://pumpbubble.fun/sitemap.xml

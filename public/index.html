@@ -2,9 +2,55 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<!-- maximum-scale is deliberately absent: pinning it blocks pinch-zoom, which
+     fails WCAG 1.4.4 and is flagged by Lighthouse. The canvas handles its own
+     dragging, so browser zoom on top of it costs nothing. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#05070a">
+<meta name="color-scheme" content="dark">
+
 <title>pumpbubble.fun — live pump.fun bubble map</title>
+<meta name="description" content="Live bubble map of pump.fun tokens. Every bubble is a token: size is market cap, colour is price change. Spot movers, filter out unbacked market caps, and watch bonding curves in real time.">
+<link rel="canonical" href="https://pumpbubble.fun/">
+<meta name="robots" content="index,follow,max-image-preview:large">
+
+<!-- Social cards. Crypto spreads on Twitter and Telegram, so the share preview
+     is marketing surface, not an afterthought. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pumpbubble.fun">
+<meta property="og:url" content="https://pumpbubble.fun/">
+<meta property="og:title" content="pumpbubble.fun — live pump.fun bubble map">
+<meta property="og:description" content="Every pump.fun token as a liquid bubble. Size is market cap, colour is price change, gold means someone paid. Live data, unbacked caps filtered out.">
+<meta property="og:image" content="https://pumpbubble.fun/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A field of coloured bubbles, each one a pump.fun token sized by market cap">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="pumpbubble.fun — live pump.fun bubble map">
+<meta name="twitter:description" content="Every pump.fun token as a liquid bubble. Size is market cap, colour is price change, gold means someone paid.">
+<meta name="twitter:image" content="https://pumpbubble.fun/og.png">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="manifest" href="/site.webmanifest">
+
+<!-- Preconnect only to what the very first paint needs: the API call that
+     fills the map, and the image host every token logo is proxied through
+     (same origin, so this is really just a DNS/TLS hint for the CDN edge). -->
+<link rel="preload" href="/api/tokens?mode=graduated" as="fetch" crossorigin>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "pumpbubble.fun",
+  "url": "https://pumpbubble.fun/",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Any",
+  "description": "Live bubble map of pump.fun tokens, sized by market cap and coloured by price change.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 <style>
 :root{
   --bg:#040508;
