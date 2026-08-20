@@ -9,6 +9,7 @@
     "check": "node scripts/check.mjs",
     "test": "node scripts/payment-abuse.test.mjs",
     "test:api": "node scripts/api-abuse.test.mjs",
+    "setup": "node scripts/setup-cloudflare.mjs",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"
   },
