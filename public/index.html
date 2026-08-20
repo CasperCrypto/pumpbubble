@@ -632,7 +632,13 @@ async function jget(u,ms=12000){
   finally{clearTimeout(t)}
 }
 async function fetchLive(){
-  const j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode));
+  /* A cold worker builds the whole snapshot before answering — measured at
+     4-5s, and slower still on a cold isolate. Give it room and retry once
+     before falling back to demo data: dropping to demo is a visible downgrade
+     and should be a last resort, not the response to one slow request. */
+  let j;
+  try{ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),20000) }
+  catch(e){ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),25000) }
   if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   return j.tokens.map(t=>({
@@ -664,9 +670,14 @@ function demo(){
     const t=R();
     const mcap=t>.95?1.2e7+R()*2.2e8:t>.78?7e5+R()*8e6:t>.42?7e4+R()*6e5:5e3+R()*8e4;
     const b=(R()-.44), h1=b*95*(.35+R());
+    const liq=mcap/(6+R()*40);
     return{id:'d'+i,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
       vol:mcap*(.12+R()*2.6),
-      pc:{m5:h1*(.12+R()*.5),h1,h6:h1*(.65+R()*1.7),h24:h1*(.45+R()*2.8)},boost:0}
+      pc:{m5:h1*(.12+R()*.5),h1,h6:h1*(.65+R()*1.7),h24:h1*(.45+R()*2.8)},boost:0,
+      /* the quality fields the real feed carries. Without `solid` the "Real
+         only" filter removes every one of these and the map renders blank —
+         which is exactly what a visitor saw whenever the API hiccuped. */
+      liq,mcLiq:mcap/liq,copies:1,ageH:24+R()*8000,flags:[],solid:true}
   });
 }
 
@@ -717,9 +728,13 @@ function rebuild(){
   /* A paid bubble is never filtered out — it was bought, and hiding it would be
      selling something we do not deliver. */
   if(S.realOnly){
-    const before=L.length;
-    L=L.filter(t=>t.solid||t.boost>0);
-    S.hidden=before-L.length;
+    const kept=L.filter(t=>t.solid||t.boost>0);
+    /* Fail open. If the quality data is missing or every token happens to be
+       flagged, filtering would leave an empty screen — and a blank map is a
+       worse lie than an unvetted one. Only apply the filter while it still
+       leaves something to look at. */
+    if(kept.length){S.hidden=L.length-kept.length;L=kept}
+    else S.hidden=0;
   }else S.hidden=0;
   if(S.q){const q=S.q.toLowerCase();
     L=L.filter(t=>t.sym.toLowerCase().includes(q)||(t.name||'').toLowerCase().includes(q))}
@@ -1229,11 +1244,16 @@ const noteEl=document.getElementById('mnote');
 let tier={id:'pump',mult:2.4,price:49};
 let order=null,orderToken='',poll=null;
 
-function resetPay(){
+/* `keepCA` matters more than it looks. Picking a tier calls this to refresh the
+   price line, and clearing the contract field there meant: paste an address,
+   tap a tier, and the address silently vanished — so the quote fell back to
+   whichever bubble happened to be selected and bought the wrong token. Tier
+   changes keep what was typed; only opening the modal afresh clears it. */
+function resetPay(keepCA){
   clearInterval(poll);poll=null;order=null;orderToken='';
   if(typeof caInput!=='undefined'&&caInput){
-    caInput.style.display='';caInput.value='';
-    caMsg.textContent='';caMsg.className='camsg';
+    caInput.style.display='';
+    if(!keepCA){caInput.value='';caMsg.textContent='';caMsg.className='camsg'}
   }
   goBtn.disabled=false;goBtn.textContent='Get pay link →';
   noteEl.textContent='Payment is on-chain — only send from a wallet you control.';
@@ -1338,7 +1358,7 @@ document.querySelectorAll('.tier').forEach(el=>el.addEventListener('click',()=>{
   document.querySelectorAll('.tier').forEach(x=>x.classList.remove('on'));
   el.classList.add('on');
   tier={id:el.dataset.tier,mult:+el.dataset.mult,price:+el.dataset.price};
-  if(!order)resetPay();
+  if(!order)resetPay(true);        // keep a pasted contract address
 }));
 const closeVeil=()=>{veil.classList.remove('on');clearInterval(poll);poll=null};
 document.getElementById('mcancel').onclick=closeVeil;
@@ -1371,6 +1391,9 @@ caInput.addEventListener('input',()=>{
   if(!v){caMsg.textContent=S.target?'':'paste a contract address, or tap a bubble';return}
   if(!CA_RE.test(v)){caMsg.textContent='that does not look like a Solana address';caMsg.className='camsg bad';return}
   caMsg.textContent='looks valid — we will check it with pump.fun';caMsg.className='camsg good';
+  /* say out loud that the pasted address now wins over the selected bubble,
+     so nobody pays expecting the token whose name is still in the header */
+  document.getElementById('mtk').textContent='pasted contract';
 });
 
 goBtn.onclick=async()=>{
