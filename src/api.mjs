@@ -139,6 +139,8 @@ export async function handle(req, ctx) {
         sol: snap.sol,
         source: snap.source,
         enriched: snap.enriched,
+        withArt: snap.withArt,
+        signed: snap.signed,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,

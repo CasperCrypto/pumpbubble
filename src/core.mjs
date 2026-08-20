@@ -289,6 +289,10 @@ export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
     }
   }
 
+  /* Counted before signing so "no images" can be told apart from "no art in the
+     upstream data" — the two have completely different causes. */
+  const withArt = tokens.filter(t => t.rawImg).length;
+
   if (secret) {
     await Promise.all(tokens.map(async t => {
       if (!t.rawImg) return;
@@ -296,7 +300,11 @@ export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
               '&s=' + await signUrl(t.rawImg, secret);
     }));
   }
+  const sampleArt = tokens.find(t => t.rawImg)?.rawImg || '';
   for (const t of tokens) delete t.rawImg;
 
-  return { ts: now, sol, count: tokens.length, enriched, source: 'pump.fun', tokens };
+  return {
+    ts: now, sol, count: tokens.length, enriched, withArt, sampleArt,
+    signed: !!secret, source: 'pump.fun', tokens,
+  };
 }
