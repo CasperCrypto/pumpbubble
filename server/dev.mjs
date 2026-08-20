@@ -22,6 +22,7 @@ const PORT = +(process.env.PORT || 8787);
 /* --------------------------------------------------------------- store */
 const mem = new Map();
 const store = {
+  available: true,                     // a Map is always there; KV may not be
   async get(k) { const v = mem.get(k); return v === undefined ? null : v; },
   async put(k, v) { mem.set(k, v); },
 };

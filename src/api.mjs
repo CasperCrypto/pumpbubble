@@ -184,8 +184,19 @@ export async function handle(req, ctx) {
       const limited = rateLimit(req, 'order', 30, 600_000);
       if (limited) return limited;
 
+      /* Never quote a price we cannot honour. Without KV a paid boost cannot be
+         stored, and without an RPC a payment cannot be verified — in both cases
+         the buyer's money would arrive and nothing would happen. Refusing the
+         sale is the only honest option, and misconfiguration is exactly when
+         this matters, so it is checked per order rather than assumed at boot. */
       if (!ctx.env.TREASURY_WALLET) {
         return json({ ok: false, error: 'boosts are not open yet — no treasury wallet configured' }, 503);
+      }
+      if (!ctx.store.available) {
+        return json({ ok: false, error: 'boosts are temporarily closed — storage is not configured' }, 503);
+      }
+      if (!ctx.env.SOLANA_RPC) {
+        return json({ ok: false, error: 'boosts are temporarily closed — no Solana RPC configured' }, 503);
       }
       const body = await req.json().catch(() => ({}));
       if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
@@ -309,6 +320,9 @@ export async function handle(req, ctx) {
         lastError: cache.err,
         treasury: !!ctx.env.TREASURY_WALLET,
         rpc: !!ctx.env.SOLANA_RPC,
+        kv: !!ctx.store.available,
+        /* the one line that answers "why is nobody able to buy a boost?" */
+        boostsOpen: !!(ctx.env.TREASURY_WALLET && ctx.env.SOLANA_RPC && ctx.store.available),
       });
     }
 

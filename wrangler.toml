@@ -28,9 +28,18 @@ crons = ["*/5 * * * *"]
 # is what you want for the one value that decides where money goes.
 TREASURY_WALLET = "6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C"
 AD_CONTACT = "https://t.me/casper_crypto"
-# Placeholder only. The public RPC returns 429 under real load — override it
-# with `wrangler secret put SOLANA_RPC` before selling anything. See docs/deploy.md.
-SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+
+# SOLANA_RPC is deliberately NOT here.
+#
+# Vars and secrets share one namespace on Workers, so a var declared here
+# overwrites a secret of the same name on every single deploy. Left in place it
+# would silently replace the Helius endpoint with the rate-limited public one,
+# and payments would stop verifying for a reason nothing in the logs explains.
+#
+# Set it as a secret instead — dashboard (Settings → Variables and Secrets) or:
+#   npx wrangler secret put SOLANA_RPC
+# The code falls back to the public endpoint if it is missing, which is fine for
+# looking at the map and not fine for taking money.
 
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]

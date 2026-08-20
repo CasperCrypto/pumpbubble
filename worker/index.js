@@ -21,6 +21,9 @@ const HIST_SAVE_EVERY = 5 * 60 * 1000;
 function makeStore(env) {
   const kv = env.BUBBLE_KV;
   return {
+    /* No binding means boosts cannot be persisted, so the API refuses to sell
+       one rather than taking money it cannot honour. */
+    available: !!kv,
     async get(key) {
       if (!kv) return null;
       return await kv.get(key, 'json');
