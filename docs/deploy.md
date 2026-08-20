@@ -137,3 +137,20 @@ Neither route creates storage or secrets for you:
 - **Worker secrets** — the worker's Settings → Variables and Secrets:
   - `SOLANA_RPC` — your Helius URL (secret: the key is in the URL)
   - `IMG_SECRET` — any long random string
+
+### Clearing a parked-domain record after a registrar transfer
+
+Moving nameservers to Cloudflare brings the old DNS records along, so a domain
+that used to show a registrar parking page keeps showing it — the worker is
+deployed and simply never gets the request.
+
+Delete the parking record first, in **Cloudflare → DNS → Records** for the zone:
+remove the `A` / `AAAA` / `CNAME` records whose name is the root (`pumpbubble.fun`
+or `@`). Those are the registrar's, not ours.
+
+Then attach the domain in **the worker → Settings → Domains & Routes → Add →
+Custom domain**. Cloudflare writes the correct record and issues the certificate.
+
+Doing it in that order matters: adding the custom domain while the parking
+record still exists fails on a conflict that the deploy log reports only as a
+DNS error.
