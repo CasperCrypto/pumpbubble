@@ -44,7 +44,7 @@ AD_CONTACT = "https://t.me/casper_crypto"
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "769139d9eb6d428bbe95b7341bb0f09f"
 
 # Custom domain — uncomment once pumpbubble.fun is on Cloudflare.
 # [[routes]]
