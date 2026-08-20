@@ -1,0 +1,30 @@
+name: Deploy
+
+# Every push to main deploys. That means no terminal is needed to ship — which
+# matters here, because the local wrangler flow is the step most likely to be
+# unavailable when something needs fixing quickly.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # lets you deploy by hand from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The payment tests run offline (they stand a fake RPC in front of the
+      # real matching code), so they are safe to gate a deploy on. If someone
+      # breaks underpayment handling, this fails and nothing ships.
+      - name: Payment abuse tests
+        run: node scripts/payment-abuse.test.mjs
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
