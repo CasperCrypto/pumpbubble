@@ -188,6 +188,29 @@ export async function handle(req, ctx) {
       });
     }
 
+    /* --------------------------------------------------------- /api/token */
+    /* Resolve one mint so the boost modal can show the art and ticker as soon
+       as a contract address is pasted. Paying is the wrong moment to discover
+       which token you actually named. */
+    if (path === '/api/token') {
+      const limited = rateLimit(req, 'token', 60, 60_000);
+      if (limited) return limited;
+
+      const mint = url.searchParams.get('mint') || '';
+      if (!isMint(mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+
+      /* prefer a feed we already hold — free, and already image-signed */
+      for (const mode of ['graduated', 'bonding']) {
+        const c = cacheFor(mode);
+        const hit = c.data?.tokens.find(t => t.mint === mint);
+        if (hit) return json({ ok: true, token: hit, from: mode });
+      }
+
+      const t = await fetchCoin(mint, ctx.env.IMG_SECRET);
+      if (!t) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
+      return json({ ok: true, token: t, from: 'pump.fun' });
+    }
+
     /* ---------------------------------------------------------- /api/img */
     /* Signed proxy. Unsigned URLs are refused, so this can never be used as an
        open relay. See core.mjs → image proxy. */

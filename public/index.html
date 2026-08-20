@@ -374,6 +374,19 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
   outline:none;transition:border-color .15s}
 .ca:focus{border-color:rgba(255,201,60,.5)}
 .ca::placeholder{color:var(--dim);font-family:inherit;font-weight:600}
+/* Confirmation that the pasted address resolved to the token they meant.
+   A contract address is 44 characters of base58 — nobody can read one and be
+   sure. The art and ticker are the only proof that lands before payment. */
+.capre{display:none;align-items:center;gap:10px;margin-top:10px;padding:9px 11px;
+  border-radius:12px;border:1px solid rgba(40,224,140,.35);background:rgba(40,224,140,.07)}
+.capre.on{display:flex}
+.capre.load{border-color:var(--line);background:rgba(255,255,255,.04)}
+.capre img,.capre .av{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+  display:grid;place-items:center;font-weight:900;font-size:15px;color:#08110c;background:#2a3140}
+.capre .who{min-width:0;flex:1}
+.capre .who b{display:block;font-size:14px;font-weight:900}
+.capre .who span{display:block;font-size:11px;color:var(--dim);font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .camsg{font-size:11.5px;font-weight:700;margin-top:6px;min-height:14px;color:var(--dim)}
 .camsg.bad{color:var(--rose)}
 .camsg.good{color:var(--mint2)}
@@ -556,6 +569,7 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
          arrives holding a contract address. -->
     <input id="mca" class="ca" spellcheck="false" autocomplete="off"
            placeholder="or paste any pump.fun contract address">
+    <div id="mcaPre" class="capre"></div>
     <div id="mcaMsg" class="camsg"></div>
 
     <div class="tier" data-tier="spark" data-mult="1.5" data-price="9"><div><div class="b">Spark ×1.5</div><div class="d">6h · gold shell</div></div><div class="p">$9</div></div>
@@ -1274,7 +1288,8 @@ function resetPay(keepCA){
   clearInterval(poll);poll=null;order=null;orderToken='';
   if(typeof caInput!=='undefined'&&caInput){
     caInput.style.display='';
-    if(!keepCA){caInput.value='';caMsg.textContent='';caMsg.className='camsg'}
+    if(!keepCA){caInput.value='';caMsg.textContent='';caMsg.className='camsg';
+      if(typeof clearPreview==='function')clearPreview()}
   }
   goBtn.disabled=false;goBtn.textContent='Get pay link →';
   noteEl.textContent='Payment is on-chain — only send from a wallet you control.';
@@ -1402,6 +1417,43 @@ if(window.visualViewport){
   vv.addEventListener('resize',fit);
   vv.addEventListener('scroll',fit);
 }
+/* Resolve a pasted address to the actual token and show its art and ticker.
+   Nobody can read 44 characters of base58 and be sure they pasted the right
+   thing, so this is the confirmation that has to arrive before payment, not
+   after it. Debounced, and guarded against a slow lookup overwriting a newer
+   one when someone pastes twice. */
+const caPre=document.getElementById('mcaPre');
+let caSeq=0,caTimer=null,caToken=null;
+function clearPreview(){caPre.className='capre';caPre.innerHTML='';caToken=null}
+function lookupCA(mint){
+  clearTimeout(caTimer);
+  const seq=++caSeq;
+  caPre.className='capre on load';
+  caPre.innerHTML='<span class="av">…</span><div class="who"><b>checking…</b><span>asking pump.fun about this address</span></div>';
+  caMsg.textContent='';caMsg.className='camsg';
+  caTimer=setTimeout(async()=>{
+    try{
+      const j=await jget('/api/token?mint='+encodeURIComponent(mint),9000);
+      if(seq!==caSeq)return;                       // a newer paste already won
+      if(!j.ok||!j.token)throw new Error(j.error||'not found');
+      const t=j.token;caToken=t;
+      const av=t.img
+        ? `<img src="${esc(t.img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av',textContent:'${esc((t.sym||'?')[0])}'}))">`
+        : `<span class="av" style="background:hsl(${hue(t.sym||'?')},45%,55%)">${esc((t.sym||'?')[0])}</span>`;
+      caPre.className='capre on';
+      caPre.innerHTML=`${av}<div class="who"><b>${esc(t.sym)}</b>
+        <span>${esc(t.name)} · ${fmtUsd(t.mcap)} · ${t.grad?'graduated':'bonding'}</span></div>`;
+      document.getElementById('mtk').textContent=t.sym;
+    }catch(e){
+      if(seq!==caSeq)return;
+      clearPreview();
+      caMsg.textContent=/404|not found|no token/i.test(e.message)
+        ? 'pump.fun has no token with that address'
+        : 'could not check that address — you can still continue';
+      caMsg.className='camsg bad';
+    }
+  },350);
+}
 caInput.addEventListener('focus',()=>{
   /* wait for the keyboard animation, then make sure the field is in view */
   setTimeout(()=>caInput.scrollIntoView({block:'center',behavior:'smooth'}),320);
@@ -1409,12 +1461,12 @@ caInput.addEventListener('focus',()=>{
 caInput.addEventListener('input',()=>{
   const v=caInput.value.trim();
   caMsg.className='camsg';
-  if(!v){caMsg.textContent=S.target?'':'paste a contract address, or tap a bubble';return}
-  if(!CA_RE.test(v)){caMsg.textContent='that does not look like a Solana address';caMsg.className='camsg bad';return}
-  caMsg.textContent='looks valid — we will check it with pump.fun';caMsg.className='camsg good';
+  if(!v){clearPreview();caMsg.textContent=S.target?'':'paste a contract address, or tap a bubble';return}
+  if(!CA_RE.test(v)){clearPreview();caMsg.textContent='that does not look like a Solana address';caMsg.className='camsg bad';return}
   /* say out loud that the pasted address now wins over the selected bubble,
      so nobody pays expecting the token whose name is still in the header */
   document.getElementById('mtk').textContent='pasted contract';
+  lookupCA(v);
 });
 
 goBtn.onclick=async()=>{
