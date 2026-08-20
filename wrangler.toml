@@ -11,6 +11,16 @@ name = "pumpbubble"
 main = "worker/index.js"
 compatibility_date = "2026-08-01"
 
+# Declaring routes (see the bottom of this file) turns the workers.dev URL off
+# unless this says otherwise, which takes away the only reachable address while
+# a new custom domain's certificate is still being issued. Keep it as a fallback
+# for testing and for the next time DNS changes.
+#
+# This has to live up here, above every [table] header: in TOML a key written
+# after `[[routes]]` becomes part of that route, and wrangler rejects the whole
+# config rather than ignoring it.
+workers_dev = true
+
 # Static files. Anything not matched by /api/* is served from here.
 [assets]
 directory = "./public"
@@ -53,9 +63,3 @@ id = "769139d9eb6d428bbe95b7341bb0f09f"
 [[routes]]
 pattern = "pumpbubble.fun"
 custom_domain = true
-
-# Declaring routes turns the workers.dev URL off unless this is set explicitly,
-# which takes the only reachable address away while the new domain's certificate
-# is still being issued. Keep it as a fallback for testing and for DNS changes.
-# Turn it off later if you would rather the site answer on one address only.
-workers_dev = true
