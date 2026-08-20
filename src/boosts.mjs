@@ -87,7 +87,7 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice, treasury }) {
+export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice, treasury, taken = [] }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
   if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
@@ -109,9 +109,26 @@ export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice
      collision means someone's payment activates someone else's bubble. All
      arithmetic is in integer lamports, so matching is exact rather than
      float-tolerant. */
+  /* Six decimals, not nine. Measured against a real payment: Phantom's deep
+     link prefills the amount correctly, but anyone paying by hand has to type
+     it, and a nine-decimal figure gets truncated — a live attempt sent
+     0.104550140 against a quote of 0.104550144 and went unmatched.
+
+     Six decimals is typeable and still leaves 999 distinct nonces per price
+     point. Uniqueness is guaranteed rather than hoped for: `taken` carries the
+     amounts of every pending order, and the nonce is drawn from what is free. */
   const baseLamports = Math.floor((tier.usd / solPrice) * 1e3) * 1e6;   // 0.001 SOL granularity
-  const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999999);
-  const lamports = baseLamports + nonce;
+  const used = new Set(taken);
+  let lamports = 0;
+  for (let i = 0; i < 200 && !lamports; i++) {
+    const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999);
+    const candidate = baseLamports + nonce * 1000;                     // 1 microSOL steps
+    if (!used.has(candidate)) lamports = candidate;
+  }
+  /* every nonce at this price is in flight — extremely unlikely, but never
+     issue a quote that could match somebody else's payment */
+  if (!lamports) throw new Error('too many boosts being paid for right now — try again in a minute');
+
   const amountSol = lamports / LAMPORTS;
   const now = Date.now();
   const order = {
@@ -326,6 +343,91 @@ export function liveSpend(b, now = Date.now()) {
 /* Kept for the single-order case and for tests. */
 export function bonusOf(b, now = Date.now()) {
   return bonusFromSpend(liveSpend(b, now));
+}
+
+/* ============================================================ pending orders
+
+   Quotes are stateless and signed, which is right for the quote itself. But a
+   payment can only be reconciled against something that knows it is owed, and a
+   stateless quote lives only in the buyer's tab. Measured in production: a
+   correct, exact payment went unclaimed because the page navigated away to
+   Phantom and nothing was left polling. Nothing server-side knew the order had
+   ever existed, so nothing could put it right.
+
+   So an order is persisted at the moment the buyer commits to paying — not when
+   the modal opens — and a sweep matches arriving payments against the list.
+   That is one write per real intent, and it makes the closed-tab case, the
+   crashed-browser case and the paid-then-walked-away case all recoverable.
+
+   The whole list lives under one key: it is small, it is always read as a unit,
+   and one key means one write per order rather than a key per order. */
+
+const PENDING_KEY = 'pending';
+const PENDING_TTL = 26 * 3600 * 1000;    // outlive the 24h payment window
+
+export async function listPending(store, now = Date.now()) {
+  const all = (await store.get(PENDING_KEY)) || [];
+  return all.filter(o => now - o.createdAt < PENDING_TTL);
+}
+
+export async function addPending(store, order) {
+  const all = await listPending(store);
+  if (all.some(o => o.id === order.id)) return all;
+  /* keep it bounded: this is a work queue, not an archive */
+  const kept = all.slice(-400).concat({
+    id: order.id, mint: order.mint, sym: order.sym, name: order.name, img: order.img,
+    mcap: order.mcap, tier: order.tier, mult: order.mult, hours: order.hours,
+    usd: order.usd, lamports: order.lamports, amountSol: order.amountSol,
+    reference: order.reference, treasury: order.treasury,
+    createdAt: order.createdAt, expiresAt: order.expiresAt,
+  });
+  await store.put(PENDING_KEY, kept);
+  return kept;
+}
+
+export async function dropPending(store, ids) {
+  const gone = new Set(ids);
+  const all = await listPending(store);
+  const kept = all.filter(o => !gone.has(o.id));
+  if (kept.length !== all.length) await store.put(PENDING_KEY, kept);
+  return kept;
+}
+
+/* Match every arriving payment against every pending order in one pass.
+   Returns the boosts it activated. Safe on a timer and safe to run twice:
+   activation is idempotent on the transaction signature. */
+export async function sweepPayments(store, rpcUrl, treasury) {
+  const pending = await listPending(store);
+  if (!pending.length) return [];
+
+  const payments = await scanTreasury(rpcUrl, treasury, true);
+  if (!payments.length) return [];
+
+  const existing = (await store.get('boosts')) || [];
+  const claimed = new Set(existing.map(b => b.sig));
+  const activated = [];
+  const done = [];
+
+  for (const order of pending) {
+    const notBefore = Math.floor(order.createdAt / 1000) - 120;
+    const hit = payments.find(p =>
+      !claimed.has(p.signature) &&
+      (!p.blockTime || p.blockTime >= notBefore) &&
+      (p.lamports === order.lamports ||
+        /* a Solana Pay transaction naming this order may also overpay */
+        (p.keys?.includes(order.reference) && p.lamports >= order.lamports)));
+    if (!hit) continue;
+    claimed.add(hit.signature);
+    const boost = await activateBoost(store, order,
+      { signature: hit.signature, received: hit.lamports / LAMPORTS, slot: hit.slot });
+    activated.push(boost);
+    done.push(order.id);
+  }
+
+  /* clear what was paid, and what is too old to ever be paid */
+  const stale = pending.filter(o => Date.now() - o.createdAt > 24 * 3600 * 1000).map(o => o.id);
+  if (done.length || stale.length) await dropPending(store, [...done, ...stale]);
+  return activated;
 }
 
 export async function activeBoosts(store, now = Date.now()) {

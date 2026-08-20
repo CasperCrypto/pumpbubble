@@ -8,7 +8,7 @@ import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
-  ORDER_TTL_MS,
+  addPending, listPending, sweepPayments, ORDER_TTL_MS,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
@@ -286,7 +286,11 @@ export async function handle(req, ctx) {
         }
       }
 
+      /* amounts already in flight — the new quote must not collide with one */
+      const inFlight = (await listPending(ctx.store)).map(o => o.lamports);
+
       const order = await createOrder({
+        taken: inFlight,
         mint: body.mint,
         /* identity is ours, from pump.fun — never whatever the client sent.
            Carried on the signed order so a token bought from outside the ranked
@@ -323,6 +327,11 @@ export async function handle(req, ctx) {
           projection: order.projection,
         }, 409);
       }
+
+      /* Remember it server-side so the payment can be reconciled even if this
+         tab never comes back — which is the normal case on mobile, where the
+         wallet takes over the screen. */
+      await addPending(ctx.store, order);
 
       const token = await signOrder(order, ctx.env.IMG_SECRET);
       return json({ ok: true, order, token });
@@ -364,6 +373,27 @@ export async function handle(req, ctx) {
 
       const boost = await activateBoost(ctx.store, order, payment);
       return json({ ok: true, status: 'paid', order, boost });
+    }
+
+    /* -------------------------------------------------- /api/boost/sweep */
+    /* Reconciles arriving payments against pending orders. Called on a timer,
+       and callable by anyone — it grants nothing that the chain has not already
+       paid for, so there is nothing to protect. It is what makes a payment
+       survive the buyer closing the tab. */
+    if (path === '/api/boost/sweep') {
+      if (!ctx.env.SOLANA_RPC || !ctx.env.TREASURY_WALLET) {
+        return json({ ok: false, error: 'payments are not configured' }, 503);
+      }
+      const limited = rateLimit(req, 'sweep', 20, 60_000);
+      if (limited) return limited;
+
+      const activated = await sweepPayments(ctx.store, ctx.env.SOLANA_RPC, ctx.env.TREASURY_WALLET);
+      const pending = await listPending(ctx.store);
+      return json({
+        ok: true,
+        activated: activated.map(b => ({ sym: b.sym, mint: b.mint, tier: b.tier, sig: b.sig })),
+        stillPending: pending.length,
+      });
     }
 
     /* ------------------------------------------------ /api/boost/history */

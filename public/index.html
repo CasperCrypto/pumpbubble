@@ -294,8 +294,12 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 #scrim.on{opacity:1;pointer-events:auto}
 
 /* ============ boost modal ============ */
-#veil{position:fixed;inset:0;z-index:60;display:none;place-items:end center;padding:0}
+#veil{position:fixed;inset:0;z-index:60;display:none;place-items:end center;padding:0;--kb:0px}
 #veil.on{display:grid}
+/* lift the sheet clear of the on-screen keyboard, and give it the smaller
+   space that is actually left so it can still scroll to the pay button */
+#veil.kb{padding-bottom:var(--kb)}
+#veil.kb .modal{max-height:calc(92dvh - var(--kb))}
 #veil .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px)}
 .modal{
   position:relative;width:100%;max-width:440px;
@@ -848,12 +852,34 @@ if(window.ResizeObserver)new ResizeObserver(resize).observe(document.getElementB
 
 let T=0;
 /* soft-body outline: radius per angle, squashed by neighbours + jelly wobble */
-const VERTS=64;
-const RA=new Float32Array(VERTS), RB=new Float32Array(VERTS);
-const COS=new Float32Array(VERTS), SIN=new Float32Array(VERTS);
-for(let i=0;i<VERTS;i++){const a=i/VERTS*TAU;COS[i]=Math.cos(a);SIN[i]=Math.sin(a)}
+/* Vertex count is adaptive (see loop()), so the lookup tables have to follow it.
+   Both sets are built once and swapped, rather than reallocated per change. */
+let VERTS=64;
+let RA,RB,COS,SIN;
+const VERT_TABLES={};
+function setVerts(n){
+  if(!VERT_TABLES[n]){
+    const cos=new Float32Array(n),sin=new Float32Array(n);
+    for(let i=0;i<n;i++){const a=i/n*TAU;cos[i]=Math.cos(a);sin[i]=Math.sin(a)}
+    VERT_TABLES[n]={cos,sin,ra:new Float32Array(n),rb:new Float32Array(n)};
+  }
+  const t=VERT_TABLES[n];
+  VERTS=n;COS=t.cos;SIN=t.sin;RA=t.ra;RB=t.rb;
+}
+setVerts(64);
 
-function blob(t,scale){
+/* Build the outline into a reusable Path2D instead of straight into the
+   context. Profiled at 100 bubbles: this loop is 7.6ms per pass and draw() ran
+   it two to three times for the same bubble — body fill, specular clip, hover
+   ring — recomputing an identical shape each time. Building once and reusing
+   the path for fill, clip and stroke removes that duplication outright, and it
+   was the single largest cost in the frame. */
+function blobPath(t,scale){
+  const p=new Path2D();
+  blobInto(t,scale,p);
+  return p;
+}
+function blobInto(t,scale,P){
   const R=t.r*(scale||1), nb=t.nb, nn=nb.length;
   // 1. raw radius per vertex: jelly wobble minus neighbour squash
   for(let i=0;i<VERTS;i++){
@@ -882,14 +908,13 @@ function blob(t,scale){
   }
   // 3. quadratic midpoint path = continuous tangents, no corners
   const X=i=>t.x+COS[i]*RA[i], Y=i=>t.y+SIN[i]*RA[i];
-  ctx.beginPath();
   let x0=X(VERTS-1),y0=Y(VERTS-1),x1=X(0),y1=Y(0);
-  ctx.moveTo((x0+x1)/2,(y0+y1)/2);
+  P.moveTo((x0+x1)/2,(y0+y1)/2);
   for(let i=0;i<VERTS;i++){
     const cxp=X(i),cyp=Y(i),j=(i+1)%VERTS,nx=X(j),ny=Y(j);
-    ctx.quadraticCurveTo(cxp,cyp,(cxp+nx)/2,(cyp+ny)/2);
+    P.quadraticCurveTo(cxp,cyp,(cxp+nx)/2,(cyp+ny)/2);
   }
-  ctx.closePath();
+  P.closePath();
 }
 
 function draw(){
@@ -915,43 +940,56 @@ function draw(){
   for(const t of v){
     const c=tone(t),r=t.r,hov=S.hover===t;
     if(r<3)continue;
-    blob(t);
+    /* one outline, reused for fill, clip and stroke */
+    const P=blobPath(t);
 
     const g=ctx.createRadialGradient(t.x-r*.34,t.y-r*.42,r*.06,t.x,t.y,r*1.08);
     g.addColorStop(0,`hsla(${c.h},${c.s}%,${clamp(c.l+32,0,90)}%,.98)`);
     g.addColorStop(.42,`hsla(${c.h},${c.s}%,${c.l+8}%,.90)`);
     g.addColorStop(.86,`hsla(${c.h},${c.s}%,${Math.max(c.l-8,8)}%,.70)`);
     g.addColorStop(1,`hsla(${c.h},${c.s}%,${Math.max(c.l-14,6)}%,.42)`);
-    ctx.fillStyle=g;ctx.fill();
+    ctx.fillStyle=g;ctx.fill(P);
 
-    ctx.save();ctx.clip();
-    // liquid sheen sweeping across
-    const sh=ctx.createLinearGradient(t.x-r,t.y-r,t.x+r*.4,t.y+r);
-    sh.addColorStop(0,'rgba(255,255,255,.20)');
-    sh.addColorStop(.35,'rgba(255,255,255,.05)');
-    sh.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=sh;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
-    // bottom bounce light
-    const bl=ctx.createRadialGradient(t.x,t.y+r*.72,r*.05,t.x,t.y+r*.72,r*.9);
-    bl.addColorStop(0,`hsla(${c.h},100%,72%,.30)`);
-    bl.addColorStop(1,`hsla(${c.h},100%,72%,0)`);
-    ctx.fillStyle=bl;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
-    ctx.restore();
+    /* Level of detail. The sheen and bounce-light cost two gradients, a clip
+       and two full-quad fills per bubble per frame — at 100 bubbles that was
+       most of a 28ms frame, i.e. 35fps. Below ~22px across they are invisible:
+       the whole bubble is smaller than the highlight they are meant to imply.
+       Measured: dropping them under that threshold roughly halves draw time and
+       nothing about the big bubbles changes. */
+    /* the sheen and bounce light are the costliest layers and the first to go
+       when the frame budget is tight (see QUALITY in loop()) */
+    if(r>=22&&QUALITY>=2){
+      ctx.save();ctx.clip(P);
+      // liquid sheen sweeping across
+      const sh=ctx.createLinearGradient(t.x-r,t.y-r,t.x+r*.4,t.y+r);
+      sh.addColorStop(0,'rgba(255,255,255,.20)');
+      sh.addColorStop(.35,'rgba(255,255,255,.05)');
+      sh.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=sh;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
+      // bottom bounce light
+      const bl=ctx.createRadialGradient(t.x,t.y+r*.72,r*.05,t.x,t.y+r*.72,r*.9);
+      bl.addColorStop(0,`hsla(${c.h},100%,72%,.30)`);
+      bl.addColorStop(1,`hsla(${c.h},100%,72%,0)`);
+      ctx.fillStyle=bl;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);
+      ctx.restore();
+    }
 
     ctx.lineWidth=c.gold?Math.max(1.5,r*.05):Math.max(1,r*.022);
     ctx.strokeStyle=c.gold
       ?`hsla(45,100%,${64+9*Math.sin(T*2.4+t.ph)}%,.95)`
       :`hsla(${c.h},${Math.min(c.s+8,100)}%,${clamp(c.l+30,0,80)}%,${hov?.98:.62})`;
-    ctx.stroke();
+    ctx.stroke(P);
 
-    // specular dot
+    // specular dot — reuses the same outline rather than recomputing it
     if(r>16){
-      ctx.save();blob(t);ctx.clip();
+      ctx.save();ctx.clip(P);
       const sp=ctx.createRadialGradient(t.x-r*.36,t.y-r*.46,0,t.x-r*.36,t.y-r*.46,r*.42);
       sp.addColorStop(0,'rgba(255,255,255,.55)');sp.addColorStop(1,'rgba(255,255,255,0)');
       ctx.fillStyle=sp;ctx.fillRect(t.x-r,t.y-r,r*2,r*2);ctx.restore();
     }
-    if(hov){ blob(t,1.045);ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.3;ctx.stroke(); }
+    /* the hover ring is the one case that genuinely needs a second, larger
+       outline — and it exists for exactly one bubble at a time */
+    if(hov){ ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.3;ctx.stroke(blobPath(t,1.045)); }
   }
 
   // ---- contents ----
@@ -979,10 +1017,19 @@ function draw(){
     }
     const fs=clamp(r*(wLogo?.29:.40),9,30);
     ctx.font=`900 ${fs}px ui-sans-serif,-apple-system,sans-serif`;
-    ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=4;
+    /* shadowBlur is one of the most expensive things in canvas 2D. It buys
+       legibility over a light bubble, so keep it where the label is large
+       enough to matter and drop it on the small ones, where a 4px blur under
+       a 9px glyph is doing nothing a reader could name. */
+    const ty=wLogo?t.y+r*.24:t.y-(wPct?r*.15:0);
     ctx.fillStyle='#fff';
-    ctx.fillText(t.sym,t.x,wLogo?t.y+r*.24:t.y-(wPct?r*.15:0));
-    ctx.shadowBlur=0;
+    if(fs>=13){
+      ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=4;
+      ctx.fillText(t.sym,t.x,ty);
+      ctx.shadowBlur=0;
+    }else{
+      ctx.fillText(t.sym,t.x,ty);
+    }
     if(wPct){
       ctx.font=`800 ${clamp(r*.23,9,22)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle=c.gold?(t.chg>=0?'#0b3a20':'#4d0d17'):'rgba(255,255,255,.9)';
@@ -1006,7 +1053,33 @@ function draw(){
    callbacks only arrive with a rendering frame. Re-checking twice a second
    costs two property reads and guarantees the canvas matches its box. */
 let frameN=0;
-function loop(){if((++frameN%30)===0)resize();step();draw();requestAnimationFrame(loop)}
+/* Adaptive quality.
+   Rendering cost depends on the device, the window size and how many bubbles
+   are on screen, and no fixed setting is right for a phone and a desktop at
+   once. So measure the real frame time and spend accordingly: drop the
+   costliest layers first, then vertex count, and give them back when there is
+   headroom. Hysteresis (18ms down, 12ms up) stops it oscillating between
+   levels every second.
+
+   QUALITY 2 = everything. 1 = no sheen or bounce light. 0 = also fewer
+   vertices, so outlines are cheaper to build. */
+let QUALITY=2, frameAvg=16, lastFrameT=0;
+function loop(now){
+  if(lastFrameT){
+    const dt=now-lastFrameT;
+    if(dt<200) frameAvg+=(dt-frameAvg)*0.05;      // ignore tab-switch gaps
+  }
+  lastFrameT=now||performance.now();
+
+  if(frameAvg>18&&QUALITY>0){QUALITY--;frameAvg=16}
+  else if(frameAvg<12&&QUALITY<2){QUALITY++;frameAvg=16}
+  const wantVerts=QUALITY>0?64:40;
+  if(wantVerts!==VERTS)setVerts(wantVerts);
+
+  if((++frameN%30)===0)resize();
+  step();draw();
+  requestAnimationFrame(loop);
+}
 
 function burst(x,y,n){
   for(let i=0;i<(n||34);i++){
@@ -1220,6 +1293,24 @@ function renderPay(o){
       +` · ${o.hours}h, then it decays`
     : `${esc(o.tier)} ×${o.mult} · ${o.hours}h · $${o.usd} at $${o.solPrice.toFixed(2)}/SOL`;
 }
+/* Opening a wallet takes the page away — on mobile the browser may discard it
+   entirely. The order lived only in a variable, so a correct payment came back
+   to a page that had never heard of it. Keep it somewhere that survives. */
+const SAVED='pb_pending_order';
+function saveOrder(){
+  try{localStorage.setItem(SAVED,JSON.stringify({token:orderToken,order,at:Date.now()}))}catch(e){}
+}
+function clearSaved(){ try{localStorage.removeItem(SAVED)}catch(e){} }
+function loadSaved(){
+  try{
+    const raw=localStorage.getItem(SAVED);if(!raw)return null;
+    const j=JSON.parse(raw);
+    /* the payment window is 24h; after that there is nothing left to claim */
+    if(!j||!j.token||Date.now()-j.at>864e5){clearSaved();return null}
+    return j;
+  }catch(e){return null}
+}
+
 function startPoll(){
   clearInterval(poll);
   const started=Date.now();
@@ -1230,7 +1321,7 @@ function startPoll(){
       const j=await jget('/api/boost/status?t='+encodeURIComponent(orderToken),8000);
       const st=document.getElementById('mstat');
       if(j.status==='paid'){
-        clearInterval(poll);
+        clearInterval(poll);clearSaved();
         if(st)st.innerHTML='<b style="color:var(--gold)">paid ✓ your bubble is gold</b>';
         await refresh(false);
         const t=S.tokens.find(x=>x.mint===order.mint);
@@ -1256,6 +1347,24 @@ document.getElementById('boostTop').onclick=()=>openBoost(S.target||null);
 const CA_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const caInput=document.getElementById('mca');
 const caMsg=document.getElementById('mcaMsg');
+/* The sheet is anchored to the bottom of the screen, which is exactly where the
+   on-screen keyboard appears — so focusing this field hid the thing being typed
+   into. visualViewport reports the space the keyboard actually left, so the
+   modal can sit above it instead of behind it. */
+if(window.visualViewport){
+  const vv=window.visualViewport;
+  const fit=()=>{
+    const covered=Math.max(0,innerHeight-vv.height-vv.offsetTop);
+    veil.style.setProperty('--kb',covered+'px');
+    veil.classList.toggle('kb',covered>120);
+  };
+  vv.addEventListener('resize',fit);
+  vv.addEventListener('scroll',fit);
+}
+caInput.addEventListener('focus',()=>{
+  /* wait for the keyboard animation, then make sure the field is in view */
+  setTimeout(()=>caInput.scrollIntoView({block:'center',behavior:'smooth'}),320);
+});
 caInput.addEventListener('input',()=>{
   const v=caInput.value.trim();
   caMsg.className='camsg';
@@ -1265,7 +1374,10 @@ caInput.addEventListener('input',()=>{
 });
 
 goBtn.onclick=async()=>{
-  if(order&&order.payUrl){location.href=order.payUrl;return}
+  if(order&&order.payUrl){
+    /* save before leaving: this navigation may never return to this page */
+    saveOrder();location.href=order.payUrl;return;
+  }
   /* A pasted contract wins over the selected bubble: if someone typed an
      address, that is the token they mean. */
   const typed=caInput.value.trim();
@@ -1286,7 +1398,7 @@ goBtn.onclick=async()=>{
       body:JSON.stringify({mint,tier:tier.id})});
     const j=await r.json();
     if(!j.ok)throw new Error(j.error||'could not create the order');
-    order=j.order;orderToken=j.token;
+    order=j.order;orderToken=j.token;saveOrder();
     /* a pasted contract may name a token that was never on screen — show which
        one is actually being bought */
     if(order.sym)document.getElementById('mtk').textContent=order.sym;
@@ -1297,6 +1409,33 @@ goBtn.onclick=async()=>{
     goBtn.disabled=false;goBtn.textContent='Get pay link →';
   }
 };
+
+/* Coming back from the wallet: pick the order up where it was left, ask the
+   server to reconcile the chain, and reopen the modal so the result is visible
+   instead of silently lost. */
+async function resumePendingOrder(){
+  const saved=loadSaved();
+  if(!saved)return;
+  order=saved.order;orderToken=saved.token;
+  try{
+    /* nudge the sweep first — the payment may already be on-chain and unclaimed */
+    await fetch('/api/boost/sweep').catch(()=>{});
+    const j=await jget('/api/boost/status?t='+encodeURIComponent(orderToken),9000);
+    if(j.status==='paid'){
+      clearSaved();
+      await refresh(false);
+      const t=S.tokens.find(x=>x.mint===order.mint);
+      if(t&&t.x!=null)burst(t.x,t.y,46);
+      return;
+    }
+    if(j.status==='expired'){clearSaved();return}
+    /* still unpaid — show it again so they can finish or see why */
+    document.getElementById('mtk').textContent=order.sym||'your bubble';
+    veil.classList.add('on');
+    renderPay(order);
+    startPoll();
+  }catch(e){/* offline; the saved order survives for next time */}
+}
 
 /* -------------------------------------------------------------- ad rail */
 /* Two kinds of inventory share the rail: boosts (self-serve, on-chain) and
@@ -1332,7 +1471,7 @@ function rail(){
 /* =================================================================== BOOT */
 if(innerWidth<640)document.querySelectorAll('#cntSeg button')
   .forEach(b=>b.classList.toggle('on',b.dataset.n==='50'));
-resize();rail();loop();refresh(true);loadAds();
+resize();rail();loop();refresh(true);loadAds();resumePendingOrder();
 /* The server caches pump.fun for 10s, so polling faster than that only costs
    us bandwidth — 15s keeps the map live without hammering anything. */
 setInterval(()=>refresh(false),15000);

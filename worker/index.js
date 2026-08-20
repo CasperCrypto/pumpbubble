@@ -160,6 +160,10 @@ export default {
     execCtx.waitUntil((async () => {
       try {
         await handle(new Request('https://pumpbubble.fun/api/tokens'), ctx);
+        /* Reconcile payments whose buyer never came back to the tab. Without
+           this a correct payment can sit unclaimed indefinitely — which is
+           exactly what happened in production before the sweep existed. */
+        await handle(new Request('https://pumpbubble.fun/api/boost/sweep'), ctx);
         await saveHist(env);
       } catch { /* next tick will retry */ }
     })());
