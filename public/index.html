@@ -418,6 +418,10 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 <div id="top">
   <div class="mark"></div>
   <div class="wordmark"><span>pumpbubble</span><i>.fun</i></div>
+  <!-- Whether these numbers are real is the single most important thing on the
+       page. Without this, a failed fetch shows generated market caps with
+       nothing to say so. CLAUDE.md treats it as non-negotiable. -->
+  <div class="pill off" id="live"><span class="dot"></span><span id="livetxt">loading…</span></div>
 
   <div id="stats">
     <div class="s"><u>Tracked cap</u><b id="stCap">—</b></div>
@@ -637,8 +641,8 @@ async function fetchLive(){
      before falling back to demo data: dropping to demo is a visible downgrade
      and should be a last resort, not the response to one slow request. */
   let j;
-  try{ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),20000) }
-  catch(e){ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),25000) }
+  try{ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),12000) }
+  catch(e){ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),15000) }
   if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   return j.tokens.map(t=>({
@@ -687,7 +691,7 @@ async function refresh(first){
     const s=Math.round((S.age||0)/1000);
     setLive(true, S.serverStale ? 'live · '+s+'s old' : 'live');
   }
-  catch(e){ if(first)merge(demo()); S.live=false; setLive(false,'demo data'); }
+  catch(e){ if(!S.tokens.length)merge(demo()); S.live=false; setLive(false,'demo data'); }
   rebuild(); rail();
 }
 function merge(fresh){
@@ -708,6 +712,8 @@ function merge(fresh){
 function setLive(on,txt){
   const el=document.getElementById('livetxt');
   if(el)el.textContent=txt;
+  const pill=document.getElementById('live');
+  if(pill)pill.classList.toggle('off',!on);
 }
 /* Demo data has to move on its own or the map looks frozen. Live data must
    never be nudged — an invented number on a screener is a lie, and the whole
@@ -1494,7 +1500,16 @@ function rail(){
 /* =================================================================== BOOT */
 if(innerWidth<640)document.querySelectorAll('#cntSeg button')
   .forEach(b=>b.classList.toggle('on',b.dataset.n==='50'));
-resize();rail();loop();refresh(true);loadAds();resumePendingOrder();
+/* Paint something immediately.
+   A cold worker builds the whole snapshot before it answers, so the first
+   request can take seconds — and waiting for it left an empty canvas, which
+   reads as a broken site rather than a loading one. Seed the map with the
+   generated set, labelled honestly as such in the status chip, and let the
+   live data replace it the moment it lands. */
+merge(demo());
+setLive(false,'loading…');
+resize();rebuild();rail();loop();
+refresh(true);loadAds();resumePendingOrder();
 /* The server caches pump.fun for 10s, so polling faster than that only costs
    us bandwidth — 15s keeps the map live without hammering anything. */
 setInterval(()=>refresh(false),15000);
