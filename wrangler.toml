@@ -22,8 +22,15 @@ crons = ["*/5 * * * *"]
 
 [vars]
 # Public, non-secret config. Secrets go through `wrangler secret put`.
+#
+# The treasury address is public by nature — it is printed in the boost modal —
+# so it lives here rather than in a secret. Changing it is a code change, which
+# is what you want for the one value that decides where money goes.
+TREASURY_WALLET = "6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C"
+AD_CONTACT = "https://t.me/casper_crypto"
+# Placeholder only. The public RPC returns 429 under real load — override it
+# with `wrangler secret put SOLANA_RPC` before selling anything. See docs/deploy.md.
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-AD_CONTACT = "ads@pumpbubble.fun"
 
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]

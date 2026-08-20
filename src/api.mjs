@@ -4,10 +4,10 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint } from './core.mjs';
 import {
-  TIERS, tierOf, createOrder, findPayment, activeBoosts, activateBoost,
-  applyBoosts, goldShare,
+  TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
+  activeBoosts, activateBoost, applyBoosts, goldShare, ORDER_TTL_MS,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
@@ -36,6 +36,31 @@ const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(bod
     ...extra,
   },
 });
+
+/* ---------------------------------------------------------- rate limiting */
+/* Per-isolate, in memory. Deliberately not KV: a limiter that writes to KV can
+   be used to exhaust the very quota it protects. This stops the obvious abuse
+   (one client hammering one colo) at zero cost. The real edge-wide limit
+   belongs in a Cloudflare Rate Limiting rule — see docs/security.md. */
+const hits = new Map();
+function rateLimit(req, bucket, max, windowMs) {
+  const ip = req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-forwarded-for')
+    || 'local';
+  const key = bucket + ':' + ip;
+  const now = Date.now();
+  const rec = hits.get(key);
+  if (!rec || now > rec.reset) {
+    hits.set(key, { n: 1, reset: now + windowMs });
+    if (hits.size > 10000) for (const [k, v] of hits) if (now > v.reset) hits.delete(k);
+    return null;
+  }
+  if (++rec.n > max) {
+    return json({ ok: false, error: 'slow down — too many requests' }, 429,
+      { 'retry-after': String(Math.ceil((rec.reset - now) / 1000)) });
+  }
+  return null;
+}
 
 /* ------------------------------------------------------- snapshot cache */
 /* One fetch per TTL per isolate, with in-flight de-duplication so a burst of
@@ -88,6 +113,9 @@ export async function handle(req, ctx) {
   try {
     /* ------------------------------------------------------- /api/tokens */
     if (path === '/api/tokens') {
+      const limited = rateLimit(req, 'tokens', 180, 60_000);
+      if (limited) return limited;
+
       const snap = await snapshot(ctx);
       const { byMint } = await activeBoosts(ctx.store);
       const tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
@@ -150,12 +178,26 @@ export async function handle(req, ctx) {
 
     /* -------------------------------------------------- /api/boost/order */
     if (path === '/api/boost/order' && req.method === 'POST') {
+      /* Generous on purpose: quoting is stateless and costs nothing now, and
+         mobile traffic shares IPs behind carrier NAT — a tight limit would
+         block real buyers long before it inconvenienced anyone abusive. */
+      const limited = rateLimit(req, 'order', 30, 600_000);
+      if (limited) return limited;
+
       if (!ctx.env.TREASURY_WALLET) {
         return json({ ok: false, error: 'boosts are not open yet — no treasury wallet configured' }, 503);
       }
       const body = await req.json().catch(() => ({}));
+      if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+
       const snap = await snapshot(ctx).catch(() => null);
       const tok = snap?.tokens.find(t => t.mint === body.mint);
+      /* Only sell a boost on a token that is actually on the map. Otherwise a
+         quote could be raised against any mint on Solana, and the payment would
+         buy a bubble nobody can see. */
+      if (snap && !tok) {
+        return json({ ok: false, error: 'that token is not on the map right now' }, 404);
+      }
 
       /* Inventory cap. Gold is worth exactly what the traffic is worth, so
          over-selling destroys the thing being sold — CLAUDE.md treats the ~25%
@@ -176,38 +218,79 @@ export async function handle(req, ctx) {
         }
       }
 
-      const order = await createOrder(ctx.store, {
+      const order = await createOrder({
         mint: body.mint,
-        sym: tok?.sym || body.sym || '',
+        /* the symbol is ours, from pump.fun — never whatever the client sent */
+        sym: tok?.sym || '',
         tierId: body.tier,
         solPrice: snap?.sol || 0,
         treasury: ctx.env.TREASURY_WALLET,
       });
-      return json({ ok: true, order });
+      const token = await signOrder(order, ctx.env.IMG_SECRET);
+      return json({ ok: true, order, token });
     }
 
     /* ------------------------------------------------- /api/boost/status */
     if (path === '/api/boost/status') {
-      const id = url.searchParams.get('id') || '';
-      const order = await ctx.store.get('order:' + id);
-      if (!order) return json({ ok: false, error: 'unknown order' }, 404);
-      if (order.status === 'paid') return json({ ok: true, status: 'paid', order });
-      if (Date.now() > order.expiresAt) return json({ ok: true, status: 'expired', order });
+      /* Polling is cheap now that the treasury scan is shared and cached, so
+         this only exists to stop a runaway client. */
+      const limited = rateLimit(req, 'status', 90, 60_000);
+      if (limited) return limited;
+
+      const order = await readOrder(url.searchParams.get('t') || '', ctx.env.IMG_SECRET);
+      /* A missing or edited order is indistinguishable from a forged one, and
+         both get the same answer: this is not an order we issued. */
+      if (!order) return json({ ok: false, error: 'unknown or tampered order' }, 400);
+
+      /* If it is already paid for, say so without touching the chain. */
+      const { live } = await activeBoosts(ctx.store);
+      const already = live.find(b => b.id === order.id);
+      if (already) return json({ ok: true, status: 'paid', order, boost: already });
 
       const rpcUrl = ctx.env.SOLANA_RPC;
       if (!rpcUrl) return json({ ok: false, error: 'no Solana RPC configured' }, 503);
+
+      /* Quotes stop being offered after 30 minutes, but money that arrives late
+         is still money: keep checking for a day so a slow payment activates
+         instead of stranding. Only the quote expires, never the payment. */
+      const late = Date.now() > order.expiresAt;
+      if (Date.now() > order.createdAt + 864e5) {
+        return json({ ok: true, status: 'expired', order });
+      }
 
       let payment = null;
       try { payment = await findPayment(rpcUrl, order); }
       catch (e) { return json({ ok: true, status: 'pending', note: 'rpc: ' + e.message, order }); }
 
-      if (!payment) return json({ ok: true, status: 'pending', order });
+      if (!payment) return json({ ok: true, status: late ? 'expired' : 'pending', order });
 
       const boost = await activateBoost(ctx.store, order, payment);
-      order.status = 'paid';
-      order.sig = payment.signature;
-      await ctx.store.put('order:' + order.id, order, { ttlSec: 86400 });
       return json({ ok: true, status: 'paid', order, boost });
+    }
+
+    /* ------------------------------------------------ /api/boost/history */
+    /* Public ledger. Every boost ever sold, with the transaction that paid for
+       it, so anyone can check on-chain that the gold on this map was bought and
+       not handed out. Being auditable is the point — publish it. */
+    if (path === '/api/boost/history') {
+      const all = (await ctx.store.get('boosts')) || [];
+      const now = Date.now();
+      return json({
+        ok: true,
+        count: all.length,
+        treasury: ctx.env.TREASURY_WALLET || null,
+        boosts: all
+          .slice(-200)
+          .reverse()
+          .map(b => ({
+            sym: b.sym, mint: b.mint, tier: b.tier, mult: b.mult,
+            usd: b.usd, sol: b.sol,
+            sig: b.sig,
+            explorer: 'https://solscan.io/tx/' + b.sig,
+            startedAt: b.startedAt, until: b.until,
+            active: b.until > now,
+          })),
+      });
     }
 
     /* ---------------------------------------------------------- /api/ads */

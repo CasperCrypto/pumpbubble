@@ -101,13 +101,30 @@ down, and pump.fun still serves those URLs for a slice of older tokens. Those ar
 only adds ways to fail.
 
 ### Payments
-Solana Pay, unique reference pubkey per order, no processor and no KYC. Full detail and the
-failure modes are in `docs/payments.md` — read it before touching `src/boosts.mjs`.
+Solana Pay, no processor and no KYC. Full detail and failure modes in `docs/payments.md`; read it
+before touching `src/boosts.mjs`. Three things that look like mistakes and are not:
 
-The one thing to keep in mind: **the amount's last three decimals are a per-order nonce**. Solana
-Pay puts the reference key in the transaction, but a trader who copies the address out of the modal
-sends a transaction with no reference in it. The unique amount is what lets that payment be matched
-anyway. Do not "tidy" the amount by rounding it.
+- **The amount carries a random nonce in its final lamports.** Solana Pay puts a reference key in
+  the transaction, but a trader who copies the address out of the modal sends a transaction with no
+  reference in it — the unique amount is what matches that payment. Do not tidy it by rounding.
+  The nonce space is ~1e6, not a few hundred: at 900 values the birthday collision across ~20
+  concurrent orders is about 20%, and a collision pays the wrong person's bubble.
+- **Orders are stateless and HMAC-signed, never stored.** Storing quotes would let anyone burn the
+  1000 KV writes/day free tier by opening the modal in a loop. A write now happens once per sale.
+- **The treasury scan is shared and cached, not per-order.** Verifying each pending order
+  separately is hundreds of RPC calls a minute and burns a free Helius tier in days.
+
+Money is compared in **integer lamports**, never floats.
+
+### Security
+`docs/security.md` carries the threat model. The one thing to internalise: this page renders
+**attacker-controlled strings next to a payment address**. Anyone can mint a token called
+`<img src=x onerror=…>`, and the top mover is printed into the header with no interaction at all —
+so an unescaped write is payment theft, not defacement. Three locks: `esc()` on write, `clean()` on
+the server, CSP in `public/_headers`. Keep all three.
+
+Editing the page to fake a boost is expected and harmless: bubble sizes come from `/api/tokens` on
+every refresh, and `merge()` deliberately does not carry a client-side boost across a refresh.
 
 ### Sizing (`sizes()`)
 Market caps span 4+ orders of magnitude. A pure `sqrt(value)` radius scale makes everything except

@@ -4,81 +4,134 @@ No processor, no KYC, no chargebacks, nobody watching a dashboard. A trader pays
 bubble turns gold on its own. This is the whole revenue mechanism, so it is worth understanding
 before changing `src/boosts.mjs`.
 
+## Why direct SOL, and not MoonPay or Coinbase
+
+DexScreener offers card payments because it sells to *companies* — marketing budgets, expense
+claims, people who need an invoice. Boosts here sell to **traders who already hold SOL**, which is
+a different customer with different plumbing:
+
+| | Direct SOL (what we do) | MoonPay / Coinbase Commerce |
+|---|---|---|
+| Fee | network only, ~$0.0001 | 1–5% (card on-ramps often more) |
+| Payout | instant, into your wallet | settlement delay, sometimes custody |
+| KYC | none for you or the buyer | required, and they can decline a buyer |
+| Chargebacks | impossible | possible on card rails |
+| Integration | one HMAC + an RPC read | accounts, API keys, webhooks, compliance |
+| Buyer needs | a Solana wallet with SOL | a card |
+
+Every pump.fun trader already has a funded Solana wallet — that is the entire prerequisite for
+being on pump.fun at all. A card on-ramp would add a percentage fee and a KYC wall to reach people
+who mostly are not your buyers.
+
+**Where a card rail would earn its keep:** selling the *ad rail* to real companies, which is a
+manual, invoiced sale anyway. Add it when someone asks for an invoice — not before.
+
 ## The flow
 
-1. **Quote.** Trader taps a bubble → ⚡ Boost → picks a tier. `POST /api/boost/order` creates the
-   order server-side. Price is set in USD, settled in SOL, and the SOL rate is **locked into the
-   order** so the amount cannot drift between quote and payment. Quotes expire after 30 minutes.
+1. **Quote.** Trader taps a bubble → ⚡ Boost → picks a tier. `POST /api/boost/order` prices it in
+   USD, converts at the current SOL rate, and locks that rate into the order so the amount cannot
+   drift between quote and payment. Quotes stop being offered after 30 minutes.
 2. **Pay.** The modal shows a Solana Pay URL (`solana:<treasury>?amount=…&reference=…`). On mobile
-   that opens Phantom / Solflare directly. On desktop the trader copies the address and amount.
-3. **Detect.** The browser polls `GET /api/boost/status?id=…`. That endpoint is what actually looks
-   at the chain — the client cannot grant itself a boost, it only displays what the backend
-   confirmed.
-4. **Activate.** On a confirmed payment the boost is written to KV with a start time and an expiry.
-   The next `/api/tokens` returns it, and the bubble goes gold for everyone.
+   that opens Phantom / Solflare directly. On desktop the amount and address are click-to-copy.
+3. **Detect.** The browser polls `GET /api/boost/status?t=…`. That endpoint is what looks at the
+   chain — the client cannot grant itself a boost, it only displays what the backend confirmed.
+4. **Activate.** On a confirmed payment the boost is written to KV with a start time and expiry.
+   The next `/api/tokens` returns it and the bubble goes gold for everyone.
 
-## Why the amount has a weird nonce
+## Why the amount looks strange
 
-An order for $49 quotes something like `0.575693 SOL`, not `0.5756`.
+An order for $9 quotes something like `0.105561211 SOL`. The trailing digits are deliberate.
 
 Solana Pay works by putting a **reference pubkey** — a random address that is never a signer — into
-the transaction's account list, so we can look the payment up with `getSignaturesForAddress`. That
-only works if the payment goes through the Solana Pay link.
+the transaction, so the payment can be looked up. That only works if the buyer actually uses the
+pay link. Plenty will not: they will copy the address out of the modal and send from their wallet,
+producing a transaction with **no reference in it at all**. Left alone that payment strands — money
+received, no boost, angry customer.
 
-Plenty of traders will not do that. They will copy the treasury address out of the modal and send
-from their wallet, producing a transaction with **no reference in it at all**. Left alone, that
-payment strands: money received, no boost, angry customer.
+So every quote carries a random nonce in its final lamports, drawn from about a million values.
+That makes the amount itself the identifier, and a plain wallet send matches just as well as a
+Solana Pay one.
 
-So the last three decimals of every quote are a random nonce (worth about $0.0001). It makes each
-open order's amount unique, which lets the backend match a plain wallet transfer to the right order
-by amount alone. Both routes are checked, reference first.
+The nonce is large on purpose. An earlier version used only 900 values; across ~20 concurrent
+orders the birthday collision probability is roughly 20%, and a collision means one buyer's payment
+activates another buyer's bubble.
 
 **Do not round the amount.** It looks untidy and it is load-bearing.
 
 ## What counts as paid
 
-- Verification uses the **treasury's balance delta** across the transaction, not instruction
-  parsing. That survives any instruction shape, including a transfer wrapped in a CPI.
-- Reference route allows 1.5% under (some wallets round down). Amount route requires a near-exact
-  match, with a tolerance far below the nonce step so two orders can never collide.
+- The **treasury's balance delta** across a confirmed transaction, in **integer lamports**. Balance
+  delta survives any instruction shape, including a transfer wrapped in a CPI. No float arithmetic
+  is used on money anywhere.
+- The payment must not predate the quote (two minutes of clock-skew allowance).
 - Failed transactions are skipped.
-- Activation is keyed on the **transaction signature**, so the same payment can never buy two
-  boosts, no matter how often the status endpoint is polled.
+- Activation is keyed on the **transaction signature**, so one payment can never buy two boosts no
+  matter how often the status endpoint is polled.
 - A single RPC failure never aborts a scan — public RPCs 429 constantly, and giving up on the first
   error would strand a payment that already landed.
 
-## What you must configure
+## Cost control
 
-| Setting | Why | How |
-|---|---|---|
-| `TREASURY_WALLET` | Where the money lands. Until it is set, checkout returns 503 and the modal says boosts aren't live. | `npx wrangler secret put TREASURY_WALLET` |
-| `SOLANA_RPC` | Payment verification. **The public endpoint is not usable** — `api.mainnet-beta.solana.com` returns 429 under any real load, measured. | Helius / QuickNode / Triton free tier, then `npx wrangler secret put SOLANA_RPC` |
+The naive design verifies each pending order separately, which at a 6s poll is hundreds of RPC
+calls a minute and burns a free Helius tier in days. Instead:
 
-Use a **dedicated wallet** as the treasury, not a personal one. Its full transaction history gets
-scanned on every pending-order check, so a busy wallet makes verification slower and noisier.
+- the treasury is scanned **once for everybody**, cached for 10 seconds
+- transactions older than 25h are skipped using `blockTime`, without fetching them
+- already-decoded transactions are reused; only new ones cost a call
+- cold-start decoding is capped
+
+Measured against a real treasury on the public RPC: 7s cold, 16ms warm.
+
+## Setting up Helius
+
+The public endpoint (`api.mainnet-beta.solana.com`) returns 429 under real load — measured, not
+assumed — and payments would silently fail to verify. Any of Helius, QuickNode or Triton works;
+Helius is the easiest.
+
+1. Sign up at **helius.dev** — the free tier is far more than this needs.
+2. Create an API key. You get a URL like
+   `https://mainnet.helius-rpc.com/?api-key=xxxxxxxx-xxxx-xxxx`.
+3. Store it as a secret — **not** in `wrangler.toml`, since the key is in the URL:
+   ```bash
+   npx wrangler secret put SOLANA_RPC
+   ```
+4. Confirm it took effect:
+   ```bash
+   node scripts/check.mjs https://pumpbubble.fun     # "solana rpc configured"
+   curl https://pumpbubble.fun/api/health
+   ```
+
+For local development the public RPC is fine — it is slow, not broken.
+
+## The public ledger
+
+`GET /api/boost/history` lists every boost ever sold: token, tier, amount paid, and the Solana
+transaction signature with a Solscan link.
+
+Publish it. Boosts are advertising, and if people suspect the gold is handed out to friends the map
+loses the credibility it is selling. Being auditable is cheap; being trusted is not.
 
 ## Known limits
 
 - **Polling, not push.** Activation waits on a 6s client poll. A Helius webhook pointed at the
-  worker would make it instant and cut RPC usage to near zero. This is the natural next step.
-- **A closed tab stops the polling.** The payment still lands, but nothing activates it until
-  someone re-opens that order. A webhook, or a cron sweep over pending orders, fixes this properly.
+  worker would make it instant and cut RPC usage to near zero.
+- **A closed tab stops the polling.** The payment still lands and the order stays valid for 24h,
+  but nothing activates it until someone re-opens that order. A webhook, or a cron sweep, fixes
+  this properly — it is the one failure mode that will generate support messages.
 - **SOL only.** USDC would need the SPL-token branch of Solana Pay and a token-account balance
   check rather than a lamport delta.
-- **Refunds are manual.** There is no refund path, by design — but that means an overpayment or a
+- **Refunds are manual.** By design there is no refund path, which also means an overpayment or a
   wrong-token send has to be sorted out by hand.
+- **The treasury is a hot wallet.** Move funds out periodically; nothing needs a balance to sit
+  there.
 
 ## Ad slots
 
 Ads are not automated. Sold slots live in the `ads` key in KV:
 
-```json
-[{ "id": "acme", "title": "ACME", "sub": "sponsored", "url": "https://…", "img": "https://…" }]
-```
-
 ```bash
 npx wrangler kv key put --binding=BUBBLE_KV ads '[{"id":"acme","title":"ACME","sub":"sponsored","url":"https://example.com","img":""}]'
 ```
 
-Empty slots render as "SLOT OPEN" and link to `AD_CONTACT`. That is deliberate: the empty inventory
-is the sales pitch.
+Empty slots render as "SLOT OPEN" and link to `AD_CONTACT` (currently the Telegram in
+`wrangler.toml`). That is deliberate: empty inventory is the sales pitch.

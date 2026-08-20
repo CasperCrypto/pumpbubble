@@ -68,12 +68,23 @@ Cloudflare Workers. Full walkthrough, including the domain and the free-tier mat
 npx wrangler login
 npx wrangler kv namespace create BUBBLE_KV     # paste the id into wrangler.toml
 npx wrangler secret put IMG_SECRET             # any long random string
-npx wrangler secret put TREASURY_WALLET        # your Solana receiving wallet
 npx wrangler secret put SOLANA_RPC             # Helius/QuickNode — the public RPC 429s
 npx wrangler deploy
 ```
 
-The map runs without a treasury wallet or RPC; only boost checkout is disabled until they are set.
+The treasury wallet is in `wrangler.toml` (it is public by nature — the modal prints it).
+The map runs fine without an RPC; only boost checkout needs one.
+
+## Security
+
+The map renders attacker-controlled strings — anyone can mint a token called `<img src=x
+onerror=…>` — next to a payment address. Threat model and defences are in `docs/security.md`.
+Short version: escaped on write, stripped on the server, CSP behind both; orders are HMAC-signed so
+tier, amount and treasury cannot be edited; boosts come only from a confirmed on-chain payment, so
+editing the page fakes nothing for anyone but yourself.
+
+Every boost ever sold is published at `/api/boost/history` with its Solana transaction, so the gold
+on the map is auditable.
 
 ## Status
 

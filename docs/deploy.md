@@ -31,17 +31,17 @@ Any long random string. It signs image-proxy URLs — without it the proxy would
 the whole internet. Changing it later just invalidates old image URLs, which is harmless.
 
 ```bash
-npx wrangler secret put TREASURY_WALLET
-```
-The Solana address boost payments land in. Use a **dedicated wallet**, not a personal one. Until
-this is set the map runs fine and checkout returns a clean "boosts aren't live yet".
-
-```bash
 npx wrangler secret put SOLANA_RPC
 ```
 **Do not ship the public endpoint.** `api.mainnet-beta.solana.com` returns 429 under real load —
 measured, not assumed — and payments would silently fail to verify. Helius, QuickNode and Triton
-all have a free tier that is plenty.
+all have a free tier that is plenty; step-by-step Helius setup is in `docs/payments.md`.
+It goes in as a *secret*, not a var, because the API key is part of the URL.
+
+The **treasury wallet** is already set in `wrangler.toml` under `[vars]`. It is public by nature —
+it is printed in the boost modal — so it is not a secret, and keeping it in version control means
+the one value that decides where money goes changes only through a reviewed commit. Use a
+**dedicated wallet**, not a personal one, and move funds out of it periodically.
 
 ## 3. Deploy
 
@@ -85,10 +85,17 @@ Free tier limits, against what this actually uses:
 The design keeps history in isolate memory and only persists every 5 minutes specifically to stay
 inside the 1000 writes/day ceiling. If you move to Durable Objects later that constraint goes away.
 
+## Do this straight after the first deploy
+
+Add a Cloudflare **Rate Limiting rule** (Security → WAF → Rate limiting rules) on `/api/*`, around
+300 requests/minute per IP. There is an in-process limiter already, but it only sees one isolate —
+only the edge rule is global. Details in `docs/security.md`.
+
 ## Watch after launch
 
 - `npx wrangler tail` — live logs.
 - `/api/health` — last snapshot error, cached token count, whether treasury and RPC are configured.
+- `/api/boost/history` — the public ledger of every boost sold, with Solscan links.
 - The one thing that would break everything: **pump.fun blocking Cloudflare egress IPs.** It cannot
   be tested before deploying. If `/api/health` shows persistent fetch errors while the same call
   works from your laptop, that is what happened — the fix is to move ingest to a small VPS or a

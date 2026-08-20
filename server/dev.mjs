@@ -33,9 +33,9 @@ mem.set('ads', [
 
 const env = {
   IMG_SECRET: process.env.IMG_SECRET || 'dev-secret-not-for-production',
-  TREASURY_WALLET: process.env.TREASURY_WALLET || '',
+  TREASURY_WALLET: process.env.TREASURY_WALLET || '6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C',
   SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.mainnet-beta.solana.com',
-  AD_CONTACT: process.env.AD_CONTACT || 'ads@pumpbubble.fun',
+  AD_CONTACT: process.env.AD_CONTACT || 'https://t.me/casper_crypto',
 };
 
 const ctx = {
@@ -81,6 +81,12 @@ async function serveStatic(pathname, res) {
   /* keep the resolved path inside ROOT */
   const abs = normalize(join(ROOT, rel));
   if (!abs.startsWith(normalize(ROOT))) { res.writeHead(403).end('forbidden'); return; }
+  /* config files like _headers are directives, not content — Cloudflare hides
+     them and so do we */
+  if (/[\\/]_/.test(abs.slice(normalize(ROOT).length - 1))) {
+    res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    return;
+  }
   try {
     const buf = await readFile(abs);
     res.writeHead(200, {
@@ -137,7 +143,9 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`pumpbubble dev  →  http://localhost:${PORT}`);
   console.log(`  api           →  http://localhost:${PORT}/api/tokens`);
-  if (!process.env.TREASURY_WALLET) {
+  if (!env.TREASURY_WALLET) {
     console.log('  note: TREASURY_WALLET unset — boost checkout returns 503 (map still runs)');
+  } else {
+    console.log(`  treasury      →  ${env.TREASURY_WALLET.slice(0, 8)}…  (dev RPC is the public one; it rate-limits)`);
   }
 });

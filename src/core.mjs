@@ -85,13 +85,29 @@ export function fastImage(u) {
 /* ========================================================= pump.fun source */
 /* Identity, art, ticker and market cap all come from pump.fun itself — that is
    the product requirement, not an implementation detail. */
+/* Token names and symbols are attacker-supplied: minting a coin called
+   `<img src=x onerror=…>` costs a few cents, and it lands in every visitor's
+   DOM. The front end escapes on write, but strip the dangerous characters here
+   too — defence in depth, so one forgotten template is not an incident on a
+   page that shows a payment address. Also drops control characters, which
+   break layout and hide text. */
+const clean = (s, max) => String(s == null ? '' : s)
+  .replace(/[<>]/g, '')
+  // control chars, zero-width joiners and bidi marks: layout breakage + spoofing
+  .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\uFEFF]/g, '')
+  .trim()
+  .slice(0, max);
+
+/* A mint must look like a Solana address before we build anything around it. */
+export const isMint = s => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+
 export function normalizeCoin(c) {
   const mcap = num(c.usd_market_cap) || num(c.market_cap_usd);
   return {
     id: c.mint,
     mint: c.mint,
-    sym: String(c.symbol || '?').slice(0, 12),
-    name: String(c.name || c.symbol || 'unknown').slice(0, 48),
+    sym: clean(c.symbol, 12) || '?',
+    name: clean(c.name || c.symbol, 48) || 'unknown',
     rawImg: fastImage(c.image_uri || ''),
     img: '',                                 // filled in below with a signed proxy URL
     mcap,

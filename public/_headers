@@ -1,0 +1,24 @@
+# Cloudflare Workers Assets reads this file and applies the headers to matching
+# paths. It is not served as a public file.
+#
+# The map renders attacker-controlled strings: anyone can mint a pump.fun token
+# and name it whatever they like. Those names are escaped on write and stripped
+# server-side, and this is the third lock — if an escape is ever missed, these
+# headers keep the damage from turning into stolen payments.
+
+/*
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# `connect-src 'self'` is the load-bearing one: injected script could not phone
+# home even if it ran. `img-src 'self'` blocks pixel-beacon exfiltration — every
+# token image is same-origin because it goes through /api/img.
+#
+# `script-src` still needs 'unsafe-inline' because the whole front end is one
+# self-contained file by design (CLAUDE.md → Conventions). Moving the script to
+# its own file and dropping 'unsafe-inline' would be the strongest single
+# hardening step available, at the cost of that convention.

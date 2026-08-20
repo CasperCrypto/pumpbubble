@@ -49,37 +49,83 @@ export function newReference() {
 /* --------------------------------------------------------------- orders */
 export function tierOf(id) { return TIERS[id] || TIERS.pump; }
 
-export async function createOrder(store, { mint, sym, tierId, solPrice, treasury }) {
+/* Orders are stateless and signed, not stored.
+
+   Writing every quote to KV would mean anyone could burn the 1000 writes/day
+   free-tier budget just by opening the boost modal in a loop — and it would
+   leave a pile of expired orders to garbage-collect. Instead the order is
+   HMAC-signed and handed to the client, which passes it back when polling.
+   Nothing in it is secret (amount, treasury and reference are all shown in the
+   modal); the signature is only there so none of it can be edited. Storage now
+   happens exactly once per actual sale. */
+export async function signOrder(order, secret) {
+  const body = btoa(unescape(encodeURIComponent(JSON.stringify(order))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const raw = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
+  const sig = btoa(String.fromCharCode(...new Uint8Array(raw)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return body + '.' + sig;
+}
+
+export async function readOrder(token, secret) {
+  if (typeof token !== 'string' || !token.includes('.')) return null;
+  const [body, sig] = token.split('.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const raw = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
+  const want = btoa(String.fromCharCode(...new Uint8Array(raw)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  if (want.length !== sig.length) return null;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ sig.charCodeAt(i);
+  if (diff !== 0) return null;
+  try {
+    return JSON.parse(decodeURIComponent(escape(
+      atob(body.replace(/-/g, '+').replace(/_/g, '/')))));
+  } catch { return null; }
+}
+
+export async function createOrder({ mint, sym, tierId, solPrice, treasury }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
-  if (!mint) throw new Error('missing mint');
+  if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
+  /* Reject an unknown tier rather than quietly billing them for another one. */
+  if (tierId && !TIERS[tierId]) throw new Error('unknown boost tier');
 
   const tier = tierOf(tierId);
   /* Priced in USD, settled in SOL. The rate is locked into the order so the
      amount cannot drift between quote and payment.
 
-     The last three decimals are a random nonce (worth ~$0.0001) that makes
-     every open order's amount unique. Solana Pay puts our reference key in the
-     transaction, but a trader who just copies the address out of the modal and
-     sends from their wallet produces a transaction with no reference in it —
-     the unique amount is what lets us match that payment anyway. */
-  const base = Math.floor((tier.usd / solPrice) * 1e3) / 1e3;
-  const nonce = (crypto.getRandomValues(new Uint32Array(1))[0] % 900 + 100) * 1e-6;
-  const amountSol = Math.round((base + nonce) * 1e6) / 1e6;
+     The amount carries a random nonce in its final lamports, which is what
+     identifies the payment. Solana Pay puts our reference key in the
+     transaction, but a trader who copies the address out of the modal and
+     sends from their wallet produces a transaction with no reference in it at
+     all — the unique amount is what lets that payment be matched anyway.
+
+     The nonce is drawn from ~1e6 values, not a few hundred: with only 900 the
+     birthday collision across ~20 concurrent orders is around 20%, and a
+     collision means someone's payment activates someone else's bubble. All
+     arithmetic is in integer lamports, so matching is exact rather than
+     float-tolerant. */
+  const baseLamports = Math.floor((tier.usd / solPrice) * 1e3) * 1e6;   // 0.001 SOL granularity
+  const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999999);
+  const lamports = baseLamports + nonce;
+  const amountSol = lamports / LAMPORTS;
   const now = Date.now();
   const order = {
     id: 'ord_' + newReference().slice(0, 16),
     reference: newReference(),
     mint, sym: sym || '',
     tier: tier.id, mult: tier.mult, hours: tier.hours,
-    usd: tier.usd, solPrice, amountSol,
+    usd: tier.usd, solPrice, amountSol, lamports,
     treasury,
     status: 'pending',
     createdAt: now,
     expiresAt: now + ORDER_TTL_MS,
   };
   order.payUrl = solanaPayUrl(order);
-  await store.put('order:' + order.id, order, { ttlSec: 3600 });
   return order;
 }
 
@@ -107,10 +153,11 @@ async function rpc(rpcUrl, method, params) {
   return j.result;
 }
 
-/* How much SOL a transaction moved into the treasury. Balance delta is the
+/* How many lamports a transaction moved into the treasury. Balance delta is the
    honest measure: it survives any instruction shape, including a transfer
-   wrapped in a CPI. Returns 0 if the treasury is not in the transaction. */
-function receivedBy(tx, treasury) {
+   wrapped in a CPI. Integer lamports throughout — no float comparisons on
+   money. Returns 0 if the treasury is not in the transaction. */
+function receivedLamports(tx, treasury) {
   const keys = (tx?.transaction?.message?.accountKeys || [])
     .map(k => (typeof k === 'string' ? k : k.pubkey));
   const idx = keys.indexOf(treasury);
@@ -118,7 +165,7 @@ function receivedBy(tx, treasury) {
   const pre = tx?.meta?.preBalances?.[idx];
   const post = tx?.meta?.postBalances?.[idx];
   if (pre == null || post == null) return 0;
-  return (post - pre) / LAMPORTS;
+  return post - pre;
 }
 
 /* One failed lookup must not abort the scan: public RPCs 429 constantly, and
@@ -130,48 +177,76 @@ async function getTx(rpcUrl, sig) {
   } catch { return null; }
 }
 
-/* Find a confirmed payment for this order. Two routes, because both happen:
+/* One shared scan of recent treasury activity, cached.
 
-     1. Solana Pay — the wallet includes our reference key, so we can look the
-        payment up directly. Cheap and exact.
-     2. Manual send — the trader copied the address out of the modal. No
-        reference in the transaction, so we scan recent treasury activity for
-        the order's unique amount instead.
+   The obvious implementation — scan the chain once per status poll — costs a
+   getTransaction per recent payment per polling buyer. At a 6s poll that is
+   hundreds of RPC calls a minute and burns a free Helius tier in days. Since
+   every pending order is looking at the same treasury, the scan is done once
+   for everybody and reused: RPC cost becomes constant no matter how many
+   people are paying at the same time. */
+const scanCache = { at: 0, payments: [], inflight: null };
+const SCAN_TTL = 10_000;
+const MAX_DECODES_PER_SCAN = 25;
 
-   Returns { signature, received, slot } or null while still unpaid. */
-export async function findPayment(rpcUrl, order) {
-  /* --- route 1: reference key ------------------------------------------- */
-  const sigs = await rpc(rpcUrl, 'getSignaturesForAddress',
-    [order.reference, { limit: 10 }]).catch(() => []);
+export async function scanTreasury(rpcUrl, treasury, force = false) {
+  const now = Date.now();
+  if (!force && now - scanCache.at < SCAN_TTL) return scanCache.payments;
+  if (scanCache.inflight) return scanCache.inflight;
 
-  for (const s of (Array.isArray(sigs) ? sigs : [])) {
-    if (s.err) continue;
-    const tx = await getTx(rpcUrl, s.signature);
-    if (!tx || tx.meta?.err) continue;
-    const received = receivedBy(tx, order.treasury);
-    /* 1.5% tolerance for wallets that round the amount down */
-    if (received >= order.amountSol * 0.985) {
-      return { signature: s.signature, received, slot: s.slot };
+  scanCache.inflight = (async () => {
+    try {
+      const sigs = await rpc(rpcUrl, 'getSignaturesForAddress', [treasury, { limit: 100 }]);
+      const fresh = [];
+      /* An order can be paid up to 24h after it was quoted, so nothing older
+         than that can belong to one. getSignaturesForAddress already reports
+         blockTime, so old history is skipped without spending a getTransaction
+         on it — the difference between a usable treasury and a wallet that
+         takes a minute to scan because it has years of activity behind it. */
+      const notBefore = Math.floor(Date.now() / 1000) - 25 * 3600;
+      let decodes = 0;
+
+      for (const s of (Array.isArray(sigs) ? sigs : [])) {
+        if (s.err) continue;
+        if (s.blockTime && s.blockTime < notBefore) break;   // list is newest-first
+
+        /* reuse anything already decoded — transactions are immutable */
+        const known = scanCache.payments.find(p => p.signature === s.signature);
+        if (known) { fresh.push(known); continue; }
+
+        /* Bound the cold start. In steady state only new transactions decode. */
+        if (++decodes > MAX_DECODES_PER_SCAN) break;
+
+        const tx = await getTx(rpcUrl, s.signature);
+        if (!tx || tx.meta?.err) continue;
+        const lamports = receivedLamports(tx, treasury);
+        if (lamports > 0) {
+          fresh.push({ signature: s.signature, lamports, blockTime: s.blockTime || 0, slot: s.slot });
+        }
+      }
+      scanCache.payments = fresh;
+      scanCache.at = Date.now();
+      return fresh;
+    } catch {
+      /* keep serving the last good scan rather than reporting everyone unpaid */
+      return scanCache.payments;
+    } finally {
+      scanCache.inflight = null;
     }
-  }
+  })();
+  return scanCache.inflight;
+}
 
-  /* --- route 2: unique amount into the treasury -------------------------- */
-  const tsigs = await rpc(rpcUrl, 'getSignaturesForAddress',
-    [order.treasury, { limit: 40 }]).catch(() => []);
-  if (!Array.isArray(tsigs)) return null;
+/* Match an order against the shared scan. Exact lamports, and the payment must
+   not predate the quote. Returns { signature, received, slot } or null. */
+export async function findPayment(rpcUrl, order) {
+  const payments = await scanTreasury(rpcUrl, order.treasury);
+  const notBefore = Math.floor(order.createdAt / 1000) - 120;   // clock skew allowance
 
-  /* only transactions that could belong to this order */
-  const since = Math.floor(order.createdAt / 1000) - 60;
-  const candidates = tsigs.filter(s => !s.err && (!s.blockTime || s.blockTime >= since)).slice(0, 25);
-
-  for (const s of candidates) {
-    const tx = await getTx(rpcUrl, s.signature);
-    if (!tx || tx.meta?.err) continue;
-    const received = receivedBy(tx, order.treasury);
-    /* The amount carries a per-order nonce, so an exact match identifies the
-       order. Tolerance stays far below the nonce step to avoid collisions. */
-    if (Math.abs(received - order.amountSol) < 5e-7) {
-      return { signature: s.signature, received, slot: s.slot };
+  for (const p of payments) {
+    if (p.blockTime && p.blockTime < notBefore) continue;
+    if (p.lamports === order.lamports) {
+      return { signature: p.signature, received: p.lamports / LAMPORTS, slot: p.slot };
     }
   }
   return null;
