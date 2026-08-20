@@ -119,17 +119,26 @@ export function normalizeCoin(c) {
     pumpBoost: !!(c.boost_mode && c.boost_mode !== 'NONE'),
     created: num(c.created_timestamp),
     lastTrade: num(c.last_trade_timestamp),
+    /* SOL sitting in the bonding curve. For a token that has not graduated this
+       IS its liquidity, and DexScreener cannot report it because the token is
+       not on a DEX yet. Converted to USD in buildSnapshot. */
+    curveSol: num(c.real_sol_reserves) / 1e9,
     nsfw: !!c.nsfw,
     twitter: c.twitter || '',
     boost: 0,                                // our paid boost, applied by the worker
   };
 }
 
-export async function fetchPumpCoins({ pages = 6, perPage = 50, sort = 'market_cap', includeNsfw = false } = {}) {
+/* `complete` selects the lifecycle stage: true = graduated onto a DEX,
+   false = still on the bonding curve, undefined = both. The two have completely
+   different lifetimes, so they are never mixed by default (CLAUDE.md). */
+export async function fetchPumpCoins({ pages = 6, perPage = 50, sort = 'market_cap',
+                                       includeNsfw = false, complete } = {}) {
   const offsets = Array.from({ length: pages }, (_, i) => i * perPage);
+  const filter = complete === undefined ? '' : '&complete=' + complete;
   const results = await Promise.allSettled(offsets.map(off =>
     jget(PUMP + '/coins?offset=' + off + '&limit=' + perPage +
-         '&sort=' + sort + '&order=DESC&includeNsfw=' + includeNsfw)
+         '&sort=' + sort + '&order=DESC&includeNsfw=' + includeNsfw + filter)
   ));
   const seen = new Map();
   for (const r of results) {
@@ -265,18 +274,84 @@ export function histFromJSON(o) {
   return m;
 }
 
+/* ============================================================= data quality
+   A market cap is price × supply, and price is whatever the last trade said.
+   With a thin pool that number is paper: a token can print $250M of "market
+   cap" against $1.2M of liquidity nobody could ever sell into. Measured on a
+   live feed, healthy tokens sit at 2–22× market cap over liquidity and the
+   median is ~14×; the copycat swarm sits at 100–385×.
+
+   Nothing is deleted over this — a screener that hides real trades is lying in
+   the other direction. Each token is scored, the front end can filter on it,
+   and the numbers stay visible either way. */
+
+/* Calibrated against a live snapshot rather than picked: the median token sits
+   at ~14x market cap over liquidity, and established names reach 99x while
+   trading millions a day. A high ratio alone is normal for a low-float memecoin,
+   so the bar is set where the number stops meaning anything, and the copycat
+   count below carries most of the weight. */
+const THIN_RATIO = 120;     // mcap/liquidity above this is essentially paper
+const DEAD_VOLUME = 1000;   // USD in 24h, below this nobody is trading it
+const MAX_COPIES = 2;       // same ticker across more mints than this is a swarm
+
+export function scoreQuality(tokens, solPrice = 0) {
+  /* Copycat swarms reuse one ticker across dozens of mints — 14 tokens called
+     UOTF in a single snapshot, on a live feed. The count is the signal. */
+  const perSymbol = new Map();
+  for (const t of tokens) {
+    const k = t.sym.toUpperCase();
+    perSymbol.set(k, (perSymbol.get(k) || 0) + 1);
+  }
+
+  const now = Date.now();
+  for (const t of tokens) {
+    /* a bonding-curve token's liquidity is the SOL in its curve */
+    if (!t.liq && t.curveSol && solPrice) t.liq = t.curveSol * solPrice;
+
+    t.copies = perSymbol.get(t.sym.toUpperCase()) || 1;
+    t.ageH = t.created ? (now - t.created) / 36e5 : 0;
+    t.mcLiq = t.liq > 0 ? t.mcap / t.liq : null;
+
+    const thin = t.mcLiq === null || t.mcLiq > THIN_RATIO;
+
+    /* Volume comes from DexScreener, which only indexes tokens that have
+       graduated onto a DEX. A bonding-curve token therefore reports zero
+       volume no matter how briskly it is trading — and "no data" is not "no
+       trades". pump.fun's own last_trade_timestamp covers that gap: if it
+       traded in the last hour, somebody is buying it. */
+    const tradedRecently = t.lastTrade > 0 && (now - t.lastTrade) < 36e5;
+    const dead = (t.vol || 0) < DEAD_VOLUME && !tradedRecently;
+
+    t.flags = [];
+    if (thin) t.flags.push('thin');                    // cap unsupported by the pool
+    if (dead) t.flags.push('quiet');                   // barely trading
+    if (t.copies > MAX_COPIES) t.flags.push('copycat');// ticker shared across mints
+    if (t.ageH < 24) t.flags.push('new');              // 24h numbers meaningless here
+
+    /* "is this market cap backed by anything" rather than "is this a scam" —
+       intent is unknowable, backing is measurable. `new` is not disqualifying:
+       plenty of real tokens are hours old, and this is a pump.fun screener. */
+    t.solid = !thin && !dead && t.copies <= MAX_COPIES;
+  }
+  for (const t of tokens) delete t.curveSol;
+  return tokens;
+}
+
 /* ================================================================ snapshot */
 export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
-                                      sort = 'market_cap', includeNsfw = false } = {}) {
+                                      sort = 'market_cap', includeNsfw = false,
+                                      complete } = {}) {
   const now = Date.now();
   const [tokens, sol] = await Promise.all([
-    fetchPumpCoins({ pages, perPage, sort, includeNsfw }),
+    fetchPumpCoins({ pages, perPage, sort, includeNsfw, complete }),
     fetchSolPrice(),
   ]);
 
   let enriched = 0;
   try { enriched = await enrich(tokens); }
   catch { /* colour degrades, the map still renders */ }
+
+  scoreQuality(tokens, sol);
 
   if (hist) {
     pushHistory(hist, tokens, now);
@@ -305,6 +380,7 @@ export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
 
   return {
     ts: now, sol, count: tokens.length, enriched, withArt, sampleArt,
+    solid: tokens.filter(t => t.solid).length,
     signed: !!secret, source: 'pump.fun', tokens,
   };
 }

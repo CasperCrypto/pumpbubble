@@ -110,6 +110,13 @@ button,input{font-family:inherit}
   display:grid;place-items:center;font-size:10px;font-weight:900;color:#08110c}
 .slot b{font-weight:800}
 .slot small{color:var(--dim);font-size:10px;font-weight:700}
+
+/* quality warnings + the "what got hidden" counter */
+.warn{margin-top:7px;padding:6px 8px;border-radius:8px;font-size:10.5px;line-height:1.45;
+  font-weight:700;color:#ffcf8a;background:rgba(255,169,64,.10);
+  border:1px solid rgba(255,169,64,.28)}
+.hidden-note{flex:0 0 auto;font-size:10.5px;font-weight:700;color:var(--dim);
+  white-space:nowrap;cursor:help}
 .slot.gold small{color:var(--gold)}
 
 /* ============ chips ============ */
@@ -321,6 +328,12 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 
 <!-- ================= chips ================= -->
 <div id="chips">
+  <!-- Graduated and bonding are separate feeds, never mixed: a 24h axis means
+       nothing to a token that is forty minutes into its bonding curve. -->
+  <div class="seg" id="mode">
+    <button data-mode="graduated" class="on">Graduated</button>
+    <button data-mode="bonding">Bonding</button>
+  </div>
   <div class="seg acc" id="tf">
     <button data-tf="m5">5M</button>
     <button data-tf="h1" class="on">1H</button>
@@ -332,8 +345,14 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
     <button data-sz="gain">Gain</button>
     <button data-sz="vol">Vol</button>
   </div>
+  <!-- On by default. The biggest bubbles were otherwise a copycat swarm — a
+       dozen mints sharing one ticker, printing paper market caps against pools
+       nobody could sell into. Nothing is deleted: this filters the view, the
+       count of what it hid is shown, and one click brings it all back. -->
+  <button class="iconbtn act" id="realBtn" title="Hide tokens whose market cap is not backed by liquidity, and copycat ticker swarms">✓ Real only</button>
   <button class="iconbtn" id="openSheet">☰ Filters</button>
   <div class="spacer"></div>
+  <div class="hidden-note" id="hiddenNote"></div>
 </div>
 
 <!-- ================= stage ================= -->
@@ -367,6 +386,7 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
     <div class="box"><u>5m / 1h</u><b id="cA">—</b></div>
     <div class="box"><u>6h / 24h</u><b id="cB">—</b></div>
   </div>
+  <div id="cWarn"></div>
   <div class="acts">
     <button class="pf" id="cOpen">Open on pump.fun ↗</button>
     <button class="bo" id="cBoost">⚡ Boost</button>
@@ -440,7 +460,9 @@ const TOUCH=matchMedia('(hover:none)').matches;
 const S={
   tokens:[], view:[], tf:'h1', sizeBy:'mcap', limit: innerWidth<640?50:100,
   minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
-  target:null, parts:[]
+  target:null, parts:[],
+  mode:'graduated',      // graduated | bonding — separate feeds, never mixed
+  realOnly:true, hidden:0
 };
 const MC_STEPS=[0,1e3,5e3,1e4,2.5e4,5e4,1e5,2.5e5,5e5,1e6,2.5e6,1e7,5e7];
 
@@ -464,6 +486,20 @@ function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;re
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* Plain-language version of the server's quality flags. Says what was measured,
+   never "scam" — intent is unknowable, backing is measurable. */
+const WARN={
+  copycat:t=>`${t.copies} tokens share this ticker`,
+  thin:t=>`market cap ${Math.round(t.mcLiq||0)}× the liquidity`,
+  quiet:()=>`almost no trading in 24h`,
+  new:t=>`${t.ageH<1?'under an hour':Math.round(t.ageH)+'h'} old — 24h figures mean little`
+};
+function warnLine(t){
+  const f=(t.flags||[]).filter(k=>WARN[k]);
+  if(!f.length)return'';
+  return `<div class="warn">⚠ ${f.map(k=>esc(WARN[k](t))).join(' · ')}</div>`;
+}
+
 /* ---------------------------------------------------------------- colours */
 function tone(t){
   if(t.boost>0)return{h:44,s:96,l:56,gold:true};
@@ -484,7 +520,7 @@ async function jget(u,ms=12000){
   finally{clearTimeout(t)}
 }
 async function fetchLive(){
-  const j=await jget('/api/tokens');
+  const j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode));
   if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   return j.tokens.map(t=>({
@@ -494,7 +530,9 @@ async function fetchLive(){
     pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0},
     boost:+t.boost||0,                   // server owns this: it is paid for
     boostUsd:+t.boostUsd||0, boostUntil:t.boostUntil||0,
-    grad:!!t.grad, ath:+t.ath||0, liveStream:!!t.liveStream
+    grad:!!t.grad, ath:+t.ath||0, liveStream:!!t.liveStream,
+    liq:+t.liq||0, mcLiq:t.mcLiq, copies:+t.copies||1, ageH:+t.ageH||0,
+    flags:t.flags||[], solid:!!t.solid
   }));
 }
 
@@ -560,6 +598,13 @@ function tick(){
 function rebuild(){
   const min=MC_STEPS[S.minMc];
   let L=S.tokens.filter(t=>t.mcap>=min);
+  /* A paid bubble is never filtered out — it was bought, and hiding it would be
+     selling something we do not deliver. */
+  if(S.realOnly){
+    const before=L.length;
+    L=L.filter(t=>t.solid||t.boost>0);
+    S.hidden=before-L.length;
+  }else S.hidden=0;
   if(S.q){const q=S.q.toLowerCase();
     L=L.filter(t=>t.sym.toLowerCase().includes(q)||(t.name||'').toLowerCase().includes(q))}
   if(S.mv!=='all')L=L.filter(t=>S.mv==='up'?(t.pc[S.tf]||0)>=0:(t.pc[S.tf]||0)<0);
@@ -572,6 +617,11 @@ function rebuild(){
   sizes();
   document.getElementById('cnt').textContent=
     `${P.length} bubbles · size = ${S.sizeBy==='mcap'?'mcap':S.sizeBy==='gain'?'|change|':'volume'}`;
+  /* Say what was hidden and why — a filtered screener that hides the fact it is
+     filtering is the same lie as showing the paper caps in the first place. */
+  const hn=document.getElementById('hiddenNote');
+  hn.textContent=S.hidden?`${S.hidden} unbacked hidden`:'';
+  hn.title=S.hidden?'Market cap far above pool liquidity, no trading, or a ticker shared across many mints. Click "Real only" to show them.':'';
   stats();
 }
 function stats(){
@@ -877,9 +927,11 @@ cv.addEventListener('pointermove',e=>{
   tip.innerHTML=`<div class="tk">${av}<div><div class="nm">${esc(t.sym)}${t.boost>0?' <span style="color:var(--gold)">★</span>':''}</div>
       <div class="sb">${esc((t.name||'').slice(0,24))}</div></div></div>
     <div class="kv"><span>Mcap</span><b>${fmtUsd(t.mcap)}</b></div>
+    <div class="kv"><span>Liquidity</span><b>${fmtUsd(t.liq)}${t.mcLiq?` <span style="color:${t.mcLiq>120?'var(--dn)':'var(--dim)'}">${Math.round(t.mcLiq)}×</span>`:''}</b></div>
     <div class="kv"><span>Vol 24h</span><b>${fmtUsd(t.vol)}</b></div>
     ${k('5m',t.pc.m5)}${k('1h',t.pc.h1)}${k('6h',t.pc.h6)}${k('24h',t.pc.h24)}
     ${t.boost>0?`<div class="kv"><span>Boost</span><b style="color:var(--gold)">×${(1+t.boost).toFixed(1)}</b></div>`:''}
+    ${warnLine(t)}
     <div class="hint">click → pump.fun · drag to move · shift-click to boost</div>`;
   const st=document.getElementById('stage');
   let lx=p.x+20,ly=p.y+16;
@@ -920,6 +972,8 @@ function openCard(t){
   e('cVol').textContent=fmtUsd(t.vol);
   e('cA').innerHTML=`<span class="${t.pc.m5>=0?'up':'dn'}">${fmtPct(t.pc.m5)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h1>=0?'up':'dn'}">${fmtPct(t.pc.h1)}</span>`;
   e('cB').innerHTML=`<span class="${t.pc.h6>=0?'up':'dn'}">${fmtPct(t.pc.h6)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h24>=0?'up':'dn'}">${fmtPct(t.pc.h24)}</span>`;
+  /* the warning belongs on mobile too — that is where most taps happen */
+  e('cWarn').innerHTML=warnLine(t);
   card.classList.add('on');scrim.classList.add('on');
 }
 function closeAll(){
@@ -944,7 +998,20 @@ function wire(id,fn){
     b.classList.add('on');fn(b);
   });
 }
+wire('mode',b=>{
+  S.mode=b.dataset.mode;
+  S.tokens=[];                       // different feed entirely — drop the old physics
+  setLive(false,'switching…');
+  refresh(true);
+});
 wire('tf',b=>{S.tf=b.dataset.tf;rebuild()});
+document.getElementById('realBtn').onclick=e=>{
+  S.realOnly=!S.realOnly;
+  const b=e.currentTarget;
+  b.classList.toggle('act',S.realOnly);
+  b.textContent=(S.realOnly?'✓ ':'')+'Real only';
+  rebuild();rail();
+};
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
 wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
 wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});

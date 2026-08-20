@@ -65,9 +65,32 @@ function rateLimit(req, bucket, max, windowMs) {
 /* ------------------------------------------------------- snapshot cache */
 /* One fetch per TTL per isolate, with in-flight de-duplication so a burst of
    visitors cannot fan out into a burst of pump.fun calls. */
-const cache = { at: 0, data: null, inflight: null, err: null };
+/* One cache per mode: graduated and bonding are separate feeds with different
+   lifetimes, and a shared cache would have them evicting each other every poll. */
+const caches = new Map();
+const cacheFor = mode => {
+  if (!caches.has(mode)) caches.set(mode, { at: 0, data: null, inflight: null, err: null });
+  return caches.get(mode);
+};
 
-async function snapshot(ctx, force = false) {
+/* graduated is the default: it is what "the pump.fun market" means to most
+   people, and bonding-curve tokens have their own tab rather than being mixed in */
+const MODES = {
+  /* Sorted by market cap: for graduated tokens that is the ranking everyone
+     means by "the pump.fun market". */
+  graduated: { complete: true, sort: 'market_cap' },
+
+  /* Sorted by last trade, NOT market cap. Ranking live curves by size surfaces
+     abandoned ones — measured, the by-mcap bonding feed had a median age of 104
+     days and almost nothing trading. By last trade it is 50/50 traded inside a
+     minute, median age 12 minutes, which is what a bonding board should show. */
+  bonding: { complete: false, sort: 'last_trade_timestamp' },
+
+  all: { complete: undefined, sort: 'market_cap' },
+};
+
+async function snapshot(ctx, mode = 'graduated', force = false) {
+  const cache = cacheFor(mode);
   const now = Date.now();
   if (!force && cache.data && now - cache.at < SNAPSHOT_TTL) return cache.data;
   if (cache.inflight) return cache.inflight;
@@ -78,6 +101,8 @@ async function snapshot(ctx, force = false) {
         hist: ctx.hist,
         secret: ctx.env.IMG_SECRET,
         pages: 6,
+        complete: (MODES[mode] || MODES.graduated).complete,
+        sort: (MODES[mode] || MODES.graduated).sort,
       });
       cache.data = snap; cache.at = Date.now(); cache.err = null;
       ctx.onSnapshot?.(snap);
@@ -116,7 +141,8 @@ export async function handle(req, ctx) {
       const limited = rateLimit(req, 'tokens', 180, 60_000);
       if (limited) return limited;
 
-      const snap = await snapshot(ctx);
+      const mode = MODES[url.searchParams.get('mode')] ? url.searchParams.get('mode') : 'graduated';
+      const snap = await snapshot(ctx, mode);
       const { byMint } = await activeBoosts(ctx.store);
       const tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
 
@@ -141,6 +167,8 @@ export async function handle(req, ctx) {
         enriched: snap.enriched,
         withArt: snap.withArt,
         signed: snap.signed,
+        mode,
+        solid: snap.solid,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
@@ -203,8 +231,15 @@ export async function handle(req, ctx) {
       const body = await req.json().catch(() => ({}));
       if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
 
-      const snap = await snapshot(ctx).catch(() => null);
-      const tok = snap?.tokens.find(t => t.mint === body.mint);
+      /* A bonding-curve token is just as boostable as a graduated one, so look
+         in whichever feed the buyer was actually looking at. */
+      let snap = await snapshot(ctx, 'graduated').catch(() => null);
+      let tok = snap?.tokens.find(t => t.mint === body.mint);
+      if (!tok) {
+        const bond = await snapshot(ctx, 'bonding').catch(() => null);
+        const bondTok = bond?.tokens.find(t => t.mint === body.mint);
+        if (bondTok) { snap = bond; tok = bondTok; }
+      }
       /* Only sell a boost on a token that is actually on the map. Otherwise a
          quote could be raised against any mint on Solana, and the payment would
          buy a bubble nobody can see. */
@@ -317,9 +352,10 @@ export async function handle(req, ctx) {
     if (path === '/api/health') {
       return json({
         ok: true,
-        cachedAt: cache.at,
-        cachedTokens: cache.data?.count || 0,
-        lastError: cache.err,
+        cachedAt: cacheFor('graduated').at,
+        cachedTokens: cacheFor('graduated').data?.count || 0,
+        lastError: cacheFor('graduated').err,
+        modes: [...caches.keys()],
         treasury: !!ctx.env.TREASURY_WALLET,
         rpc: !!ctx.env.SOLANA_RPC,
         kv: !!ctx.store.available,
