@@ -100,3 +100,40 @@ only the edge rule is global. Details in `docs/security.md`.
   be tested before deploying. If `/api/health` shows persistent fetch errors while the same call
   works from your laptop, that is what happened — the fix is to move ingest to a small VPS or a
   Cloudflare Tunnel and keep the Worker as the cache in front.
+
+## Deploying without a terminal
+
+The local wrangler flow needs an interactive login and the right working
+directory. Neither is always available, so there are two other routes.
+
+### Cloudflare Workers Builds (recommended)
+
+Cloudflare builds and deploys straight from GitHub. No GitHub Actions minutes,
+no local terminal.
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Workers** →
+   **Connect to Git**, and pick `CasperCrypto/pumpbubble`.
+2. It reads `wrangler.toml`, so no build command is needed. Deploy command
+   stays the default `npx wrangler deploy`.
+3. Every push to `main` deploys from then on.
+
+### GitHub Actions
+
+`.github/workflows/deploy.yml` does the same thing, gated on the payment tests.
+It is set to **manual trigger only**, because Actions bills against a minutes
+quota on private repos and this account's billing is blocked — a push trigger
+would fail before the job started and mail a failure notice each time.
+
+To use it: add a repository secret `CLOUDFLARE_API_TOKEN` (Settings → Secrets
+and variables → Actions), then run it from the Actions tab. To deploy on every
+push, restore the `push:` trigger noted at the top of the file.
+
+### What still has to be done once, in the dashboard
+
+Neither route creates storage or secrets for you:
+
+- **KV namespace** — Storage & Databases → KV → Create → name it `BUBBLE_KV`,
+  then paste its id into `wrangler.toml`. The id is not a secret.
+- **Worker secrets** — the worker's Settings → Variables and Secrets:
+  - `SOLANA_RPC` — your Helius URL (secret: the key is in the URL)
+  - `IMG_SECRET` — any long random string
