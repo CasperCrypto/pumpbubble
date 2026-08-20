@@ -46,7 +46,10 @@ AD_CONTACT = "https://t.me/casper_crypto"
 binding = "BUBBLE_KV"
 id = "769139d9eb6d428bbe95b7341bb0f09f"
 
-# Custom domain — uncomment once pumpbubble.fun is on Cloudflare.
-# [[routes]]
-# pattern = "pumpbubble.fun"
-# custom_domain = true
+# Custom domain. `custom_domain = true` makes the deploy create the DNS record
+# and issue the certificate itself — there is nothing to add by hand, and the
+# zone-level "Workers Routes" screen stays empty because a custom domain is not
+# a route. Both point traffic at the worker; only this one manages DNS for you.
+[[routes]]
+pattern = "pumpbubble.fun"
+custom_domain = true
