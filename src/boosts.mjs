@@ -157,9 +157,11 @@ async function rpc(rpcUrl, method, params) {
    honest measure: it survives any instruction shape, including a transfer
    wrapped in a CPI. Integer lamports throughout — no float comparisons on
    money. Returns 0 if the treasury is not in the transaction. */
+const accountKeys = tx => (tx?.transaction?.message?.accountKeys || [])
+  .map(k => (typeof k === 'string' ? k : k.pubkey));
+
 function receivedLamports(tx, treasury) {
-  const keys = (tx?.transaction?.message?.accountKeys || [])
-    .map(k => (typeof k === 'string' ? k : k.pubkey));
+  const keys = accountKeys(tx);
   const idx = keys.indexOf(treasury);
   if (idx < 0) return 0;
   const pre = tx?.meta?.preBalances?.[idx];
@@ -221,7 +223,15 @@ export async function scanTreasury(rpcUrl, treasury, force = false) {
         if (!tx || tx.meta?.err) continue;
         const lamports = receivedLamports(tx, treasury);
         if (lamports > 0) {
-          fresh.push({ signature: s.signature, lamports, blockTime: s.blockTime || 0, slot: s.slot });
+          fresh.push({
+            signature: s.signature, lamports,
+            blockTime: s.blockTime || 0, slot: s.slot,
+            /* Keep the account list: a Solana Pay transaction carries the
+               order's reference key here, which identifies the order without
+               relying on the amount. Free, since the transaction is already
+               decoded. */
+            keys: accountKeys(tx),
+          });
         }
       }
       scanCache.payments = fresh;
@@ -242,12 +252,23 @@ export async function scanTreasury(rpcUrl, treasury, force = false) {
 export async function findPayment(rpcUrl, order) {
   const payments = await scanTreasury(rpcUrl, order.treasury);
   const notBefore = Math.floor(order.createdAt / 1000) - 120;   // clock skew allowance
+  const hit = p => ({ signature: p.signature, received: p.lamports / LAMPORTS, slot: p.slot });
 
-  for (const p of payments) {
-    if (p.blockTime && p.blockTime < notBefore) continue;
-    if (p.lamports === order.lamports) {
-      return { signature: p.signature, received: p.lamports / LAMPORTS, slot: p.slot };
-    }
+  const candidates = payments.filter(p => !p.blockTime || p.blockTime >= notBefore);
+
+  /* 1. Reference key present — a Solana Pay transaction naming this order.
+        Here we can accept an overpayment, because the reference says which
+        order it belongs to. Never a shortfall: paying less than the price
+        buys nothing regardless of how the payment identifies itself. */
+  for (const p of candidates) {
+    if (p.keys?.includes(order.reference) && p.lamports >= order.lamports) return hit(p);
+  }
+
+  /* 2. No reference — someone copied the address out of the modal. The unique
+        amount is the only identifier, so it has to match to the lamport: a
+        larger payment is indistinguishable from a different order's. */
+  for (const p of candidates) {
+    if (p.lamports === order.lamports) return hit(p);
   }
   return null;
 }

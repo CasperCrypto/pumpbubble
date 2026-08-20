@@ -5,8 +5,10 @@
   "description": "Live bubble map for pump.fun tokens — size is market cap, colour is change, gold is paid.",
   "type": "module",
   "scripts": {
-    "dev": "node server/dev.mjs",
+    "dev": "node --env-file-if-exists=.env server/dev.mjs",
     "check": "node scripts/check.mjs",
+    "test": "node scripts/payment-abuse.test.mjs",
+    "test:api": "node scripts/api-abuse.test.mjs",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail"
   },

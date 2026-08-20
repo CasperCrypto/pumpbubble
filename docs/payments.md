@@ -135,3 +135,25 @@ npx wrangler kv key put --binding=BUBBLE_KV ads '[{"id":"acme","title":"ACME","s
 
 Empty slots render as "SLOT OPEN" and link to `AD_CONTACT` (currently the Telegram in
 `wrangler.toml`). That is deliberate: empty inventory is the sales pitch.
+
+## Underpayment, overpayment, and why the matching is asymmetric
+
+Covered by `scripts/payment-abuse.test.mjs`, which stands a fake RPC in front of the real matching
+code so the cases you cannot produce on demand are still tested.
+
+**Short payments never activate anything**, however they are dressed up: one lamport short, half
+the price, the $9 amount against a $149 quote, dust, or three part-payments that add up to the
+price. Amounts are matched per transaction, never accumulated.
+
+**Overpayment is accepted only when the transaction carries the order's reference key**, i.e. when
+it came through Solana Pay. There the reference says which order it belongs to, so paying too much
+is generous rather than ambiguous. A payment with no reference must match to the lamport, because
+the amount is the only thing identifying it — a larger payment is indistinguishable from some other
+order's payment.
+
+The asymmetry is deliberate: a shortfall is never accepted, and an overpayment is accepted only
+when something other than the amount proves which order it belongs to.
+
+Also enforced: payments to a different wallet are ignored, failed transactions are ignored,
+transactions that predate the quote are ignored, and one transaction signature can only ever
+activate one boost.
