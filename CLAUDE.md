@@ -136,6 +136,22 @@ bubbles actually touching. Measured 78–80% at both test viewports.
 **Boost is applied to the radius AFTER log compression** (`* (1 + boost*0.6)`), not to the metric
 before it — otherwise log compression would swallow the boost and a ×2.4 would be invisible.
 
+**Boosted tokens are excluded from the log domain, and floored at the 40th percentile.** Both
+follow from the same rule — paid size comes from what was paid, not from market cap — and both were
+learned the hard way:
+
+- *Excluded from the domain:* a paid bubble's market cap must not define the scale for everyone
+  else. One $9 boost on a $3,215 token stretched the domain down from $7.7M and squeezed a real 22×
+  spread of market caps into a **1.21×** spread of radii. Fartcoin at $168M looked the same size as
+  a $7.7M token. With boosted tokens out of the domain it is 3.33× radius / 11× area again.
+- *Floored at the 40th percentile:* multiplying a bottom-of-scale radius delivers nothing — ×1.3 of
+  invisible is still invisible, and the buyer sees no bubble. The floor is not higher because radii
+  span only ~1.4× after compression, so a higher one puts a $9 Spark at the top of the map and
+  leaves a $149 Whale nothing to buy.
+
+`shape()` clamps its normalised input to 0..1 for this reason: a boosted cap can now fall outside
+the domain, and a negative base to a fractional power is NaN, which would silently unsize the map.
+
 ### Liquid bubbles (`blob()`)
 Not circles. Each bubble is a 64-vertex outline:
 1. per-vertex radius = jelly wobble (two sine harmonics) minus neighbour squash

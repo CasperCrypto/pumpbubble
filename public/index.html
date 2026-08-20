@@ -805,10 +805,23 @@ let W=0,H=0,DPR=1,GX=.002,GY=.002,PT=4,PB=36;
 function sizes(){
   const v=S.view; if(!v.length)return;
   const val=v.map(t=>Math.max(t.base,1e-9));
-  const lo=Math.log(Math.min(...val)),hi=Math.log(Math.max(...val));
+
+  /* The market-cap scale is set by the tokens actually being ranked by market
+     cap — boosted ones are excluded, because their size comes from what was
+     paid and letting them define the domain wrecks it for everyone else.
+     Measured: one $9 boost on a $3,215 token stretched the log range down from
+     $7.7M to $3K, which squeezed a genuine 22x spread of market caps into a
+     1.21x spread of radii. Fartcoin at $168M looked the same size as a $7.7M
+     token, and the map stopped saying anything. */
+  const scaleVals=v.filter(t=>!(t.boost>0)).map(t=>Math.max(t.base,1e-9));
+  const dom=scaleVals.length>1?scaleVals:val;
+  const lo=Math.log(Math.min(...dom)),hi=Math.log(Math.max(...dom));
   const sp=Math.max(hi-lo,1e-6);
-  /* Log-compressed market-cap radius, before boost. */
-  const shape=i=>.30+.70*Math.pow((Math.log(val[i])-lo)/sp,.85);
+  /* Log-compressed market-cap radius, before boost. Clamped to 0..1 because a
+     boosted token's cap can now sit outside the domain above, and a negative
+     base to a fractional power is NaN — which would silently unsize the whole
+     map rather than fail loudly. */
+  const shape=i=>.30+.70*Math.pow(clamp((Math.log(val[i])-lo)/sp,0,1),.85);
 
   /* A paid bubble is sized by what was paid, not by its market cap — that is
      the product, stated in CLAUDE.md, and it is the whole reason someone buys
