@@ -87,7 +87,7 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, tierId, solPrice, treasury }) {
+export async function createOrder({ mint, sym, name, img, mcap, tierId, solPrice, treasury }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
   if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
@@ -117,7 +117,7 @@ export async function createOrder({ mint, sym, tierId, solPrice, treasury }) {
   const order = {
     id: 'ord_' + newReference().slice(0, 16),
     reference: newReference(),
-    mint, sym: sym || '',
+    mint, sym: sym || '', name: name || '', img: img || '', mcap: mcap || 0,
     tier: tier.id, mult: tier.mult, hours: tier.hours,
     usd: tier.usd, solPrice, amountSol, lamports,
     treasury,
@@ -342,6 +342,9 @@ export async function activeBoosts(store, now = Date.now()) {
     cur.count++;
     cur.until = Math.max(cur.until, b.until);
     cur.sym = cur.sym || b.sym;
+    cur.name = cur.name || b.name || '';
+    cur.img = cur.img || b.img || '';
+    cur.mcap = cur.mcap || b.mcap || 0;
     byMint.set(b.mint, cur);
   }
   for (const cur of byMint.values()) cur.bonus = bonusFromSpend(cur.liveUsd);
@@ -359,6 +362,11 @@ export async function activateBoost(store, order, payment) {
     id: order.id,
     mint: order.mint,
     sym: order.sym,
+    /* kept so a boosted token that is outside the ranked feed still renders
+       with its real art and name rather than as a blank circle */
+    name: order.name || '',
+    img: order.img || '',
+    mcap: order.mcap || 0,
     tier: order.tier,
     mult: order.mult,
     usd: order.usd,

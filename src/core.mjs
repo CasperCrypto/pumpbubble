@@ -153,6 +153,31 @@ export async function fetchPumpCoins({ pages = 6, perPage = 50, sort = 'market_c
   return [...seen.values()];
 }
 
+/* Look up one token by mint, whatever its state. The ranked feed only carries
+   the top 300, so anything outside that — a small cap, a fresh launch, a
+   community that came here specifically to boost their own coin — is invisible
+   to it. Being unable to sell those is leaving money on the table, and it is
+   the exact case where someone arrives with a contract address in hand. */
+export async function fetchCoin(mint, secret) {
+  if (!isMint(mint)) return null;
+  try {
+    const c = await jget(PUMP + '/coins/' + mint, { ms: 7000 });
+    if (!c || !c.mint) return null;
+    const t = normalizeCoin(c);
+    /* one enrichment call so the quote can show real numbers */
+    try { await enrich([t]); } catch { /* price change is optional here */ }
+    /* Sign the art here too. Without this the token reaches the map with no
+       image and renders as a blank circle — the snapshot path signs in
+       buildSnapshot, and this path bypasses it entirely. */
+    if (secret && t.rawImg) {
+      t.img = '/api/img?u=' + encodeURIComponent(t.rawImg) +
+              '&s=' + await signUrl(t.rawImg, secret);
+    }
+    delete t.rawImg;
+    return t;
+  } catch { return null; }
+}
+
 export async function fetchSolPrice() {
   try { return num((await jget(PUMP + '/sol-price', { ms: 5000 })).solPrice); }
   catch { return 0; }

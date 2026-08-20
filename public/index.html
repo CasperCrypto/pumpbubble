@@ -186,6 +186,19 @@ button,input{font-family:inherit}
   background:var(--glass);color:var(--ink);font-weight:800;font-size:12px;cursor:pointer;
   display:inline-flex;align-items:center;gap:6px;transition:.14s;white-space:nowrap;
 }
+
+/* Touch targets. A mouse can hit a 26px chip; a thumb cannot — Apple and
+   Google both put the floor at 44px, and the filter row was sitting at 26–32.
+   Widened only where there is no hover, so the desktop layout keeps its
+   density and the phone gets targets you can actually hit while walking. */
+@media (hover:none){
+  .seg button{min-height:44px;padding:0 14px;font-size:13px;
+    display:inline-flex;align-items:center;justify-content:center}
+  .iconbtn{height:44px;padding:0 15px;font-size:13px}
+  #boostTop{height:44px}
+  .tier{padding:14px 13px}
+  #q{height:44px}
+}
 .iconbtn:hover{background:var(--glass2)}
 .iconbtn.act{border-color:rgba(40,224,140,.5);color:var(--mint2)}
 .spacer{flex:1 0 8px}
@@ -291,6 +304,12 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
   border-radius:22px 22px 0 0;padding:18px 18px calc(20px + var(--safe));
   box-shadow:0 -26px 70px rgba(0,0,0,.8);
   animation:up .32s cubic-bezier(.2,.9,.25,1);
+  /* On a phone this sheet is taller than the screen — measured at 666px inside
+     812px, with the pay button 60px below the fold and no way to reach it.
+     Cap it and let it scroll, with momentum, so checkout is always completable.
+     `dvh` follows the mobile URL bar as it slides away; vh does not. */
+  max-height:92vh;max-height:92dvh;
+  overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
 }
 @keyframes up{from{transform:translateY(60px);opacity:.4}to{transform:none;opacity:1}}
 .modal .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 14px}
@@ -313,10 +332,47 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
   background:rgba(255,255,255,.02);font-size:11.5px;color:var(--dim);line-height:1.65;font-weight:600}
 .pay b{color:var(--ink)}
 .pay code{color:#7fd7ff;font-size:10.5px;word-break:break-all;font-weight:700}
-.pay code.cp{display:inline-block;margin:3px 0;padding:4px 8px;border-radius:8px;
-  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);
-  cursor:pointer;transition:border-color .2s}
-.pay code.cp:hover{background:rgba(255,255,255,.08)}
+
+/* Payment details are the one place a misread character costs real money, so
+   they get size, contrast and a full-width copy target instead of small text. */
+.payrow{margin-bottom:11px}
+.paylab{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.pay button.cp{display:flex;align-items:center;gap:9px;width:100%;
+  padding:11px 12px;border-radius:11px;cursor:pointer;text-align:left;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);
+  transition:border-color .15s,background .15s}
+.pay button.cp:hover{background:rgba(255,255,255,.09);border-color:rgba(255,201,60,.45)}
+.pay button.cp:active{transform:scale(.995)}
+.pay .amt{font:900 19px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--gold);letter-spacing:-.01em}
+.pay .unit{font-size:12px;font-weight:900;color:var(--gold);opacity:.8}
+.pay .addr{font:800 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:#9fe0ff;word-break:break-all;flex:1}
+.pay .ic{margin-left:auto;flex:0 0 auto;font-size:10px;font-weight:900;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+  border:1px solid var(--line);border-radius:7px;padding:4px 7px}
+.pay button.cp.done{border-color:var(--mint);background:rgba(40,224,140,.10)}
+.pay button.cp.done .ic{color:var(--mint2);border-color:rgba(40,224,140,.45)}
+.paystat{display:flex;align-items:center;gap:7px;margin-top:13px;
+  font-size:12.5px;font-weight:800;color:var(--ink)}
+.payfine{margin-top:8px;font-size:11px;line-height:1.5;color:var(--dim);font-weight:600}
+.spin{width:11px;height:11px;flex:0 0 auto;border-radius:50%;
+  border:2px solid rgba(255,255,255,.18);border-top-color:var(--gold);
+  animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+/* contract-address entry */
+.ca{width:100%;margin-top:12px;padding:12px 13px;border-radius:12px;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);
+  font:700 13px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;
+  outline:none;transition:border-color .15s}
+.ca:focus{border-color:rgba(255,201,60,.5)}
+.ca::placeholder{color:var(--dim);font-family:inherit;font-weight:600}
+.camsg{font-size:11.5px;font-weight:700;margin-top:6px;min-height:14px;color:var(--dim)}
+.camsg.bad{color:var(--rose)}
+.camsg.good{color:var(--mint2)}
 .mbtns{display:flex;gap:9px;margin-top:15px}
 .mbtns button{flex:1;height:48px;border-radius:14px;border:1px solid var(--line);
   background:var(--glass2);color:var(--ink);font-weight:900;font-size:14px;cursor:pointer}
@@ -358,7 +414,6 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 <div id="top">
   <div class="mark"></div>
   <div class="wordmark"><span>pumpbubble</span><i>.fun</i></div>
-  <div class="pill" id="live"><span class="dot"></span><span id="livetxt">syncing</span></div>
 
   <div id="stats">
     <div class="s"><u>Tracked cap</u><b id="stCap">—</b></div>
@@ -472,6 +527,13 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
     <div class="grab"></div>
     <h3>⚡ Pump <em id="mtk">your bubble</em></h3>
     <p class="sub">Boosted bubbles turn gold and grow past everyone. Size comes from what the community pays — not market cap. Boosts decay, so the biggest bubble is whoever keeps pumping.</p>
+
+    <!-- Any pump.fun token can be boosted, not just the 300 on screen. The
+         ranked feed misses small and brand-new coins, which is exactly who
+         arrives holding a contract address. -->
+    <input id="mca" class="ca" spellcheck="false" autocomplete="off"
+           placeholder="or paste any pump.fun contract address">
+    <div id="mcaMsg" class="camsg"></div>
 
     <div class="tier" data-tier="spark" data-mult="1.5" data-price="9"><div><div class="b">Spark ×1.5</div><div class="d">6h · gold shell</div></div><div class="p">$9</div></div>
     <div class="tier on" data-tier="pump" data-mult="2.4" data-price="49"><div><div class="b">Pump ×2.4</div><div class="d">24h · gold + glow + pinned on screen</div></div><div class="p">$49</div></div>
@@ -624,9 +686,13 @@ function merge(fresh){
   old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
   S.tokens=fresh;
 }
+/* The live/demo pill is gone from the header — it was chrome that said
+   "working" on a page whose whole surface already shows whether data is moving.
+   The state still drives behaviour (tick() only animates demo data), so it is
+   kept, just not displayed. */
 function setLive(on,txt){
-  document.getElementById('live').classList.toggle('off',!on);
-  document.getElementById('livetxt').textContent=txt;
+  const el=document.getElementById('livetxt');
+  if(el)el.textContent=txt;
 }
 /* Demo data has to move on its own or the map looks frozen. Live data must
    never be nudged — an invented number on a screener is a lie, and the whole
@@ -1092,6 +1158,10 @@ let order=null,orderToken='',poll=null;
 
 function resetPay(){
   clearInterval(poll);poll=null;order=null;orderToken='';
+  if(typeof caInput!=='undefined'&&caInput){
+    caInput.style.display='';caInput.value='';
+    caMsg.textContent='';caMsg.className='camsg';
+  }
   goBtn.disabled=false;goBtn.textContent='Get pay link →';
   noteEl.textContent='Payment is on-chain — only send from a wallet you control.';
   payBox.innerHTML=`<b>Solana Pay · settles itself</b><br>
@@ -1108,17 +1178,39 @@ function openBoost(t){
 function renderPay(o){
   /* The exact amount is what identifies this payment, so it has to be trivial
      to copy without transcription errors. */
-  payBox.innerHTML=`<b>Send exactly</b><br>
-    <code class="cp" data-copy="${esc(o.amountSol)}" title="click to copy"
-      ><span style="color:var(--gold)">${esc(o.amountSol)} SOL</span> ⧉</code><br>
-    to <code class="cp" data-copy="${esc(o.treasury)}" title="click to copy">${esc(o.treasury)} ⧉</code><br>
-    <span id="mstat">waiting for payment…</span><br>
-    Send the amount exactly — it is what identifies your order.`;
+  payBox.innerHTML=`
+    <div class="payrow">
+      <span class="paylab">Amount — exact</span>
+      <button class="cp" type="button" data-copy="${esc(o.amountSol)}">
+        <span class="amt">${esc(o.amountSol)}</span><span class="unit">SOL</span><span class="ic">copy</span>
+      </button>
+    </div>
+    <div class="payrow">
+      <span class="paylab">To this wallet</span>
+      <button class="cp" type="button" data-copy="${esc(o.treasury)}">
+        <span class="addr">${esc(o.treasury)}</span><span class="ic">copy</span>
+      </button>
+    </div>
+    <div class="paystat" id="mstat"><span class="spin"></span>waiting for payment…</div>
+    <div class="payfine">The amount is unique to your order — that is how we know the payment is
+      yours. Send it exactly, from any wallet.</div>`;
   payBox.querySelectorAll('.cp').forEach(el=>el.onclick=async()=>{
-    try{await navigator.clipboard.writeText(el.dataset.copy);
-      const was=el.style.borderColor;el.style.borderColor='var(--gold)';
-      setTimeout(()=>el.style.borderColor=was,600);
-    }catch(e){/* clipboard blocked — the text is selectable anyway */}
+    const txt=el.dataset.copy,ic=el.querySelector('.ic');
+    let done=false;
+    try{await navigator.clipboard.writeText(txt);done=true}
+    catch(e){
+      /* clipboard is blocked without a secure context or on older mobile
+         browsers — fall back to a selection the user can copy by hand */
+      try{
+        const ta=document.createElement('textarea');
+        ta.value=txt;ta.style.cssText='position:fixed;opacity:0';
+        document.body.appendChild(ta);ta.select();
+        done=document.execCommand('copy');ta.remove();
+      }catch(e2){}
+    }
+    ic.textContent=done?'copied':'select it';
+    el.classList.toggle('done',done);
+    setTimeout(()=>{ic.textContent='copy';el.classList.remove('done')},1600);
   });
   goBtn.textContent='Open wallet →';goBtn.disabled=false;
   const p=o.projection;
@@ -1139,7 +1231,7 @@ function startPoll(){
       const st=document.getElementById('mstat');
       if(j.status==='paid'){
         clearInterval(poll);
-        if(st)st.innerHTML='<b style="color:var(--gold)">paid ✓ bubble is gold</b>';
+        if(st)st.innerHTML='<b style="color:var(--gold)">paid ✓ your bubble is gold</b>';
         await refresh(false);
         const t=S.tokens.find(x=>x.mint===order.mint);
         if(t&&t.x!=null)burst(t.x,t.y,46);
@@ -1161,20 +1253,47 @@ const closeVeil=()=>{veil.classList.remove('on');clearInterval(poll);poll=null};
 document.getElementById('mcancel').onclick=closeVeil;
 veil.querySelector('.bg').onclick=closeVeil;
 document.getElementById('boostTop').onclick=()=>openBoost(S.target||null);
+const CA_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const caInput=document.getElementById('mca');
+const caMsg=document.getElementById('mcaMsg');
+caInput.addEventListener('input',()=>{
+  const v=caInput.value.trim();
+  caMsg.className='camsg';
+  if(!v){caMsg.textContent=S.target?'':'paste a contract address, or tap a bubble';return}
+  if(!CA_RE.test(v)){caMsg.textContent='that does not look like a Solana address';caMsg.className='camsg bad';return}
+  caMsg.textContent='looks valid — we will check it with pump.fun';caMsg.className='camsg good';
+});
+
 goBtn.onclick=async()=>{
   if(order&&order.payUrl){location.href=order.payUrl;return}
+  /* A pasted contract wins over the selected bubble: if someone typed an
+     address, that is the token they mean. */
+  const typed=caInput.value.trim();
   const t=S.target;
-  if(!t){payBox.innerHTML='<b>Pick a bubble first</b><br>Tap any bubble on the map, then hit ⚡ Boost.';return}
+  const mint=typed||(t&&t.mint);
+  if(!mint){
+    caMsg.textContent='pick a bubble or paste a contract address';
+    caMsg.className='camsg bad';return;
+  }
+  if(typed&&!CA_RE.test(typed)){
+    caMsg.textContent='that does not look like a Solana address';
+    caMsg.className='camsg bad';return;
+  }
   goBtn.disabled=true;goBtn.textContent='quoting…';
   try{
     const r=await fetch('/api/boost/order',{method:'POST',
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({mint:t.mint,sym:t.sym,tier:tier.id})});
+      body:JSON.stringify({mint,tier:tier.id})});
     const j=await r.json();
     if(!j.ok)throw new Error(j.error||'could not create the order');
-    order=j.order;orderToken=j.token;renderPay(order);startPoll();
+    order=j.order;orderToken=j.token;
+    /* a pasted contract may name a token that was never on screen — show which
+       one is actually being bought */
+    if(order.sym)document.getElementById('mtk').textContent=order.sym;
+    caMsg.textContent='';caInput.style.display='none';
+    renderPay(order);startPoll();
   }catch(e){
-    payBox.innerHTML='<b>Boosts are not live yet</b><br>'+esc(e.message);
+    caMsg.textContent=e.message;caMsg.className='camsg bad';
     goBtn.disabled=false;goBtn.textContent='Get pay link →';
   }
 };

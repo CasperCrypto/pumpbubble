@@ -62,10 +62,14 @@ const ctx = {
       return new Response('upstream unreachable', { status: 502 });
     }
     if (!r.ok) return new Response('upstream ' + r.status, { status: 502 });
+    /* Same guard the Worker applies: a gateway that answers with an HTML or
+       plain-text error page must not be passed through as if it were art. */
+    const type = r.headers.get('content-type') || 'image/png';
+    if (!/^image\//i.test(type)) return new Response('not an image', { status: 415 });
     return new Response(r.body, {
       status: 200,
       headers: {
-        'content-type': r.headers.get('content-type') || 'image/png',
+        'content-type': type,
         'cache-control': `public, max-age=${ttl}, immutable`,
         'access-control-allow-origin': '*',
       },

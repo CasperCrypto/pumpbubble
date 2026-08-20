@@ -4,7 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
@@ -153,9 +153,12 @@ export async function handle(req, ctx) {
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
         tokens.push({
-          id: mint, mint, sym: b.sym || mint.slice(0, 4), name: b.sym || 'boosted',
-          img: '', mcap: 0, vol: 0, pc: { m5: 0, h1: 0, h6: 0, h24: 0 },
-          grad: true, boost: b.bonus, boostUsd: b.spentUsd, boostUntil: b.until,
+          id: mint, mint,
+          sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
+          img: b.img || '', mcap: b.mcap || 0, vol: 0,
+          pc: { m5: 0, h1: 0, h6: 0, h24: 0 },
+          grad: true, solid: true, flags: [], copies: 1,
+          boost: b.bonus, boostUsd: b.spentUsd, boostUntil: b.until,
         });
       }
 
@@ -241,11 +244,21 @@ export async function handle(req, ctx) {
         const bondTok = bond?.tokens.find(t => t.mint === body.mint);
         if (bondTok) { snap = bond; tok = bondTok; }
       }
-      /* Only sell a boost on a token that is actually on the map. Otherwise a
-         quote could be raised against any mint on Solana, and the payment would
-         buy a bubble nobody can see. */
-      if (snap && !tok) {
-        return json({ ok: false, error: 'that token is not on the map right now' }, 404);
+      /* Not in either ranked feed — ask pump.fun directly. The feeds carry the
+         top 300, so a smaller coin is invisible to them, and that is precisely
+         the token whose community turns up wanting to be seen. A boost pulls it
+         onto the map (see /api/tokens, which re-adds paid tokens that are not in
+         the feed), so this sells something real.
+
+         Still not a free-for-all: the mint has to exist on pump.fun. */
+      if (!tok) {
+        tok = await fetchCoin(body.mint, ctx.env.IMG_SECRET);
+        if (!tok) {
+          return json({
+            ok: false,
+            error: 'no pump.fun token found with that contract address',
+          }, 404);
+        }
       }
 
       /* Inventory cap. Gold is worth exactly what the traffic is worth, so
@@ -275,8 +288,13 @@ export async function handle(req, ctx) {
 
       const order = await createOrder({
         mint: body.mint,
-        /* the symbol is ours, from pump.fun — never whatever the client sent */
+        /* identity is ours, from pump.fun — never whatever the client sent.
+           Carried on the signed order so a token bought from outside the ranked
+           feed still renders with its real art and name once it goes gold. */
         sym: tok?.sym || '',
+        name: tok?.name || '',
+        img: tok?.img || '',
+        mcap: tok?.mcap || 0,
         tierId: body.tier,
         solPrice: snap?.sol || 0,
         treasury: ctx.env.TREASURY_WALLET,

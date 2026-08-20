@@ -124,9 +124,22 @@ console.log('\n== rate limiting ==');
   for (let i = 0; i < 45 && !codes.includes(429); i++) {
     codes.push((await post('/api/boost/order', { mint, tier: 'spark' })).status);
   }
-  codes.includes(429)
-    ? ok('order spam eventually throttles', `429 after ${codes.indexOf(429)} in this window`)
-    : no('order spam eventually throttles', 'no 429 in 45 requests');
+  const local = /localhost|127\.0\.0\.1/.test(BASE);
+  if (codes.includes(429)) {
+    ok('order spam throttles', `429 after ${codes.indexOf(429)} in this window`);
+  } else if (local) {
+    no('order spam throttles', 'no 429 in 45 requests against a single process');
+  } else {
+    /* Expected at the edge, and worth stating plainly rather than passing
+       quietly: the in-process limiter counts per isolate, and Cloudflare spreads
+       a burst across many, so it never accumulates. It is a backstop against one
+       runaway client hitting one isolate, not a global control. The global
+       control is a Cloudflare Rate Limiting rule on /api/*, which has to be
+       added in the dashboard — see docs/security.md. */
+    no('order spam throttles at the edge',
+       'no 429 in 45 requests — per-isolate counting cannot see a distributed burst. ' +
+       'Add a Cloudflare Rate Limiting rule on /api/*; this cannot be fixed in code.');
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
