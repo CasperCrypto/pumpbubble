@@ -1554,7 +1554,7 @@ goBtn.onclick=async()=>{
   try{
     const r=await fetch('/api/boost/order',{method:'POST',
       headers:{'content-type':'application/json'},
-      body:JSON.stringify({mint,tier:tier.id})});
+      body:JSON.stringify({mint,tier:tier.id,ref:readRef()})});
     const j=await r.json();
     if(!j.ok)throw new Error(j.error||'could not create the order');
     order=j.order;orderToken=j.token;saveOrder();
@@ -1640,6 +1640,32 @@ if(innerWidth<640)document.querySelectorAll('#cntSeg button')
    Permissions come from /api/embed, never from the query string: the key is
    visible in any page that embeds us, so anyone could copy a partner's key onto
    their own site. The server decides what it is worth. */
+/* ------------------------------------------------------------ referrals */
+/* Someone shares pumpbubble.fun/?ref=alice in a Telegram group, a dev clicks
+   it, and buys a boost twenty minutes later — quite possibly after closing the
+   tab and coming back. Remember the code so that sale is still credited.
+
+   First touch wins: whoever introduced them earns it, not whoever happened to
+   be last. That matches how the work actually happens — the person who made the
+   case in the group did the selling. */
+const REF_KEY='pb_ref', REF_DAYS=30;
+const REF_RE=/^[a-z0-9][a-z0-9_-]{2,23}$/;
+function captureRef(){
+  try{
+    const q=(new URLSearchParams(location.search).get('ref')||'').toLowerCase();
+    if(REF_RE.test(q)&&!readRef())
+      localStorage.setItem(REF_KEY,JSON.stringify({code:q,at:Date.now()}));
+  }catch(e){/* private mode: referrals just do not persist */}
+}
+function readRef(){
+  try{
+    const j=JSON.parse(localStorage.getItem(REF_KEY)||'null');
+    if(!j||!REF_RE.test(j.code||''))return'';
+    if(Date.now()-j.at>REF_DAYS*864e5){localStorage.removeItem(REF_KEY);return''}
+    return j.code;
+  }catch(e){return''}
+}
+
 const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location.search).get('embed')==='1';
 
 async function initEmbed(){
@@ -1684,6 +1710,7 @@ async function initEmbed(){
    reads as a broken site rather than a loading one. Seed the map with the
    generated set, labelled honestly as such in the status chip, and let the
    live data replace it the moment it lands. */
+captureRef();
 initEmbed();
 merge(demo());
 setLive(false,'loading…');

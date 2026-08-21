@@ -6,6 +6,7 @@
 
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
+import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
@@ -336,8 +337,13 @@ export async function handle(req, ctx) {
       /* amounts already in flight — the new quote must not collide with one */
       const inFlight = (await listPending(ctx.store)).map(o => o.lamports);
 
+      /* An unknown or malformed code is dropped rather than rejected: a bad
+         referral must never stop somebody buying. */
+      const refCode = isCode(body.ref) && await getAffiliate(ctx.store, body.ref) ? body.ref : '';
+
       const order = await createOrder({
         taken: inFlight,
+        ref: refCode,
         mint: body.mint,
         /* identity is ours, from pump.fun — never whatever the client sent.
            Carried on the signed order so a token bought from outside the ranked
@@ -421,6 +427,12 @@ export async function handle(req, ctx) {
 
       if (!payment) return json({ ok: true, status: late ? 'expired' : 'pending', order });
 
+      /* Commission is decided here, at confirmation, from the code signed into
+         the order and the wallet that actually paid — never from the client and
+         never recomputed later. */
+      payment.ref = await resolveReferral(ctx.store, {
+        code: order.ref, usd: order.usd, payer: payment.payer,
+      });
       const boost = await activateBoost(ctx.store, order, payment);
       return json({ ok: true, status: 'paid', order, boost });
     }
@@ -437,13 +449,30 @@ export async function handle(req, ctx) {
       const limited = rateLimit(req, 'sweep', 20, 60_000);
       if (limited) return limited;
 
-      const activated = await sweepPayments(ctx.store, ctx.env.SOLANA_RPC, ctx.env.TREASURY_WALLET);
+      const activated = await sweepPayments(ctx.store, ctx.env.SOLANA_RPC, ctx.env.TREASURY_WALLET,
+        args => resolveReferral(ctx.store, args));
       const pending = await listPending(ctx.store);
       return json({
         ok: true,
         activated: activated.map(b => ({ sym: b.sym, mint: b.mint, tier: b.tier, sig: b.sig })),
         stillPending: pending.length,
       });
+    }
+
+    /* ----------------------------------------------------- /api/affiliate */
+    /* An affiliate's own statement. Built from the same public boost ledger, so
+       what they see and what anyone can audit cannot disagree — which is the
+       only reason to trust a commission number you did not compute yourself.
+       The code is not a secret: it is in every link they share. */
+    if (path === '/api/affiliate') {
+      const limited = rateLimit(req, 'affiliate', 60, 60_000);
+      if (limited) return limited;
+
+      const code = (url.searchParams.get('code') || '').toLowerCase();
+      if (!isCode(code)) return json({ ok: false, error: 'bad code' }, 400);
+      const st = await statement(ctx.store, code);
+      if (!st) return json({ ok: false, error: 'unknown affiliate code' }, 404);
+      return json({ ok: true, ...st });
     }
 
     /* ------------------------------------------------ /api/boost/history */

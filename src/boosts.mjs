@@ -87,7 +87,7 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, taken = [] }) {
+export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, ref = '', taken = [] }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
   if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
@@ -139,6 +139,10 @@ export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, so
     tier: tier.id, mult: tier.mult, hours: tier.hours,
     usd: tier.usd, solPrice, amountSol, lamports,
     treasury,
+    /* The referral code is signed into the order so it cannot be swapped after
+       the buyer has seen the price. Whether it is worth anything is decided at
+       confirmation, against the affiliate list and the payer's wallet. */
+    ref: ref || '',
     status: 'pending',
     createdAt: now,
     expiresAt: now + ORDER_TTL_MS,
@@ -270,7 +274,10 @@ export async function scanTreasury(rpcUrl, treasury, force = false) {
 export async function findPayment(rpcUrl, order) {
   const payments = await scanTreasury(rpcUrl, order.treasury);
   const notBefore = Math.floor(order.createdAt / 1000) - 120;   // clock skew allowance
-  const hit = p => ({ signature: p.signature, received: p.lamports / LAMPORTS, slot: p.slot });
+  /* keys[0] is the fee payer, i.e. the wallet that actually sent this. It is
+     what makes a self-referral check possible later. */
+  const hit = p => ({ signature: p.signature, received: p.lamports / LAMPORTS,
+                      slot: p.slot, payer: p.keys && p.keys[0] || '' });
 
   const candidates = payments.filter(p => !p.blockTime || p.blockTime >= notBefore);
 
@@ -379,7 +386,7 @@ export async function addPending(store, order) {
     id: order.id, mint: order.mint, sym: order.sym, name: order.name, img: order.img,
     mcap: order.mcap, grad: order.grad, tier: order.tier, mult: order.mult, hours: order.hours,
     usd: order.usd, lamports: order.lamports, amountSol: order.amountSol,
-    reference: order.reference, treasury: order.treasury,
+    reference: order.reference, treasury: order.treasury, ref: order.ref || '',
     createdAt: order.createdAt, expiresAt: order.expiresAt,
   });
   await store.put(PENDING_KEY, kept);
@@ -397,7 +404,7 @@ export async function dropPending(store, ids) {
 /* Match every arriving payment against every pending order in one pass.
    Returns the boosts it activated. Safe on a timer and safe to run twice:
    activation is idempotent on the transaction signature. */
-export async function sweepPayments(store, rpcUrl, treasury) {
+export async function sweepPayments(store, rpcUrl, treasury, resolveRef = null) {
   const pending = await listPending(store);
   if (!pending.length) return [];
 
@@ -419,8 +426,14 @@ export async function sweepPayments(store, rpcUrl, treasury) {
         (p.keys?.includes(order.reference) && p.lamports >= order.lamports)));
     if (!hit) continue;
     claimed.add(hit.signature);
+    const payer = (hit.keys && hit.keys[0]) || '';
+    /* the closed-tab path must credit the referrer exactly as the live poll does */
+    const ref = resolveRef
+      ? await resolveRef({ code: order.ref, usd: order.usd, payer })
+      : null;
     const boost = await activateBoost(store, order,
-      { signature: hit.signature, received: hit.lamports / LAMPORTS, slot: hit.slot });
+      { signature: hit.signature, received: hit.lamports / LAMPORTS, slot: hit.slot,
+        payer, ref });
     activated.push(boost);
     done.push(order.id);
   }
@@ -478,6 +491,10 @@ export async function activateBoost(store, order, payment) {
     usd: order.usd,
     sol: payment.received,
     sig: payment.signature,
+    payer: payment.payer || '',
+    /* commission owed on this sale, decided server-side at confirmation time and
+       never recomputed afterwards */
+    ref: payment.ref || null,
     startedAt: now,
     until: now + order.hours * 3600 * 1000,
   };

@@ -157,3 +157,51 @@ when something other than the amount proves which order it belongs to.
 Also enforced: payments to a different wallet are ignored, failed transactions are ignored,
 transactions that predate the quote are ignored, and one transaction signature can only ever
 activate one boost.
+
+## Affiliates
+
+Most of the reach comes from people telling other communities to boost. That is unpaid sales work,
+and it should not stay unpaid: an affiliate gets a cut of every boost bought through their link.
+
+    https://pumpbubble.fun/?ref=alice        their link
+    https://pumpbubble.fun/affiliate.html?code=alice   their statement
+
+Default commission is **20%**, overridable per affiliate up to 50%.
+
+### How a sale gets credited
+
+1. The link sets `?ref=alice`. The front end stores it for 30 days. **First touch wins** — whoever
+   introduced the buyer earns it, not whoever happened to be last, because the person who made the
+   case in the group did the selling.
+2. The code is sent with the quote and **signed into the order**, so it cannot be swapped after the
+   buyer has seen the price.
+3. Whether it is worth anything is decided **at confirmation**, server-side, from the affiliate list
+   and the wallet that actually paid. Never from the client, never recomputed later.
+4. The commission is recorded on the boost, in the same ledger anyone can audit.
+
+An unknown or malformed code is dropped rather than rejected: a bad referral must never stop
+somebody buying.
+
+### Self-referral is voided
+
+The payer's wallet is in the transaction we already fetch, so an affiliate paying through their own
+link is detected and the commission zeroed — that is a 20% discount, not a referral. The boost still
+activates; only the commission is void, and the statement shows it as such rather than hiding it.
+
+### Payouts are manual
+
+Accruing and settling by hand is the right shape while the list is small, and it keeps a spend key
+away from the worker entirely. `owedUsd` is what to send.
+
+```bash
+node scripts/affiliate.mjs list                       # who has earned what
+node scripts/affiliate.mjs stats  --code alice        # one statement
+node scripts/affiliate.mjs payout --code alice --usd 24.50 --sig <tx>
+```
+
+Statements are built from the **boost ledger**, not a separate tally, so what an affiliate sees and
+what anyone can audit cannot drift apart. That is the only reason to trust a commission number you
+did not compute yourself.
+
+The arithmetic and the fraud checks are pinned in `scripts/affiliate.test.mjs` — commission is money
+owed to real people, and payout day is the wrong time to discover a rounding rule.

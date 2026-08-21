@@ -27,6 +27,13 @@ const store = {
   async put(k, v) { mem.set(k, v); },
 };
 
+/* A seeded affiliate, so the referral flow can be exercised locally. Dev only:
+   production affiliates live in KV and are added with scripts/affiliate.mjs. */
+mem.set('affiliates', {
+  alice: { code: 'alice', wallet: 'AL1ceWa11etAddressAAAAAAAAAAAAAAAAAAAAAAAAA',
+           name: 'Alice (dev)', pct: 20, active: true, createdAt: Date.now() },
+});
+
 /* Seed a house ad so the rail is never empty in dev. */
 mem.set('ads', [
   { id: 'house-1', title: 'YOUR TOKEN HERE', sub: 'ad slot open', url: 'mailto:ads@pumpbubble.fun', img: '' },
