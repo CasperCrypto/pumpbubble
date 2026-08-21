@@ -160,8 +160,12 @@ export default {
        rule the asset layer decides wins. */
     const p = new URL(request.url).pathname.replace(/\/+$/, '');
     if (p === '/embed') {
+      /* Ask for '/', not '/index.html'. Workers Assets normalises an explicit
+         index.html into a 307 back to the directory root — which lands on the
+         main page, and that page is served frame-ancestors 'none'. The embed
+         then refuses to frame with headers that look correct in isolation. */
       const page = new URL(request.url);
-      page.pathname = '/index.html';
+      page.pathname = '/';
       const res = await env.ASSETS.fetch(new Request(page, request));
       const h = new Headers(res.headers);
       h.delete('x-frame-options');
