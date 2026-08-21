@@ -34,6 +34,11 @@ keep_vars = true
 [assets]
 directory = "./public"
 binding = "ASSETS"
+# Workers Assets serves a matching file directly and never invokes the worker.
+# /market matches market.html, so the server-rendering branch never ran and the
+# raw shell went out with its placeholders intact. These paths must reach the
+# worker first.
+run_worker_first = ["/market", "/embed"]
 
 # Keeps a warm snapshot + persists market-cap history when traffic is quiet.
 [triggers]
