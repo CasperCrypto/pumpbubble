@@ -149,8 +149,33 @@ export default {
     if (res) return res;
 
     /* Not an API route → static assets. */
-    if (env.ASSETS) return env.ASSETS.fetch(request);
-    return new Response('not found', { status: 404 });
+    if (!env.ASSETS) return new Response('not found', { status: 404 });
+
+    /* /embed serves the same page, with headers that permit framing.
+       The site-wide policy is frame-ancestors 'none' and X-Frame-Options DENY,
+       which is right for a page showing a payment address and wrong for the one
+       route whose entire purpose is to be put in somebody else's iframe. The
+       exception is scoped to this path only, and set here rather than in
+       _headers because the worker runs first and this must not depend on which
+       rule the asset layer decides wins. */
+    const p = new URL(request.url).pathname.replace(/\/+$/, '');
+    if (p === '/embed') {
+      const page = new URL(request.url);
+      page.pathname = '/index.html';
+      const res = await env.ASSETS.fetch(new Request(page, request));
+      const h = new Headers(res.headers);
+      h.delete('x-frame-options');
+      h.set('content-security-policy',
+        "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; " +
+        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors *");
+      /* an embed is a widget, not a document to be indexed on its own */
+      h.set('x-robots-tag', 'noindex');
+      h.set('cache-control', 'public, max-age=0, must-revalidate');
+      return new Response(res.body, { status: res.status, headers: h });
+    }
+
+    return env.ASSETS.fetch(request);
   },
 
   /* Cron keeps a warm snapshot and a persisted history even with no traffic,

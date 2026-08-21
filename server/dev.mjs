@@ -87,7 +87,7 @@ const MIME = {
   '.xml': 'application/xml; charset=utf-8', '.webp': 'image/webp', '.avif': 'image/avif',
 };
 
-async function serveStatic(pathname, res) {
+async function serveStatic(pathname, res, extraHeaders = {}) {
   let rel = decodeURIComponent(pathname);
   if (rel === '/' || rel === '') rel = '/index.html';
   /* keep the resolved path inside ROOT */
@@ -104,6 +104,7 @@ async function serveStatic(pathname, res) {
     res.writeHead(200, {
       'content-type': MIME[extname(abs).toLowerCase()] || 'application/octet-stream',
       'cache-control': 'no-cache',
+      ...extraHeaders,
     });
     res.end(buf);
   } catch {
@@ -137,7 +138,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (!out) return serveStatic(new URL(url).pathname, res);
+  /* /embed is the same page under framing-friendly headers — see worker/index.js */
+  if (!out) {
+    const p = new URL(url).pathname.replace(/\/+$/, '');
+    return serveStatic(p === '/embed' ? '/index.html' : new URL(url).pathname, res,
+      p === '/embed' ? { 'x-robots-tag': 'noindex' } : {});
+  }
 
   res.writeHead(out.status, Object.fromEntries(out.headers));
   if (!out.body) return res.end();

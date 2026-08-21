@@ -185,6 +185,7 @@ button,input{font-family:inherit}
   flex:0 0 auto;height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);
   background:var(--glass);color:var(--ink);font-weight:800;font-size:12px;cursor:pointer;
   display:inline-flex;align-items:center;gap:6px;transition:.14s;white-space:nowrap;
+  text-decoration:none;
 }
 
 /* Touch targets. A mouse can hit a 26px chip; a thumb cannot — Apple and
@@ -387,6 +388,22 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 .capre .who b{display:block;font-size:14px;font-weight:900}
 .capre .who span{display:block;font-size:11px;color:var(--dim);font-weight:700;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ============ embed mode ============
+   The same page, stripped to the thing being embedded. One file rather than a
+   second copy: an embed that drifts from the real map stops being a preview of
+   the real map, which is the entire reason a site would put it there. */
+body.embed #top,body.embed #rail,body.embed #chips,body.embed #legend{display:none!important}
+body.embed #stage{border-radius:0}
+body.embed{background:transparent}
+#brandbadge{display:none;position:fixed;right:10px;bottom:10px;z-index:30;
+  align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:999px;
+  background:rgba(8,10,15,.72);border:1px solid var(--line);backdrop-filter:blur(6px);
+  font-size:11px;font-weight:800;color:var(--ink);text-decoration:none;
+  transition:.15s}
+#brandbadge:hover{background:rgba(8,10,15,.92);border-color:rgba(255,201,60,.5)}
+#brandbadge i{width:9px;height:9px;border-radius:50%;flex:0 0 auto;
+  background:linear-gradient(180deg,#3df09b,#0fae66);box-shadow:0 0 8px rgba(61,240,155,.5)}
+body.embed #brandbadge.on{display:flex}
 .camsg{font-size:11.5px;font-weight:700;margin-top:6px;min-height:14px;color:var(--dim)}
 .camsg.bad{color:var(--rose)}
 .camsg.good{color:var(--mint2)}
@@ -488,6 +505,9 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
        count of what it hid is shown, and one click brings it all back. -->
   <button class="iconbtn act" id="realBtn" title="Hide tokens whose market cap is not backed by liquidity, and copycat ticker swarms">✓ Real only</button>
   <button class="iconbtn" id="openSheet">☰ Filters</button>
+  <!-- The embed is the distribution engine: every site that takes it sends
+       traffic back. Worth a permanent link, not a buried footer. -->
+  <a class="iconbtn" href="/partners" title="Put this map on your own site">&lt;/&gt; Embed</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
 </div>
@@ -554,6 +574,11 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
   <button id="sheetDone">Show bubbles</button>
 </div>
 
+<!-- Attribution on free embeds. This is the price of the free tier and the
+     whole distribution mechanism: every embed is a referral source. -->
+<a id="brandbadge" href="https://pumpbubble.fun" target="_blank" rel="noopener">
+  <i></i><span>live on <b>pumpbubble.fun</b></span></a>
+
 <div id="scrim"></div>
 
 <!-- ================= boost modal ================= -->
@@ -607,6 +632,7 @@ const S={
   minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
   target:null, parts:[],
   mode:'graduated',      // graduated | bonding — separate feeds, never mixed
+  pin:'', embedLink:false,
   realOnly:true, hidden:0
 };
 const MC_STEPS=[0,1e3,5e3,1e4,2.5e4,5e4,1e5,2.5e5,5e5,1e6,2.5e6,1e7,5e7];
@@ -778,6 +804,8 @@ function rebuild(){
   L.sort((a,b)=>M(b)-M(a));
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
+  /* a partner's pinned token stays on screen regardless of ranking */
+  if(S.pin)S.tokens.forEach(t=>{if(t.mint===S.pin&&!P.includes(t))P.unshift(t)});
   P.forEach(t=>{t.chg=t.pc[S.tf]||0;t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
   S.view=P;
   sizes();
@@ -1222,6 +1250,7 @@ addEventListener('pointerup',e=>{
      instruction ("pick a bubble, then hit Boost") was impossible to follow, and
      the only route to a purchase was an undocumented shift-click. The card
      carries both actions: open on pump.fun, or boost this one. */
+  if(S.embedLink){open('https://pumpbubble.fun/?utm_source=embed&utm_medium=bubble','_blank','noopener');return}
   openCard(t);
 });
 
@@ -1604,12 +1633,58 @@ function rail(){
 /* =================================================================== BOOT */
 if(innerWidth<640)document.querySelectorAll('#cntSeg button')
   .forEach(b=>b.classList.toggle('on',b.dataset.n==='50'));
+/* ============================================================ EMBED MODE */
+/* Runs on /embed, or with ?embed=1. Strips the page to the map, applies the
+   partner configuration the server allows, and links home.
+
+   Permissions come from /api/embed, never from the query string: the key is
+   visible in any page that embeds us, so anyone could copy a partner's key onto
+   their own site. The server decides what it is worth. */
+const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location.search).get('embed')==='1';
+
+async function initEmbed(){
+  if(!EMBED)return;
+  document.body.classList.add('embed');
+  const q=new URLSearchParams(location.search);
+
+  /* presentation is the caller's business and cannot misstate the data */
+  const lim=parseInt(q.get('limit'),10);
+  if(lim>=10&&lim<=200)S.limit=lim;
+  if(['m5','h1','h6','h24'].includes(q.get('tf')))S.tf=q.get('tf');
+  if(['graduated','bonding'].includes(q.get('mode')))S.mode=q.get('mode');
+  if(q.get('real')==='0')S.realOnly=false;
+
+  let cfg={brand:true,accent:'',pin:''};
+  try{ cfg=await jget('/api/embed?k='+encodeURIComponent(q.get('k')||''),8000); }
+  catch(e){ /* unreachable API: stay on the free tier, which is the safe default */ }
+
+  /* The badge is the price of the free tier, so it is opt-out only by a key the
+     server verified — never by a query parameter. */
+  const badge=document.getElementById('brandbadge');
+  if(badge&&cfg.brand!==false){
+    badge.classList.add('on');
+    badge.href='https://pumpbubble.fun/?utm_source=embed&utm_medium=badge'
+      +(cfg.site?'&utm_campaign='+encodeURIComponent(cfg.site):'');
+  }
+  if(cfg.accent&&/^#[0-9a-f]{6}$/i.test(cfg.accent)){
+    document.documentElement.style.setProperty('--acc',cfg.accent);
+  }
+  /* a pinned token is kept on screen whatever the ranking says — it is what a
+     partner is paying for, and it is not a claim about the data */
+  if(cfg.pin)S.pin=cfg.pin;
+
+  /* clicking a bubble inside an iframe should open the real site, not a modal
+     the host page has no room for */
+  S.embedLink=true;
+}
+
 /* Paint something immediately.
    A cold worker builds the whole snapshot before it answers, so the first
    request can take seconds — and waiting for it left an empty canvas, which
    reads as a broken site rather than a loading one. Seed the map with the
    generated set, labelled honestly as such in the status chip, and let the
    live data replace it the moment it lands. */
+initEmbed();
 merge(demo());
 setLive(false,'loading…');
 resize();rebuild();rail();loop();

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Embed the pump.fun bubble map — pumpbubble.fun</title>
+<meta name="description" content="Put a live pump.fun bubble map on your site. Free with attribution, or branded as yours on the partner tier.">
+<link rel="canonical" href="https://pumpbubble.fun/partners">
+<meta property="og:title" content="Embed the pump.fun bubble map">
+<meta property="og:description" content="A live bubble map of pump.fun on your site. Free to embed.">
+<meta property="og:image" content="https://pumpbubble.fun/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg">
+<style>
+:root{
+  --bg:#070910; --ink:#eef2f8; --dim:#8a93a6; --line:rgba(255,255,255,.10);
+  --glass:rgba(255,255,255,.035); --glass2:rgba(255,255,255,.07);
+  --mint:#28e08c; --mint2:#3df09b; --gold:#ffc93c; --rose:#ff4d6d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--mint2)}
+.wrap{max-width:940px;margin:0 auto;padding:0 20px 80px}
+header{padding:40px 0 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mark{width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#7dffc4,#0fae66 60%,#046b3d);
+  box-shadow:0 0 22px rgba(40,224,140,.45)}
+.wordmark{font-weight:900;font-size:19px;letter-spacing:-.02em}
+.wordmark i{font-style:normal;color:var(--dim)}
+.back{margin-left:auto;font-size:13px;font-weight:700;color:var(--dim);text-decoration:none}
+.back:hover{color:var(--ink)}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.12;letter-spacing:-.03em;margin:18px 0 10px;font-weight:900}
+h2{font-size:20px;font-weight:900;letter-spacing:-.02em;margin:44px 0 12px}
+.lede{font-size:17px;color:var(--dim);max-width:62ch;margin:0 0 8px}
+.preview{margin:26px 0 0;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  background:#080a0f;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.preview iframe{display:block;width:100%;height:420px;border:0}
+.grid{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
+.card{border:1px solid var(--line);border-radius:16px;padding:20px;background:var(--glass)}
+.card.gold{border-color:rgba(255,201,60,.4);
+  background:linear-gradient(180deg,rgba(255,201,60,.08),rgba(255,201,60,.02))}
+.card h3{margin:0 0 2px;font-size:17px;font-weight:900}
+.card .price{font-size:13px;color:var(--dim);font-weight:700;margin-bottom:14px}
+.card.gold .price{color:var(--gold)}
+ul{list-style:none;padding:0;margin:0}
+li{padding:6px 0 6px 24px;position:relative;font-size:14.5px}
+li::before{content:"→";position:absolute;left:0;color:var(--mint);font-weight:900}
+.card.gold li::before{color:var(--gold)}
+li.no{color:var(--dim)}
+li.no::before{content:"·";color:var(--dim)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:#0b0e16;border:1px solid var(--line);border-radius:12px;padding:14px;
+  overflow-x:auto;font-size:12.5px;line-height:1.55;margin:12px 0 0}
+.builder{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--glass);margin-top:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+label{font-size:12px;font-weight:800;color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
+select,input[type=number]{background:var(--glass2);border:1px solid var(--line);color:var(--ink);
+  border-radius:10px;padding:8px 10px;font:700 13px ui-sans-serif,sans-serif;outline:none}
+button{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0;
+  border-radius:10px;padding:10px 16px;font:900 13px ui-sans-serif,sans-serif;cursor:pointer}
+button:active{transform:scale(.98)}
+.tg{display:inline-flex;align-items:center;gap:8px;background:var(--glass2);
+  border:1px solid var(--line);border-radius:12px;padding:12px 16px;text-decoration:none;
+  color:var(--ink);font-weight:800;margin-top:14px}
+.tg:hover{border-color:rgba(61,240,155,.5)}
+footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
+  color:var(--dim);font-size:13px}
+.note{font-size:13px;color:var(--dim);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="mark"></div>
+  <div class="wordmark">pumpbubble<i>.fun</i></div>
+  <a class="back" href="/">← back to the map</a>
+</header>
+
+<h1>Put the live pump.fun market on your site.</h1>
+<p class="lede">One iframe. Live market caps, real token art, updating every few seconds —
+straight from pump.fun. Free to embed, and it stays free.</p>
+
+<div class="preview">
+  <iframe src="/embed?limit=40&amp;real=1" loading="lazy" title="Live pump.fun bubble map"></iframe>
+</div>
+<p class="note">That frame is the real thing, live, right now — not a screenshot.</p>
+
+<h2>Get the code</h2>
+<div class="builder">
+  <div class="row">
+    <label for="b-mode">Feed</label>
+    <select id="b-mode">
+      <option value="graduated">Graduated</option>
+      <option value="bonding">Bonding curve</option>
+    </select>
+    <label for="b-tf">Timeframe</label>
+    <select id="b-tf">
+      <option value="m5">5m</option>
+      <option value="h1" selected>1h</option>
+      <option value="h6">6h</option>
+      <option value="h24">24h</option>
+    </select>
+    <label for="b-limit">Bubbles</label>
+    <input id="b-limit" type="number" min="10" max="200" value="60" style="width:90px">
+    <label for="b-h">Height</label>
+    <input id="b-h" type="number" min="240" max="1200" value="600" style="width:90px">
+  </div>
+  <pre id="snippet"></pre>
+  <div class="row" style="margin:12px 0 0"><button id="copy">Copy embed code</button></div>
+</div>
+
+<h2>Free, and partner</h2>
+<div class="grid">
+  <div class="card">
+    <h3>Free</h3>
+    <div class="price">$0 — no account, no key</div>
+    <ul>
+      <li>Live pump.fun data, same as the main site</li>
+      <li>Real token art and tickers</li>
+      <li>Graduated or bonding-curve feed</li>
+      <li>Pick timeframe and bubble count</li>
+      <li>Unlimited page views</li>
+      <li class="no">Small “live on pumpbubble.fun” badge</li>
+      <li class="no">Our colours</li>
+    </ul>
+  </div>
+  <div class="card gold">
+    <h3>Partner</h3>
+    <div class="price">monthly · invoiced</div>
+    <ul>
+      <li><b>No badge</b> — it reads as part of your site</li>
+      <li><b>Your accent colour</b></li>
+      <li><b>Your token pinned</b>, always on screen whatever the ranking says</li>
+      <li>Everything in Free</li>
+      <li>Priority if the data source changes</li>
+    </ul>
+    <a class="tg" href="https://t.me/casper_crypto" target="_blank" rel="noopener">
+      Talk to us on Telegram →</a>
+  </div>
+</div>
+
+<h2>Questions people actually ask</h2>
+
+<p class="lede" style="font-size:15px"><b>Does it slow my page down?</b><br>
+It is a lazy-loaded iframe on its own origin, so it cannot block your page. Token art is served
+through our CDN cache rather than hotlinked from IPFS.</p>
+
+<p class="lede" style="font-size:15px"><b>What happens if my key expires?</b><br>
+The embed keeps working and falls back to the free, badged tier. It never goes blank. A lapsed
+invoice should start a conversation, not take your page down.</p>
+
+<p class="lede" style="font-size:15px"><b>Can I change what the data says?</b><br>
+No, and that is deliberate. You control presentation — size, timeframe, feed, colour, which token is
+pinned. Nothing lets an embed misstate a market cap or a price change, because the moment that is
+possible the map is worth nothing to anyone, including you.</p>
+
+<p class="lede" style="font-size:15px"><b>Where does the data come from?</b><br>
+pump.fun directly for identity, art and market cap. Price change and liquidity come from
+DexScreener. Tokens whose market cap is not backed by liquidity, and copycat ticker swarms, are
+filtered by default.</p>
+
+<footer>
+  <a href="/">pumpbubble.fun</a> · live bubble map for pump.fun ·
+  <a href="https://t.me/casper_crypto" target="_blank" rel="noopener">Telegram</a>
+</footer>
+
+</div>
+
+<script>
+/* The builder writes the same URL shape the docs describe, so what someone
+   copies here is exactly what we support. */
+const $=id=>document.getElementById(id);
+const clampNum=(v,lo,hi,dflt)=>{const n=parseInt(v,10);return Number.isFinite(n)?Math.min(hi,Math.max(lo,n)):dflt};
+
+function build(){
+  const p=new URLSearchParams();
+  if($('b-mode').value!=='graduated')p.set('mode',$('b-mode').value);
+  if($('b-tf').value!=='h1')p.set('tf',$('b-tf').value);
+  p.set('limit',clampNum($('b-limit').value,10,200,60));
+  const h=clampNum($('b-h').value,240,1200,600);
+  const q=p.toString();
+  $('snippet').textContent =
+`<iframe src="https://pumpbubble.fun/embed${q?'?'+q:''}"
+        style="width:100%;height:${h}px;border:0;border-radius:16px"
+        loading="lazy" title="Live pump.fun bubble map"></iframe>`;
+}
+['b-mode','b-tf','b-limit','b-h'].forEach(id=>$(id).addEventListener('input',build));
+build();
+
+$('copy').onclick=async()=>{
+  const btn=$('copy');
+  try{
+    await navigator.clipboard.writeText($('snippet').textContent);
+    btn.textContent='Copied ✓';
+  }catch(e){
+    /* clipboard blocked — select it so it can still be copied by hand */
+    const r=document.createRange();r.selectNodeContents($('snippet'));
+    const s=getSelection();s.removeAllRanges();s.addRange(r);
+    btn.textContent='Selected — press Ctrl+C';
+  }
+  setTimeout(()=>btn.textContent='Copy embed code',1800);
+};
+</script>
+</body>
+</html>

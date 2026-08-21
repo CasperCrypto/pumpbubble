@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
+import { embedConfig, safeAccent } from './embed.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
@@ -186,6 +187,20 @@ export async function handle(req, ctx) {
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
+    }
+
+    /* --------------------------------------------------------- /api/embed */
+    /* What this embed is allowed to do. Called by the embedded page itself, so
+       partner permissions are decided here rather than trusted from a query
+       string that anyone could copy off someone else's site. */
+    if (path === '/api/embed') {
+      const cfg = await embedConfig(url.searchParams.get('k') || '', ctx.env.IMG_SECRET);
+      return json({
+        ok: true,
+        ...cfg,
+        accent: safeAccent(cfg.accent),
+        home: 'https://pumpbubble.fun',
+      }, 200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* --------------------------------------------------------- /api/token */

@@ -5,4 +5,12 @@
     <changefreq>hourly</changefreq>
     <priority>1.0</priority>
   </url>
+  <!-- The embed offer is a page we want found: sites looking for a widget are
+       exactly the traffic that turns into referrals. /embed itself is not
+       listed — it is a widget, served noindex, not a document to rank. -->
+  <url>
+    <loc>https://pumpbubble.fun/partners</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>
