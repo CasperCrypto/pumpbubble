@@ -6,6 +6,7 @@
 
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
+import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources } from './sources.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
@@ -76,36 +77,35 @@ const cacheFor = mode => {
   return caches.get(mode);
 };
 
-/* graduated is the default: it is what "the pump.fun market" means to most
-   people, and bonding-curve tokens have their own tab rather than being mixed in */
-const MODES = {
-  /* Sorted by market cap: for graduated tokens that is the ranking everyone
-     means by "the pump.fun market". */
-  graduated: { complete: true, sort: 'market_cap' },
+/* Older links said mode=graduated|bonding. Keep them working rather than
+   breaking every embed and bookmark that already exists. */
+const LEGACY_MODES = { graduated: 'pumpfun', bonding: 'bonding', all: 'pumpfun' };
 
-  /* Sorted by last trade, NOT market cap. Ranking live curves by size surfaces
-     abandoned ones — measured, the by-mcap bonding feed had a median age of 104
-     days and almost nothing trading. By last trade it is 50/50 traded inside a
-     minute, median age 12 minutes, which is what a bonding board should show. */
-  bonding: { complete: false, sort: 'last_trade_timestamp' },
+function resolveSource(url) {
+  const q = url.searchParams.get('source') || '';
+  if (SOURCES[q]) return SOURCES[q];
+  const legacy = LEGACY_MODES[url.searchParams.get('mode') || ''];
+  return SOURCES[legacy] || SOURCES[DEFAULT_SOURCE];
+}
 
-  all: { complete: undefined, sort: 'market_cap' },
-};
-
-async function snapshot(ctx, mode = 'graduated', force = false) {
-  const cache = cacheFor(mode);
+async function snapshot(ctx, source, force = false) {
+  const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
+  const cache = cacheFor(src.id);
   const now = Date.now();
-  if (!force && cache.data && now - cache.at < SNAPSHOT_TTL) return cache.data;
+  /* Each source sets its own lifetime. pump.fun tolerates a 10s poll; the free
+     GeckoTerminal and CoinGecko tiers are ~30 requests a minute shared across
+     all our traffic, so those feeds are cached far longer. Bitcoin's market cap
+     does not move enough in ten seconds to be worth a request. */
+  const ttl = src.ttl || SNAPSHOT_TTL;
+  if (!force && cache.data && now - cache.at < ttl) return cache.data;
   if (cache.inflight) return cache.inflight;
 
   cache.inflight = (async () => {
     try {
       const snap = await buildSnapshot({
+        source: src,
         hist: ctx.hist,
         secret: ctx.env.IMG_SECRET,
-        pages: 6,
-        complete: (MODES[mode] || MODES.graduated).complete,
-        sort: (MODES[mode] || MODES.graduated).sort,
       });
       cache.data = snap; cache.at = Date.now(); cache.err = null;
       ctx.onSnapshot?.(snap);
@@ -144,8 +144,8 @@ export async function handle(req, ctx) {
       const limited = rateLimit(req, 'tokens', 180, 60_000);
       if (limited) return limited;
 
-      const mode = MODES[url.searchParams.get('mode')] ? url.searchParams.get('mode') : 'graduated';
-      const snap = await snapshot(ctx, mode);
+      const src = resolveSource(url);
+      const snap = await snapshot(ctx, src);
       const { byMint } = await activeBoosts(ctx.store);
       const tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
 
@@ -179,10 +179,13 @@ export async function handle(req, ctx) {
         age: Date.now() - snap.ts,
         sol: snap.sol,
         source: snap.source,
+        sourceLabel: snap.sourceLabel,
+        boostable: snap.boostable,
+        sources: publicSources(),
         enriched: snap.enriched,
         withArt: snap.withArt,
         signed: snap.signed,
-        mode,
+        mode: src.id,
         solid: snap.solid,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
@@ -216,8 +219,9 @@ export async function handle(req, ctx) {
       if (!isMint(mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
 
       /* prefer a feed we already hold — free, and already image-signed */
-      for (const mode of ['graduated', 'bonding']) {
-        const c = cacheFor(mode);
+      /* check every warm cache, whichever sources happen to be loaded */
+      for (const [sid, c] of caches) {
+        const mode = sid;
         const hit = c.data?.tokens.find(t => t.mint === mint);
         if (hit) return json({ ok: true, token: hit, from: mode });
       }
@@ -285,7 +289,7 @@ export async function handle(req, ctx) {
 
       /* A bonding-curve token is just as boostable as a graduated one, so look
          in whichever feed the buyer was actually looking at. */
-      let snap = await snapshot(ctx, 'graduated').catch(() => null);
+      let snap = await snapshot(ctx, 'pumpfun').catch(() => null);
       let tok = snap?.tokens.find(t => t.mint === body.mint);
       if (!tok) {
         const bond = await snapshot(ctx, 'bonding').catch(() => null);

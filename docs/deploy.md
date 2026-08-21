@@ -154,3 +154,30 @@ Custom domain**. Cloudflare writes the correct record and issues the certificate
 Doing it in that order matters: adding the custom domain while the parking
 record still exists fails on a conflict that the deploy log reports only as a
 DNS error.
+
+## Data sources and their rate limits
+
+| source | upstream | TTL | requests per refresh |
+|---|---|---|---|
+| pump.fun (graduated, bonding) | `frontend-api-v3.pump.fun` | 10s | 6 |
+| whole market | CoinGecko free tier | 120s | **1** |
+
+CoinGecko returns 250 coins in a single call with art and change data included,
+so the whole-market view costs one request every two minutes. That is what makes
+it safe on a free tier.
+
+### Why there are no launchpad feeds beyond pump.fun
+
+Bonk.fun, Moonshot, Boop and the rest were built and then removed, because the
+free GeckoTerminal tier could not carry them. Measured, not assumed:
+
+- **~30 requests/minute shared across all traffic.** Fetching two launchpads
+  back to back already returned 429, and that was with one visitor.
+- **No token art.** Pool endpoints carry none — 1 image across 40 tokens.
+- **No usable liquidity.** `reserve_in_usd` came back 0, so the quality scorer
+  flagged every single token as unbacked.
+
+The adapter shape in `src/sources.mjs` is still the right one — adding a source
+means writing a fetch function, not editing the pipeline. But it needs a data
+provider that can actually serve a launchpad feed with art and depth, which on
+the free tiers available today means a paid GeckoTerminal or Birdeye key.

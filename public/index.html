@@ -484,9 +484,12 @@ body.embed #brandbadge.on{display:flex}
 <div id="chips">
   <!-- Graduated and bonding are separate feeds, never mixed: a 24h axis means
        nothing to a token that is forty minutes into its bonding curve. -->
+  <!-- pump.fun is the identity and stays the default. The whole-market view is
+       a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
-    <button data-mode="graduated" class="on">Graduated</button>
+    <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="bonding">Bonding</button>
+    <button data-mode="majors">Whole market</button>
   </div>
   <div class="seg acc" id="tf">
     <button data-tf="m5">5M</button>
@@ -631,7 +634,8 @@ const S={
   tokens:[], view:[], tf:'h1', sizeBy:'mcap', limit: innerWidth<640?50:100,
   minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
   target:null, parts:[],
-  mode:'graduated',      // graduated | bonding — separate feeds, never mixed
+  mode:'pumpfun',        // pumpfun | bonding | majors — separate feeds, never mixed
+  boostable:true,        // majors have no Solana mint, so they cannot be boosted
   pin:'', embedLink:false,
   realOnly:true, hidden:0
 };
@@ -656,6 +660,20 @@ function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;re
    one. */
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* A boost is paid in SOL against a Solana mint. Bitcoin has no mint, so on the
+   whole-market view there is nothing to sell — say so plainly rather than
+   offering a button that leads to a refusal. */
+function applyBoostability(){
+  const on=S.boostable!==false;
+  for(const id of ['boostTop','cBoost']){
+    const el=document.getElementById(id);
+    if(!el)continue;
+    el.style.display=on?'':'none';
+  }
+  const rail=document.getElementById('rail');
+  if(rail)rail.style.display=on?'':'none';
+}
 
 /* Plain-language version of the server's quality flags. Says what was measured,
    never "scam" — intent is unknowable, backing is measurable. */
@@ -696,10 +714,12 @@ async function fetchLive(){
      before falling back to demo data: dropping to demo is a visible downgrade
      and should be a last resort, not the response to one slow request. */
   let j;
-  try{ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),12000) }
-  catch(e){ j=await jget('/api/tokens?mode='+encodeURIComponent(S.mode),15000) }
+  try{ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),12000) }
+  catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),15000) }
   if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
+  S.boostable=j.boostable!==false;
+  applyBoostability();
   return j.tokens.map(t=>({
     id:t.mint, mint:t.mint, sym:t.sym, name:t.name,
     img:t.img||null,                     // already a signed, cached proxy URL
@@ -1677,7 +1697,8 @@ async function initEmbed(){
   const lim=parseInt(q.get('limit'),10);
   if(lim>=10&&lim<=200)S.limit=lim;
   if(['m5','h1','h6','h24'].includes(q.get('tf')))S.tf=q.get('tf');
-  if(['graduated','bonding'].includes(q.get('mode')))S.mode=q.get('mode');
+  const src=q.get('source')||q.get('mode');
+  if(['pumpfun','bonding','majors','graduated'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
   if(q.get('real')==='0')S.realOnly=false;
 
   let cfg={brand:true,accent:'',pin:''};

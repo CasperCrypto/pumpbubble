@@ -79,3 +79,20 @@ that should rank on its own.
 The embed is `index.html` in a stripped mode (`body.embed`), not a separate page. An embed that
 drifts from the real map stops being a preview of the real map, which is the only reason a site
 would put it there. Changes to the map reach every embed automatically.
+
+## Sources
+
+The map carries more than pump.fun now. `?source=` selects the feed:
+
+| source | what | boostable |
+|---|---|---|
+| `pumpfun` (default) | pump.fun, graduated | yes |
+| `bonding` | pump.fun, still on the curve | yes |
+| `majors` | the whole market, top 250 by market cap | no |
+
+Older `?mode=graduated|bonding` links still resolve, so existing embeds and
+bookmarks keep working.
+
+**Majors cannot be boosted.** A boost is paid in SOL against a Solana mint, and
+Bitcoin has no mint — so on that view the boost button and the ad rail are
+hidden rather than offering something that leads to a refusal.

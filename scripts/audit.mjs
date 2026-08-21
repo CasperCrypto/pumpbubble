@@ -50,7 +50,20 @@ console.log('\n-- data quality (graduated) --');
 const snap = await (await get('/api/tokens')).json();
 const T = snap.tokens || [];
 T.length >= 200 ? ok('token count', String(T.length)) : no('token count', String(T.length));
-snap.source === 'pump.fun' ? ok('source is pump.fun') : no('source', String(snap.source));
+snap.source === 'pumpfun' ? ok('default source is pump.fun') : no('default source', String(snap.source));
+
+/* every source must actually serve, not just the default */
+for (const s of (snap.sources || [])) {
+  try {
+    const r = await get('/api/tokens?source=' + s.id, 60000);
+    const j = await r.json();
+    const n = (j.tokens || []).length;
+    const img = (j.tokens || []).filter(t => t.img).length;
+    n >= 40 && img / Math.max(n, 1) > 0.9
+      ? ok('source ' + s.id, n + ' tokens, ' + img + ' with art' + (s.boostable ? '' : ', not boostable'))
+      : no('source ' + s.id, n + ' tokens, ' + img + ' with art');
+  } catch (e) { no('source ' + s.id, e.message); }
+}
 
 const pct = (n, d) => Math.round(n / d * 100);
 const withMcap = T.filter(t => t.mcap > 0).length;

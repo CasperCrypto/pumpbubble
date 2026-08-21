@@ -326,7 +326,28 @@ const THIN_RATIO = 120;     // mcap/liquidity above this is essentially paper
 const DEAD_VOLUME = 1000;   // USD in 24h, below this nobody is trading it
 const MAX_COPIES = 2;       // same ticker across more mints than this is a swarm
 
-export function scoreQuality(tokens, solPrice = 0) {
+/* `kind` selects the rules. 'memecoin' is the full check — an unbacked market
+   cap and a copycat ticker swarm are the two ways a launchpad feed lies.
+   'major' skips them: Bitcoin trades across every venue at once, so no single
+   pool's depth describes it, and two coins sharing a ticker in the top 200 is
+   a naming collision rather than a swarm. Applying memecoin rules there would
+   flag the entire market as unbacked. */
+export function scoreQuality(tokens, solPrice = 0, kind = 'memecoin') {
+  if (kind === 'major') {
+    for (const t of tokens) {
+      t.copies = 1;
+      t.ageH = 0;
+      t.mcLiq = null;
+      t.flags = [];
+      t.solid = t.mcap > 0;
+      delete t.curveSol;
+    }
+    return tokens;
+  }
+  return scoreMemecoins(tokens, solPrice);
+}
+
+function scoreMemecoins(tokens, solPrice = 0) {
   /* Copycat swarms reuse one ticker across dozens of mints — 14 tokens called
      UOTF in a single snapshot, on a live feed. The count is the signal. */
   const perSymbol = new Map();
@@ -370,26 +391,34 @@ export function scoreQuality(tokens, solPrice = 0) {
 }
 
 /* ================================================================ snapshot */
-export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
-                                      sort = 'market_cap', includeNsfw = false,
-                                      complete } = {}) {
+/* `source` is an adapter from sources.mjs: it knows how to fetch its own feed,
+   whether DexScreener can tell us anything useful about it, and which quality
+   rules apply. Everything downstream of the fetch is shared. */
+export async function buildSnapshot({ source, hist, secret } = {}) {
   const now = Date.now();
+  if (!source || typeof source.fetch !== 'function') throw new Error('no source');
+
   const [tokens, sol] = await Promise.all([
-    fetchPumpCoins({ pages, perPage, sort, includeNsfw, complete }),
-    fetchSolPrice(),
+    source.fetch(),
+    /* only needed to price bonding-curve liquidity, which is a Solana idea */
+    source.chain === 'solana' ? fetchSolPrice() : Promise.resolve(0),
   ]);
 
   let enriched = 0;
-  try { enriched = await enrich(tokens); }
-  catch { /* colour degrades, the map still renders */ }
+  if (source.enrich !== false) {
+    try { enriched = await enrich(tokens); }
+    catch { /* colour degrades, the map still renders */ }
+  }
 
-  scoreQuality(tokens, sol);
+  scoreQuality(tokens, sol, source.quality);
 
+  /* History is keyed by token id, which is unique per source — a Solana mint
+     for launchpads, a coingecko id for the wider market. */
   if (hist) {
     pushHistory(hist, tokens, now);
     for (const t of tokens) {
-      const own = changeFromHistory(hist, t.mint, t.mcap, now);
-      /* our own history only fills gaps DexScreener left */
+      const own = changeFromHistory(hist, t.id, t.mcap, now);
+      /* our own history only fills gaps the feed left */
       for (const k of ['m5', 'h1', 'h6', 'h24']) {
         if (own[k] !== undefined && !t.pc[k]) t.pc[k] = own[k];
       }
@@ -413,6 +442,8 @@ export async function buildSnapshot({ hist, secret, pages = 6, perPage = 50,
   return {
     ts: now, sol, count: tokens.length, enriched, withArt, sampleArt,
     solid: tokens.filter(t => t.solid).length,
-    signed: !!secret, source: 'pump.fun', tokens,
+    signed: !!secret,
+    source: source.id, sourceLabel: source.label, boostable: !!source.boostable,
+    tokens,
   };
 }

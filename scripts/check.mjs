@@ -30,8 +30,10 @@ try {
   if (!snap.ok || !Array.isArray(snap.tokens) || !snap.tokens.length) throw new Error('no tokens');
   pass('/api/tokens', `${snap.tokens.length} tokens in ${ms}ms`);
 
-  if (snap.source !== 'pump.fun') fail('data source', 'expected pump.fun, got ' + snap.source);
-  else pass('source is pump.fun');
+  /* the default feed must still be pump.fun — that is the product, and a
+     silent switch to another source would change what the site is */
+  if (snap.source !== 'pumpfun') fail('default source', 'expected pumpfun, got ' + snap.source);
+  else pass('default source is pump.fun');
 
   const withMcap = snap.tokens.filter(t => t.mcap > 0).length;
   const withSym  = snap.tokens.filter(t => t.sym && t.sym !== '?').length;
