@@ -7,6 +7,7 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources } from './sources.mjs';
+import { renderMarketPage, marketTable, marketSummary } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
@@ -191,6 +192,38 @@ export async function handle(req, ctx) {
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
+    }
+
+    /* ------------------------------------------------------------ /market */
+    /* Dev serves the rendered page here; in production the worker does it so
+       the injection happens ahead of the asset layer. Same renderer either way. */
+    if (path === '/market' && ctx.readAsset) {
+      const shell = await ctx.readAsset('/market.html');
+      if (!shell) return null;
+      const snap = await snapshot(ctx, 'majors').catch(() => null);
+      const body = snap
+        ? renderMarketPage(shell, snap, 'https://pumpbubble.fun/market')
+        : shell;
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' },
+      });
+    }
+
+    /* -------------------------------------------------------- /api/market */
+    /* The market page rendered as HTML, on the server. A canvas is an empty box
+       to a crawler — measured, 196 indexable words on the homepage and not one
+       coin name — which is why a market-overview query finds coin360 and not
+       us. The adapters serve it; the worker injects it into the page. */
+    if (path === '/api/market') {
+      const snap = await snapshot(ctx, 'majors').catch(() => null);
+      if (!snap) return json({ ok: false, error: 'market data unavailable' }, 503);
+      return json({
+        ok: true,
+        ts: snap.ts,
+        summary: marketSummary(snap.tokens),
+        table: marketTable(snap.tokens),
+      }, 200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* --------------------------------------------------------- /api/embed */

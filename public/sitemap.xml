@@ -5,9 +5,13 @@
     <changefreq>hourly</changefreq>
     <priority>1.0</priority>
   </url>
-  <!-- The embed offer is a page we want found: sites looking for a widget are
-       exactly the traffic that turns into referrals. /embed itself is not
-       listed — it is a widget, served noindex, not a document to rank. -->
+  <!-- The market overview is the page built to be found: it carries the whole
+       market as server-rendered text, which the canvas homepage cannot. -->
+  <url>
+    <loc>https://pumpbubble.fun/market</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+  </url>
   <url>
     <loc>https://pumpbubble.fun/partners</loc>
     <changefreq>weekly</changefreq>

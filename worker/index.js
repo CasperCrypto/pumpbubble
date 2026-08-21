@@ -159,6 +159,39 @@ export default {
        _headers because the worker runs first and this must not depend on which
        rule the asset layer decides wins. */
     const p = new URL(request.url).pathname.replace(/\/+$/, '');
+
+    /* /market is rendered on the server: the coin table, the summary line and
+       the structured data are injected into the static shell before it is sent.
+       A crawler that runs no JavaScript still gets the whole market as text,
+       which is the entire point of the page. */
+    if (p === '/market') {
+      const shell = new URL(request.url);
+      shell.pathname = '/market.html';
+      const res = await env.ASSETS.fetch(new Request(shell, request));
+      if (!res.ok) return res;
+      try {
+        const html = await res.text();
+        const data = await handle(new Request('https://pumpbubble.fun/api/market'), ctx);
+        const j = data ? await data.json() : null;
+        const body = j?.ok
+          ? html
+              .replace('<!--MARKET_SUMMARY-->', j.summary)
+              .replace('<!--MARKET_TABLE-->', j.table)
+              .replace(/<!--UPDATED-->/g, new Date(j.ts).toISOString())
+          : html;
+        return new Response(body, {
+          status: 200,
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            /* the numbers age, the page does not need to be re-rendered per hit */
+            'cache-control': 'public, max-age=60, s-maxage=60',
+          },
+        });
+      } catch {
+        return res;   // fall back to the shell rather than an error page
+      }
+    }
+
     if (p === '/embed') {
       /* Ask for '/', not '/index.html'. Workers Assets normalises an explicit
          index.html into a 307 back to the directory root — which lands on the
@@ -189,6 +222,10 @@ export default {
     execCtx.waitUntil((async () => {
       try {
         await handle(new Request('https://pumpbubble.fun/api/tokens'), ctx);
+        /* Keep the whole-market feed warm too. /market renders from it, and a
+           cold CoinGecko fetch is several seconds — which a crawler counts
+           against the page and a visitor simply waits through. */
+        await handle(new Request('https://pumpbubble.fun/api/tokens?source=majors'), ctx);
         /* Reconcile payments whose buyer never came back to the tab. Without
            this a correct payment can sit unclaimed indefinitely — which is
            exactly what happened in production before the sweep existed. */

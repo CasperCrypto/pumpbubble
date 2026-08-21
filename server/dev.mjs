@@ -55,6 +55,11 @@ const usingPublicRpc = !real(process.env.SOLANA_RPC);
 const ctx = {
   env, store,
   hist: new Map(),
+  /* Lets the shared API render /market in dev the same way the worker does. */
+  async readAsset(rel) {
+    try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }
+    catch { return null; }
+  },
   /* Dev has no edge cache; the browser cache is enough to keep the map smooth.
      Some IPFS gateways stall for many seconds, so cap the wait and let the
      front end fall back to its letter avatar. */

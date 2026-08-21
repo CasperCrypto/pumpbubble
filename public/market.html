@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Crypto Market Overview — Live Bubble Map of the Whole Market</title>
+<meta name="description" content="Live crypto market overview as a bubble map. Every coin is a bubble: size is market cap, colour is 24h price change. Top 250 coins with prices, market caps and volume, updated continuously.">
+<link rel="canonical" href="https://pumpbubble.fun/market">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Crypto Market Overview — Live Bubble Map">
+<meta property="og:description" content="The whole crypto market as bubbles. Size is market cap, colour is 24h change.">
+<meta property="og:image" content="https://pumpbubble.fun/og.png">
+<meta property="og:url" content="https://pumpbubble.fun/market">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg">
+<!--MARKET_JSONLD-->
+<style>
+:root{--bg:#070910;--ink:#eef2f8;--dim:#8a93a6;--line:rgba(255,255,255,.10);
+  --glass:rgba(255,255,255,.035);--mint:#28e08c;--mint2:#3df09b;--gold:#ffc93c;--rose:#ff4d6d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--mint2)}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+header{padding:30px 0 8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mark{width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#7dffc4,#0fae66 60%,#046b3d);
+  box-shadow:0 0 22px rgba(40,224,140,.45)}
+.wordmark{font-weight:900;font-size:19px;letter-spacing:-.02em;text-decoration:none;color:var(--ink)}
+.wordmark i{font-style:normal;color:var(--dim)}
+nav{margin-left:auto;display:flex;gap:16px;font-size:13.5px;font-weight:700}
+nav a{color:var(--dim);text-decoration:none}
+nav a:hover{color:var(--ink)}
+h1{font-size:clamp(27px,4.6vw,40px);line-height:1.12;letter-spacing:-.03em;margin:16px 0 10px;font-weight:900}
+h2{font-size:21px;font-weight:900;letter-spacing:-.02em;margin:42px 0 10px}
+h3{font-size:16px;font-weight:800;margin:22px 0 4px}
+p{max-width:70ch}
+.lede{font-size:17px;color:var(--dim)}
+.muted{color:var(--dim)}
+.frame{margin:22px 0 8px;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  background:#080a0f;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.frame iframe{display:block;width:100%;height:520px;border:0}
+.updated{font-size:12px;color:var(--dim)}
+table.mkt{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px;
+  font-variant-numeric:tabular-nums}
+table.mkt th,table.mkt td{padding:9px 10px;text-align:right;border-bottom:1px solid rgba(255,255,255,.06)}
+table.mkt thead th{text-align:right;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);border-bottom:1px solid var(--line)}
+table.mkt th.coin,table.mkt thead th:nth-child(2){text-align:left;font-weight:800}
+table.mkt td.rank,table.mkt thead th:first-child{text-align:right;color:var(--dim);width:44px}
+table.mkt th.coin span{color:var(--dim);font-weight:700;font-size:12px;margin-left:6px}
+.up{color:var(--mint2)}.dn{color:var(--rose)}
+.faq{border-top:1px solid var(--line);margin-top:12px;padding-top:6px}
+footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="mark"></div>
+  <a class="wordmark" href="/">pumpbubble<i>.fun</i></a>
+  <nav>
+    <a href="/">pump.fun map</a>
+    <a href="/market">Market overview</a>
+    <a href="/partners">Embed</a>
+  </nav>
+</header>
+
+<h1>Crypto market overview, as a bubble map</h1>
+<p class="lede">Every coin is a bubble. Size is market capitalisation, colour is the
+24-hour price change — green up, red down. One glance tells you what the whole market
+is doing and which coins are actually moving.</p>
+
+<div class="frame">
+  <iframe src="/embed?source=majors&amp;limit=80&amp;tf=h24" loading="lazy"
+          title="Live crypto market bubble map"></iframe>
+</div>
+<p class="updated">Live data. Last updated <time datetime="<!--UPDATED-->"><!--UPDATED--></time>.</p>
+
+<h2>What the market is doing right now</h2>
+<p><!--MARKET_SUMMARY--></p>
+
+<h2>Top cryptocurrencies by market cap</h2>
+<p class="muted">The same numbers the bubbles are drawn from, if you would rather read them.</p>
+<!--MARKET_TABLE-->
+
+<h2>How to read the map</h2>
+<h3>Size is market capitalisation</h3>
+<p>A bubble's area is proportional to the coin's market cap on a compressed scale. Bitcoin
+genuinely is orders of magnitude larger than most coins, so a raw scale would render
+everything else as invisible dots — the scale is log-compressed so the whole market stays
+readable at once.</p>
+
+<h3>Colour is price change</h3>
+<p>Green means the price rose over the selected timeframe, red means it fell, and the
+intensity tracks the size of the move. Switch between 5 minutes, 1 hour, 6 hours and 24
+hours: a 24-hour figure means something very different for an established coin than for one
+launched this morning.</p>
+
+<h3>Gold means somebody paid</h3>
+<p>A gold bubble is a paid boost. Its size comes from what was paid, not from market cap,
+and it is labelled so it can never be mistaken for a genuinely large coin. Paid bubbles are
+capped at a quarter of the map, and every boost ever sold is published with its transaction
+in the <a href="/api/boost/history">public ledger</a>. Boosts apply to Solana tokens only,
+so nothing on this page can be bought.</p>
+
+<h2>Questions</h2>
+<div class="faq">
+  <h3>Where does the data come from?</h3>
+  <p>Market caps, prices, changes and coin art come from CoinGecko for the wider market, and
+  from pump.fun directly for the Solana launchpad map. Nothing is estimated or filled in.</p>
+
+  <h3>How often does it update?</h3>
+  <p>The market view refreshes continuously; the underlying data is re-fetched every couple
+  of minutes, which is far faster than market caps of this size actually move. The pump.fun
+  map refreshes every few seconds, because those tokens move that fast.</p>
+
+  <h3>Is it free?</h3>
+  <p>Yes, with no account. You can also <a href="/partners">embed the map</a> on your own
+  site for free.</p>
+
+  <h3>How is this different from a normal market table?</h3>
+  <p>A table makes you read a hundred rows to notice that the market is mostly red today.
+  A bubble map tells you in one glance, and shows you relative size at the same time. The
+  table above is here for when you want the exact numbers.</p>
+</div>
+
+<footer>
+  <a href="/">pumpbubble.fun</a> — live bubble maps for crypto ·
+  <a href="/">pump.fun map</a> ·
+  <a href="/partners">embed on your site</a> ·
+  <a href="https://t.me/casper_crypto" target="_blank" rel="noopener">Telegram</a>
+</footer>
+
+</div>
+</body>
+</html>

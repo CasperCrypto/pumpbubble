@@ -510,6 +510,7 @@ body.embed #brandbadge.on{display:flex}
   <button class="iconbtn" id="openSheet">☰ Filters</button>
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
+  <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps">📊 Market overview</a>
   <a class="iconbtn" href="/partners" title="Put this map on your own site">&lt;/&gt; Embed</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
@@ -724,7 +725,11 @@ async function fetchLive(){
   S.boostable=j.boostable!==false;
   applyBoostability();
   return j.tokens.map(t=>({
-    id:t.mint, mint:t.mint, sym:t.sym, name:t.name,
+    /* Key on the server's id, not the mint. Only Solana tokens have a mint, so
+       keying on it collapsed all 250 whole-market coins onto one empty key —
+       merge() then matched none of them and threw away every position and
+       radius on each refresh, which is why those bubbles kept restarting. */
+    id:t.id||t.mint, mint:t.mint, sym:t.sym, name:t.name,
     img:t.img||null,                     // already a signed, cached proxy URL
     mcap:+t.mcap||0, vol:+t.vol||0,
     pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0},
