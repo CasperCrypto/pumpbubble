@@ -7,7 +7,7 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources } from './sources.mjs';
-import { renderMarketPage, marketTable, marketSummary } from './seo.mjs';
+import { renderMarketPage, marketTable, marketSummary, marketJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
@@ -223,6 +223,7 @@ export async function handle(req, ctx) {
         ts: snap.ts,
         summary: marketSummary(snap.tokens),
         table: marketTable(snap.tokens),
+        jsonld: marketJsonLd(snap.tokens, { url: 'https://pumpbubble.fun/market' }),
       }, 200, { 'cache-control': 'public, max-age=60' });
     }
 

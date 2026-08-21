@@ -184,6 +184,7 @@ export default {
           ? html
               .replace('<!--MARKET_SUMMARY-->', j.summary)
               .replace('<!--MARKET_TABLE-->', j.table)
+              .replace('<!--MARKET_JSONLD-->', j.jsonld || '')
               .replace(/<!--UPDATED-->/g, new Date(j.ts).toISOString())
           : html;
         return new Response(body, {
