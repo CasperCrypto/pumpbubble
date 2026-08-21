@@ -630,6 +630,9 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const lerp=(a,b,t)=>a+(b-a)*t;
 const TOUCH=matchMedia('(hover:none)').matches;
 
+/* The only feed the generated fallback is shaped like. */
+const DEFAULT_SOURCE='pumpfun';
+
 const S={
   tokens:[], view:[], tf:'h1', sizeBy:'mcap', limit: innerWidth<640?50:100,
   minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
@@ -766,7 +769,20 @@ async function refresh(first){
     const s=Math.round((S.age||0)/1000);
     setLive(true, S.serverStale ? 'live · '+s+'s old' : 'live');
   }
-  catch(e){ if(!S.tokens.length)merge(demo()); S.live=false; setLive(false,'demo data'); }
+  catch(e){
+    S.live=false;
+    /* The generated set is pump.fun-shaped memecoins. Showing it under "Whole
+       market" would label invented bubbles as Bitcoin's market — the exact
+       dishonesty the rest of the map exists to avoid. Only the default feed
+       falls back to demo; every other source says it could not load and keeps
+       whatever was already on screen. */
+    if(S.mode===DEFAULT_SOURCE){
+      if(!S.tokens.length)merge(demo());
+      setLive(false,'demo data');
+    }else{
+      setLive(false, S.tokens.length ? 'could not refresh' : 'could not load');
+    }
+  }
   rebuild(); rail();
 }
 function merge(fresh){
@@ -1321,8 +1337,11 @@ function wire(id,fn){
 }
 wire('mode',b=>{
   S.mode=b.dataset.mode;
-  S.tokens=[];                       // different feed entirely — drop the old physics
-  setLive(false,'switching…');
+  /* Keep the current bubbles on screen while the new feed loads. Clearing them
+     left an empty map for as long as the fetch took — and the whole-market feed
+     is the slow one, being 250 coins from a cold cache. The old set is replaced
+     wholesale the moment the new one lands. */
+  setLive(false,'loading '+b.textContent.trim()+'…');
   refresh(true);
 });
 wire('tf',b=>{S.tf=b.dataset.tf;rebuild()});
