@@ -164,7 +164,7 @@ export default {
        the structured data are injected into the static shell before it is sent.
        A crawler that runs no JavaScript still gets the whole market as text,
        which is the entire point of the page. */
-    if (p === '/market') {
+    if (p === '/market' || p === '/board') {
       /* Ask the asset layer for '/market', not '/market.html'. An explicit
          .html request is normalised into a 307 back to the extensionless path —
          which now re-enters the worker, because run_worker_first names /market,
@@ -172,19 +172,23 @@ export default {
          to '/'. env.ASSETS.fetch bypasses the worker, so this resolves to the
          file without recursing. */
       const shell = new URL(request.url);
-      shell.pathname = '/market';
+      shell.pathname = p;
       shell.search = '';
       const res = await env.ASSETS.fetch(new Request(shell, { headers: request.headers }));
       if (!res.ok) return res;
       try {
         const html = await res.text();
-        const data = await handle(new Request('https://pumpbubble.fun/api/market'), ctx);
+        const api = p === '/board' ? '/api/board' : '/api/market';
+        const data = await handle(new Request('https://pumpbubble.fun' + api), ctx);
         const j = data ? await data.json() : null;
         const body = j?.ok
           ? html
               .replace('<!--MARKET_SUMMARY-->', j.summary)
               .replace('<!--MARKET_TABLE-->', j.table)
               .replace('<!--MARKET_JSONLD-->', j.jsonld || '')
+              .replace('<!--BOARD_SUMMARY-->', j.summary)
+              .replace('<!--BOARD_TABLE-->', j.table)
+              .replace('<!--BOARD_JSONLD-->', j.jsonld || '')
               .replace(/<!--UPDATED-->/g, new Date(j.ts).toISOString())
           : html;
         return new Response(body, {

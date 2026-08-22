@@ -7,7 +7,8 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
-import { renderMarketPage, marketTable, marketSummary, marketJsonLd } from './seo.mjs';
+import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
+         boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import { board, priceFor, standing, countClick, bidsAsBoostSpend,
          FLOOR_SOL, INCREMENT_SOL } from './bids.mjs';
@@ -247,6 +248,21 @@ export async function handle(req, ctx) {
       });
     }
 
+    /* --------------------------------------------------------- /api/board */
+    /* The board rendered as HTML for the worker to inject. Same reason as
+       /market: this is the page people link to when they take #1, and a link
+       that unfurls into an empty canvas gets clicked once. */
+    if (path === '/api/board') {
+      const rows = await board(ctx.store);
+      return json({
+        ok: true,
+        ts: Date.now(),
+        summary: boardSummary(rows, { floor: FLOOR_SOL }),
+        table: boardTable(rows, { increment: INCREMENT_SOL, floor: FLOOR_SOL }),
+        jsonld: boardJsonLd(rows, 'https://pumpbubble.fun/board'),
+      }, 200, { 'cache-control': 'public, max-age=15' });
+    }
+
     /* ---------------------------------------------------------- /api/bids */
     /* The board, and what each rank costs to take. Public and unauthenticated:
        the whole mechanic depends on everyone being able to see the price of
@@ -352,13 +368,20 @@ export async function handle(req, ctx) {
     /* ------------------------------------------------------------ /market */
     /* Dev serves the rendered page here; in production the worker does it so
        the injection happens ahead of the asset layer. Same renderer either way. */
-    if (path === '/market' && ctx.readAsset) {
-      const shell = await ctx.readAsset('/market.html');
+    if ((path === '/market' || path === '/board') && ctx.readAsset) {
+      const shell = await ctx.readAsset(path === '/board' ? '/board.html' : '/market.html');
       if (!shell) return null;
-      const snap = await snapshot(ctx, 'majors').catch(() => null);
-      const body = snap
-        ? renderMarketPage(shell, snap, 'https://pumpbubble.fun/market')
-        : shell;
+      let body = shell;
+      if (path === '/board') {
+        const rows = await board(ctx.store);
+        body = shell
+          .replace('<!--BOARD_SUMMARY-->', boardSummary(rows, { floor: FLOOR_SOL }))
+          .replace('<!--BOARD_TABLE-->', boardTable(rows, { increment: INCREMENT_SOL, floor: FLOOR_SOL }))
+          .replace('<!--BOARD_JSONLD-->', boardJsonLd(rows, 'https://pumpbubble.fun/board'));
+      } else {
+        const snap = await snapshot(ctx, 'majors').catch(() => null);
+        if (snap) body = renderMarketPage(shell, snap, 'https://pumpbubble.fun/market');
+      }
       return new Response(body, {
         status: 200,
         headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' },

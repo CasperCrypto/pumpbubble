@@ -38,7 +38,7 @@ binding = "ASSETS"
 # /market matches market.html, so the server-rendering branch never ran and the
 # raw shell went out with its placeholders intact. These paths must reach the
 # worker first.
-run_worker_first = ["/market", "/embed"]
+run_worker_first = ["/market", "/board", "/embed"]
 
 # Keeps a warm snapshot + persists market-cap history when traffic is quiet.
 [triggers]

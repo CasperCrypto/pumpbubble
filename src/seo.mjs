@@ -130,3 +130,71 @@ export function renderMarketPage(html, snapshot, url) {
     .replace('<!--MARKET_JSONLD-->', marketJsonLd(tokens, { url }))
     .replace(/<!--UPDATED-->/g, esc(updated));
 }
+
+/* ============================================================= bid board */
+/* Server-rendered for the same reason the market table is: this is the page
+   people link to when they take #1, and a link that unfurls into an empty
+   canvas is a link nobody clicks twice. */
+
+const sol = n => (Number(n) || 0).toFixed(3).replace(/\.?0+$/, '') + ' SOL';
+const ago = t => {
+  const m = Math.max(0, Math.round((Date.now() - (Number(t) || 0)) / 60000));
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  return h < 24 ? h + 'h ago' : Math.round(h / 24) + 'd ago';
+};
+
+export function boardTable(rows, { increment = 0.05, floor = 0.05 } = {}) {
+  if (!rows.length) {
+    return `<p class="muted">Nobody has claimed a rank yet. The first bid takes #1 for
+      ${floor} SOL — and every bid after has to beat it.</p>`;
+  }
+  return `<ol class="board">
+${rows.map(r => `  <li class="rank r${r.rank}">
+    <span class="n">#${r.rank}</span>
+    ${r.img ? `<img class="av" src="${esc(r.img)}" alt="" loading="lazy">`
+            : `<span class="av">${esc((r.sym || '?')[0])}</span>`}
+    <span class="who"><b>${esc(r.sym)}</b><small>${esc(r.name || '')}</small></span>
+    <span class="amt">${sol(r.sol)}</span>
+    <span class="meta">${r.clicks || 0} clicks · ${ago(r.updated)}</span>
+    <button class="take" data-mint="${esc(r.mint)}" data-sol="${(r.sol + increment).toFixed(3)}"
+      >Take #${r.rank} for ${sol(r.sol + increment)}</button>
+  </li>`).join('\n')}
+</ol>`;
+}
+
+export function boardSummary(rows, { floor = 0.05 } = {}) {
+  if (!rows.length) {
+    return `The board is empty. The first bid takes #1 for ${floor} SOL.`;
+  }
+  const total = rows.reduce((s, r) => s + (Number(r.sol) || 0), 0);
+  const top = rows[0];
+  return `${rows.length} token${rows.length > 1 ? 's' : ''} are holding a rank, ` +
+    `${sol(total)} bid in total. ${esc(top.sym)} holds #1 with ${sol(top.sol)} — ` +
+    `anyone can take it by paying more.`;
+}
+
+export function boardJsonLd(rows, url) {
+  const data = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebPage', '@id': url, url,
+        name: 'Token bid board — pay to rank #1 on the pump.fun bubble map',
+        description: 'A live leaderboard of pump.fun tokens where rank is the bid. Held until outbid, paid in SOL.',
+        isPartOf: { '@type': 'WebSite', name: 'pumpbubble.fun', url: 'https://pumpbubble.fun' },
+      },
+      {
+        '@type': 'ItemList',
+        name: 'Top bids',
+        numberOfItems: rows.length,
+        itemListElement: rows.slice(0, 20).map(r => ({
+          '@type': 'ListItem', position: r.rank, name: `${r.sym} — ${sol(r.sol)}`,
+        })),
+      },
+    ],
+  };
+  return `<script type="application/ld+json">${
+    JSON.stringify(data).replace(/</g, '\u003c')}</script>`;
+}

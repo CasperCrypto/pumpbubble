@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Token Bid Board — Pay to Rank #1 on the pump.fun Bubble Map</title>
+<meta name="description" content="Rank is the bid. Pay in SOL to claim #1 on the pump.fun bubble map — your token becomes the biggest gold bubble until somebody pays more. No account, no signup, settles on-chain.">
+<link rel="canonical" href="https://pumpbubble.fun/board">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Token Bid Board — pay to rank #1">
+<meta property="og:description" content="Rank is the bid. Claim #1 on the pump.fun bubble map, held until somebody outbids you.">
+<meta property="og:image" content="https://pumpbubble.fun/og.png">
+<meta property="og:url" content="https://pumpbubble.fun/board">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg">
+<!--BOARD_JSONLD-->
+<style>
+:root{--bg:#070910;--ink:#eef2f8;--dim:#8a93a6;--line:rgba(255,255,255,.10);
+  --glass:rgba(255,255,255,.035);--glass2:rgba(255,255,255,.07);
+  --mint:#28e08c;--mint2:#3df09b;--gold:#ffc93c;--rose:#ff4d6d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--mint2)}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px 80px}
+header{padding:30px 0 8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mark{width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#7dffc4,#0fae66 60%,#046b3d);
+  box-shadow:0 0 22px rgba(40,224,140,.45)}
+.wordmark{font-weight:900;font-size:19px;letter-spacing:-.02em;text-decoration:none;color:var(--ink)}
+.wordmark i{font-style:normal;color:var(--dim)}
+nav{margin-left:auto;display:flex;gap:16px;font-size:13.5px;font-weight:700}
+nav a{color:var(--dim);text-decoration:none}
+nav a:hover{color:var(--ink)}
+h1{font-size:clamp(27px,4.6vw,40px);line-height:1.12;letter-spacing:-.03em;margin:16px 0 10px;font-weight:900}
+h2{font-size:20px;font-weight:900;margin:40px 0 10px;letter-spacing:-.02em}
+h3{font-size:15.5px;font-weight:800;margin:20px 0 4px}
+p{max-width:70ch}
+.lede{font-size:17px;color:var(--dim)}
+.muted{color:var(--dim)}
+.claim{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:22px 0 10px;
+  padding:16px;border:1px solid rgba(255,201,60,.4);border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,201,60,.09),rgba(255,201,60,.02))}
+.claim input{flex:1;min-width:180px;background:rgba(0,0,0,.3);border:1px solid var(--line);
+  color:var(--ink);border-radius:11px;padding:11px 13px;
+  font:700 13px ui-monospace,Menlo,monospace;outline:none}
+.claim input:focus{border-color:rgba(255,201,60,.6)}
+.claim input.amt{max-width:130px;flex:0 0 auto}
+button{background:linear-gradient(180deg,#ffe07a,var(--gold) 60%,#e6a400);color:#2b1c00;
+  border:0;border-radius:11px;padding:11px 18px;font:900 13.5px ui-sans-serif,sans-serif;cursor:pointer}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.55;cursor:default}
+ol.board{list-style:none;padding:0;margin:16px 0 0}
+li.rank{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;
+  border:1px solid var(--line);background:var(--glass);margin-bottom:8px;flex-wrap:wrap}
+li.rank.r1{border-color:rgba(255,201,60,.5);
+  background:linear-gradient(180deg,rgba(255,201,60,.12),rgba(255,201,60,.03));
+  box-shadow:0 0 26px rgba(255,201,60,.12)}
+li.rank .n{font-weight:900;font-size:15px;color:var(--dim);min-width:34px}
+li.rank.r1 .n{color:var(--gold)}
+li.rank .av{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+  display:grid;place-items:center;font-weight:900;background:#2a3140;color:#08110c}
+li.rank .who{flex:1;min-width:120px;display:flex;flex-direction:column}
+li.rank .who b{font-size:14.5px;font-weight:900}
+li.rank .who small{color:var(--dim);font-size:11.5px}
+li.rank .amt{font-weight:900;font-variant-numeric:tabular-nums;font-size:15px}
+li.rank.r1 .amt{color:var(--gold)}
+li.rank .meta{color:var(--dim);font-size:11.5px;min-width:110px}
+li.rank button.take{background:var(--glass2);color:var(--ink);border:1px solid var(--line);
+  font-size:12px;padding:8px 12px}
+li.rank button.take:hover{border-color:rgba(255,201,60,.6);color:var(--gold)}
+.note{font-size:12.5px;color:var(--dim);margin-top:8px}
+.pay{margin-top:14px;padding:14px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);
+  background:rgba(255,255,255,.02);font-size:13px;line-height:1.7;display:none}
+.pay.on{display:block}
+.pay code{display:inline-block;margin:3px 0;padding:5px 9px;border-radius:8px;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);
+  color:#7fd7ff;font-size:12px;word-break:break-all;cursor:pointer}
+.bad{color:#ffb3c1}
+footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="mark"></div>
+  <a class="wordmark" href="/">pumpbubble<i>.fun</i></a>
+  <nav>
+    <a href="/">Map</a>
+    <a href="/board">Bid board</a>
+    <a href="/market">Market</a>
+    <a href="/partners">Embed</a>
+  </nav>
+</header>
+
+<h1>Rank is the bid.</h1>
+<p class="lede">Pay more than whoever holds a rank and it is yours. Your token becomes the
+biggest gold bubble on the map and stays there until somebody pays more. No account, no
+signup — it settles on-chain in seconds.</p>
+
+<div class="claim">
+  <input id="mint" placeholder="pump.fun contract address" spellcheck="false" autocomplete="off">
+  <input id="amount" class="amt" inputmode="decimal" placeholder="SOL">
+  <button id="go">Claim a rank</button>
+</div>
+<div id="msg" class="note"></div>
+<div id="pay" class="pay"></div>
+
+<h2>The board</h2>
+<p class="muted"><!--BOARD_SUMMARY--></p>
+<!--BOARD_TABLE-->
+
+<h2>How it works</h2>
+<h3>Rank is the bid, nothing else</h3>
+<p>The board is sorted by how much has been bid. Pay more than the token above you and you
+pass it. There are no tiers, no editorial, no way to be placed higher by asking.</p>
+
+<h3>Held until outbid</h3>
+<p>A rank does not expire on a timer. It is yours until somebody pays more — which also
+means the price only ever goes up.</p>
+
+<h3>Topping up costs only the difference</h3>
+<p>Already on the board? You pay the gap, not the full price. Sitting at #2 with 6 SOL
+against a 10 SOL #1 costs 4.05 SOL to take the top, not 10.05.</p>
+
+<h3>Nothing is refunded</h3>
+<p>Being outbid is the mechanic working, not a fault. Bids are not returned when somebody
+passes you — your token keeps the bid it paid and the rank it earns.</p>
+
+<h3>Every bid is auditable</h3>
+<p>Payments settle to one public treasury wallet and each confirmed bid carries its Solana
+transaction. Nothing on this board was placed by us.</p>
+
+<footer>
+  <a href="/">pumpbubble.fun</a> ·
+  <a href="/market">market overview</a> ·
+  <a href="/partners">embed the map</a> ·
+  <a href="https://t.me/casper_crypto" target="_blank" rel="noopener">Telegram</a>
+</footer>
+
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CA=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+let order=null,poll=null;
+
+/* Clicking "Take #N" fills the form rather than jumping straight to payment —
+   nobody should be one click from sending SOL without seeing the amount. */
+document.querySelectorAll('button.take').forEach(b=>b.onclick=()=>{
+  $('mint').value=b.dataset.mint;
+  $('amount').value=b.dataset.sol;
+  $('mint').scrollIntoView({block:'center',behavior:'smooth'});
+  $('go').focus();
+});
+
+function say(t,bad){ $('msg').textContent=t; $('msg').className='note'+(bad?' bad':''); }
+
+$('go').onclick=async()=>{
+  if(order&&order.payUrl){location.href=order.payUrl;return}
+  const mint=$('mint').value.trim(), sol=parseFloat($('amount').value);
+  if(!CA.test(mint))return say('that does not look like a Solana contract address',true);
+  if(!(sol>0))return say('enter how much SOL to bid',true);
+
+  $('go').disabled=true; say('quoting…');
+  try{
+    const r=await fetch('/api/bid/order',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({mint,sol})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||'could not quote that bid');
+    order=j.order;
+    const p=order.projection;
+    say(`${order.sym}: ${p.currentSol} → ${p.afterSol} SOL, lands at #${p.rankAfter}`);
+    $('pay').className='pay on';
+    $('pay').innerHTML=`<b>Send exactly</b><br>
+      <code data-copy="${esc(order.amountSol)}">${esc(order.amountSol)} SOL ⧉</code><br>
+      to <code data-copy="${esc(order.treasury)}">${esc(order.treasury)} ⧉</code><br>
+      <span id="stat">waiting for payment…</span><br>
+      <span class="muted">The amount is unique to this bid — send it exactly. Nothing is refunded.</span>`;
+    $('pay').querySelectorAll('code').forEach(c=>c.onclick=()=>{
+      navigator.clipboard?.writeText(c.dataset.copy).catch(()=>{});
+    });
+    $('go').textContent='Open wallet →'; $('go').disabled=false;
+    try{ localStorage.setItem('pb_bid',JSON.stringify({token:j.token,at:Date.now()})) }catch(e){}
+    startPoll(j.token);
+  }catch(e){
+    say(e.message,true); $('go').disabled=false;
+  }
+};
+
+function startPoll(token){
+  clearInterval(poll);
+  poll=setInterval(async()=>{
+    try{
+      const j=await (await fetch('/api/boost/status?t='+encodeURIComponent(token))).json();
+      const st=$('stat');
+      if(j.status==='paid'){
+        clearInterval(poll);
+        try{localStorage.removeItem('pb_bid')}catch(e){}
+        if(st)st.innerHTML='<b style="color:var(--gold)">paid ✓ reloading the board…</b>';
+        setTimeout(()=>location.reload(),1500);
+      }else if(j.status==='expired'&&st){
+        clearInterval(poll); st.textContent='quote expired — claim again for a fresh one';
+      }
+    }catch(e){/* the chain is the source of truth; keep waiting */}
+  },6000);
+}
+
+/* Coming back from a wallet: pick the bid up and let the server reconcile. */
+(async()=>{
+  try{
+    const s=JSON.parse(localStorage.getItem('pb_bid')||'null');
+    if(!s||Date.now()-s.at>864e5)return;
+    await fetch('/api/boost/sweep').catch(()=>{});
+    const j=await (await fetch('/api/boost/status?t='+encodeURIComponent(s.token))).json();
+    if(j.status==='paid'){localStorage.removeItem('pb_bid');say('your bid confirmed — the board is up to date')}
+    else startPoll(s.token);
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
