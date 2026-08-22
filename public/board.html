@@ -105,6 +105,7 @@ signup — it settles on-chain in seconds.</p>
   <button id="go">Claim a rank</button>
 </div>
 <div id="msg" class="note"></div>
+<div id="traffic" class="note"></div>
 <div id="pay" class="pay"></div>
 
 <h2>The board</h2>
@@ -143,6 +144,18 @@ transaction. Nothing on this board was placed by us.</p>
 
 <script>
 const $=id=>document.getElementById(id);
+
+/* Traffic is part of the pitch: nobody bids for attention without evidence it
+   exists. Failing quietly is fine — an absent number beats a wrong one. */
+(async()=>{
+  try{
+    const s=await (await fetch('/api/stats')).json();
+    if(!s.ok||!s.total)return;
+    $('traffic').textContent =
+      s.today.views.toLocaleString()+' page views today · '+
+      s.total.toLocaleString()+' since launch';
+  }catch(e){}
+})();
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const CA=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;

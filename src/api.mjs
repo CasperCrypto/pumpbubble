@@ -10,6 +10,7 @@ import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } fro
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
+import { shouldCount, record, dueForFlush, flush as flushStats, summary as statsSummary } from './stats.mjs';
 import { board, priceFor, standing, countClick, bidsAsBoostSpend,
          FLOOR_SOL, INCREMENT_SOL } from './bids.mjs';
 import {
@@ -171,6 +172,19 @@ export async function handle(req, ctx) {
     });
   }
 
+  /* Count page reads here, where every request passes, rather than from a
+     script an ad blocker or our own CSP would stop. Never let counting fail a
+     request — a missed pageview is not worth a 500. */
+  if (ctx.store?.available && shouldCount(path, req.method)) {
+    try {
+      await record(req, path, ctx.env.IMG_SECRET || 'salt');
+      if (dueForFlush()) {
+        const p = flushStats(ctx.store);
+        if (ctx.waitUntil) ctx.waitUntil(p); else await p;
+      }
+    } catch { /* best effort */ }
+  }
+
   try {
     /* ------------------------------------------------------- /api/tokens */
     if (path === '/api/tokens') {
@@ -246,6 +260,15 @@ export async function handle(req, ctx) {
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
+    }
+
+    /* --------------------------------------------------------- /api/stats */
+    /* Public on purpose. Nobody bids for attention without evidence the
+       attention exists, so the traffic number is part of the pitch — the same
+       reason outbid.lol puts its visitor count on its own board. */
+    if (path === '/api/stats') {
+      const s = await statsSummary(ctx.store, 7);
+      return json({ ok: true, ...s }, 200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* --------------------------------------------------------- /api/board */

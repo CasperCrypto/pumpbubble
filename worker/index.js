@@ -11,6 +11,7 @@
 
 import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory } from '../src/core.mjs';
+import { flush as flushStats } from '../src/stats.mjs';
 
 /* Per-isolate memory. Cloudflare recycles isolates freely, so this is a cache,
    never the source of truth — KV holds anything that must survive. */
@@ -131,6 +132,8 @@ async function makeCtx(env, execCtx) {
     store: makeStore(env),
     hist: await loadHist(env),
     fetchImage: imageFetcher(execCtx),
+    /* lets counting flush after the response is sent, off the critical path */
+    waitUntil: p => execCtx.waitUntil(p),
     onSnapshot() {
       /* Persist history occasionally: ~288 KV writes/day, inside the free tier. */
       if (Date.now() - histDirtyAt > HIST_SAVE_EVERY) {
@@ -243,6 +246,7 @@ export default {
            exactly what happened in production before the sweep existed. */
         await handle(new Request('https://pumpbubble.fun/api/boost/sweep'), ctx);
         await saveHist(env);
+        await flushStats(makeStore(env));
       } catch { /* next tick will retry */ }
     })());
   },
