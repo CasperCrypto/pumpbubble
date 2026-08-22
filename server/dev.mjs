@@ -49,6 +49,7 @@ const env = {
   TREASURY_WALLET: real(process.env.TREASURY_WALLET) || '6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C',
   SOLANA_RPC: real(process.env.SOLANA_RPC) || 'https://api.mainnet-beta.solana.com',
   AD_CONTACT: real(process.env.AD_CONTACT) || 'https://t.me/casper_crypto',
+  COINGECKO_KEY: real(process.env.COINGECKO_KEY) || '',
 };
 const usingPublicRpc = !real(process.env.SOLANA_RPC);
 

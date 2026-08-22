@@ -6,7 +6,7 @@
 
 import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
-import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources } from './sources.mjs';
+import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
 import {
@@ -102,6 +102,22 @@ async function snapshot(ctx, source, force = false) {
   if (cache.inflight) return cache.inflight;
 
   cache.inflight = (async () => {
+    /* Sources marked `shared` are cached in KV as well as in memory. Isolates
+       do not share memory, so a per-isolate cache multiplies our upstream
+       request count by however many isolates Cloudflare is running — which is
+       how a feed with a 2-minute TTL still managed to get itself 429'd. KV is
+       the one cache every isolate can see. */
+    const kvKey = 'snap:' + src.id;
+    if (src.shared && !force) {
+      try {
+        const saved = await ctx.store.get(kvKey);
+        if (saved && Date.now() - saved.ts < ttl) {
+          cache.data = saved; cache.at = Date.now(); cache.err = null;
+          return saved;
+        }
+      } catch { /* KV miss is not an error, just a slower path */ }
+    }
+
     try {
       const snap = await buildSnapshot({
         source: src,
@@ -109,12 +125,24 @@ async function snapshot(ctx, source, force = false) {
         secret: ctx.env.IMG_SECRET,
       });
       cache.data = snap; cache.at = Date.now(); cache.err = null;
+      if (src.shared) {
+        try { await ctx.store.put(kvKey, snap); } catch { /* non-fatal */ }
+      }
       ctx.onSnapshot?.(snap);
       return snap;
     } catch (e) {
       cache.err = String(e && e.message || e);
       /* Stale data beats an empty map — the front end shows the age. */
       if (cache.data && Date.now() - cache.at < STALE_OK) return cache.data;
+      /* For a shared source, fall back to whatever KV holds however old it is.
+         A five-minute-old market cap is worth far more than an error page, and
+         being rate-limited upstream must not empty the map. */
+      if (src.shared) {
+        try {
+          const saved = await ctx.store.get(kvKey);
+          if (saved) { cache.data = saved; return saved; }
+        } catch { /* fall through to the throw */ }
+      }
       throw e;
     } finally {
       cache.inflight = null;
@@ -125,6 +153,7 @@ async function snapshot(ctx, source, force = false) {
 
 /* =============================================================== routes */
 export async function handle(req, ctx) {
+  setCoingeckoKey(ctx.env.COINGECKO_KEY);
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 

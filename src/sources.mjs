@@ -25,14 +25,21 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 
+/* CoinGecko rate-limits by IP, and Cloudflare's egress addresses are shared
+   across every Worker on the platform — so an unauthenticated call competes
+   with the whole platform for one bucket and gets 429 regardless of how little
+   we ask for. Measured: 200 from a laptop, 429 from the worker, same second.
+   A free demo key moves us into our own quota and is the actual fix. */
+let CG_KEY = '';
+export function setCoingeckoKey(k) { CG_KEY = k || ''; }
+
 async function jget(url, ms = 12000) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), ms);
+  const headers = { accept: 'application/json', 'user-agent': UA };
+  if (CG_KEY && url.startsWith(CG)) headers['x-cg-demo-api-key'] = CG_KEY;
   try {
-    const r = await fetch(url, {
-      signal: c.signal,
-      headers: { accept: 'application/json', 'user-agent': UA },
-    });
+    const r = await fetch(url, { signal: c.signal, headers });
     if (!r.ok) throw new Error(r.status + ' ' + url.slice(0, 80));
     return await r.json();
   } finally { clearTimeout(t); }
@@ -104,7 +111,11 @@ export const SOURCES = {
      spent on the feeds that do. */
   majors: {
     id: 'majors', label: 'Whole market', group: 'Whole market',
-    chain: 'cg', ttl: 120_000, enrich: false, boostable: false, quality: 'major',
+    /* Five minutes, and shared through KV. Per-isolate caching meant every
+       cold isolate fetched independently, multiplying our request count by the
+       number of isolates Cloudflare happens to be running. Market caps of this
+       size do not move meaningfully in five minutes. */
+    chain: 'cg', ttl: 300_000, shared: true, enrich: false, boostable: false, quality: 'major',
     fetch: () => coingeckoMarkets(1, 250),
   },
 };
