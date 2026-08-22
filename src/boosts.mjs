@@ -10,6 +10,8 @@
    production and on a Map in local dev.
    ========================================================================== */
 
+import { applyBid, bidOrderFields } from './bids.mjs';
+
 /* Tiers mirror the markup in index.html — keep both in step. */
 export const TIERS = {
   spark: { id: 'spark', label: 'Spark',  mult: 1.5, usd: 9,   hours: 6  },
@@ -87,7 +89,7 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, ref = '', taken = [] }) {
+export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, ref = '', taken = [], kind = 'boost', bidSol = 0 }) {
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
   if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
   if (!(solPrice > 0)) throw new Error('no SOL price available');
@@ -117,17 +119,23 @@ export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, so
      Six decimals is typeable and still leaves 999 distinct nonces per price
      point. Uniqueness is guaranteed rather than hoped for: `taken` carries the
      amounts of every pending order, and the nonce is drawn from what is free. */
-  const baseLamports = Math.floor((tier.usd / solPrice) * 1e3) * 1e6;   // 0.001 SOL granularity
-  const used = new Set(taken);
   let lamports = 0;
-  for (let i = 0; i < 200 && !lamports; i++) {
-    const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999);
-    const candidate = baseLamports + nonce * 1000;                     // 1 microSOL steps
-    if (!used.has(candidate)) lamports = candidate;
+  if (kind === 'bid') {
+    /* A bid's amount is the bidder's, not ours: they are buying a rank, and
+       what that rank is worth is exactly the question the board asks. */
+    ({ lamports } = bidOrderFields(bidSol, taken));
+  } else {
+    const baseLamports = Math.floor((tier.usd / solPrice) * 1e3) * 1e6; // 0.001 SOL granularity
+    const used = new Set(taken);
+    for (let i = 0; i < 200 && !lamports; i++) {
+      const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999);
+      const candidate = baseLamports + nonce * 1000;                   // 1 microSOL steps
+      if (!used.has(candidate)) lamports = candidate;
+    }
+    /* every nonce at this price is in flight — extremely unlikely, but never
+       issue a quote that could match somebody else's payment */
+    if (!lamports) throw new Error('too many boosts being paid for right now — try again in a minute');
   }
-  /* every nonce at this price is in flight — extremely unlikely, but never
-     issue a quote that could match somebody else's payment */
-  if (!lamports) throw new Error('too many boosts being paid for right now — try again in a minute');
 
   const amountSol = lamports / LAMPORTS;
   const now = Date.now();
@@ -136,8 +144,14 @@ export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, so
     reference: newReference(),
     mint, sym: sym || '', name: name || '', img: img || '', mcap: mcap || 0,
     grad: grad !== false,
-    tier: tier.id, mult: tier.mult, hours: tier.hours,
-    usd: tier.usd, solPrice, amountSol, lamports,
+    kind,
+    tier: kind === 'bid' ? 'bid' : tier.id,
+    mult: kind === 'bid' ? 0 : tier.mult,
+    hours: kind === 'bid' ? 0 : tier.hours,
+    /* A bid has no USD price — it is whatever was offered, converted only for
+       display and for the affiliate commission. */
+    usd: kind === 'bid' ? Math.round(lamports / 1e9 * solPrice * 100) / 100 : tier.usd,
+    solPrice, amountSol, lamports,
     treasury,
     /* The referral code is signed into the order so it cannot be swapped after
        the buyer has seen the price. Whether it is worth anything is decided at
@@ -469,6 +483,17 @@ export async function activeBoosts(store, now = Date.now()) {
 }
 
 export async function activateBoost(store, order, payment) {
+  /* A bid rides the identical payment machinery and lands in a different
+     ledger. Branching here rather than at each call site means the live poll,
+     the closed-tab sweep and any future path all credit it the same way. */
+  if (order.kind === 'bid') {
+    return applyBid(store, {
+      mint: order.mint, sym: order.sym, name: order.name, img: order.img,
+      mcap: order.mcap, sol: payment.received,
+      sig: payment.signature, payer: payment.payer,
+    });
+  }
+
   const now = Date.now();
   const list = (await store.get('boosts')) || [];
   /* idempotent: the same signature must never buy two boosts */

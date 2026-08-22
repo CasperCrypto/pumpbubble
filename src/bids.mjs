@@ -87,6 +87,33 @@ export async function standing(store, mint) {
   };
 }
 
+/* Quote a bid. Same order shape as a boost, so it signs, polls, verifies and
+   sweeps through the identical machinery — `kind` is the only thing that tells
+   them apart at activation. The amount is chosen by the bidder rather than
+   taken from a price list, which is the whole difference between renting a
+   boost and buying a rank. */
+export function bidOrderFields(solAmount, taken = []) {
+  const wanted = round(solAmount);
+  if (!(wanted >= FLOOR_SOL)) throw new Error(`the smallest bid is ${FLOOR_SOL} SOL`);
+  if (wanted > 10000) throw new Error('that bid is implausibly large — contact us instead');
+
+  /* Same trick as a boost, and the same six-decimal limit for the same reason:
+     Phantom strips the Solana Pay reference, so the amount is the only
+     identifier — and anyone paying by hand has to type it. A nine-decimal
+     figure gets truncated, which is how a real payment went unmatched once
+     already. Round to 0.001 SOL and put the nonce in whole microSOL. */
+  const baseLamports = Math.floor(wanted * 1e3) * 1e6;
+  const used = new Set(taken);
+  let lamports = 0;
+  for (let i = 0; i < 200 && !lamports; i++) {
+    const nonce = 1 + (crypto.getRandomValues(new Uint32Array(1))[0] % 999);
+    const candidate = baseLamports + nonce * 1000;
+    if (!used.has(candidate)) lamports = candidate;
+  }
+  if (!lamports) throw new Error('too many bids being paid for right now — try again in a minute');
+  return { lamports, amountSol: lamports / 1e9, usd: 0 };
+}
+
 /* Credit a confirmed payment to a token's bid. Idempotent on the transaction
    signature, exactly like a boost: one payment can never count twice however
    many times the sweep or a poll re-runs. */

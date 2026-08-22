@@ -9,6 +9,8 @@ import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
+import { board, priceFor, standing, countClick, bidsAsBoostSpend,
+         FLOOR_SOL, INCREMENT_SOL } from './bids.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
@@ -177,6 +179,28 @@ export async function handle(req, ctx) {
       const src = resolveSource(url);
       const snap = await snapshot(ctx, src);
       const { byMint } = await activeBoosts(ctx.store);
+
+      /* Bids join the same paid-size pool as boosts, converted through USD, so
+         the renderer needs no idea that bids exist and there is one definition
+         of "paid size" rather than two that drift apart. A token that has both
+         gets the sum, which is the honest answer. */
+      const bidRows = await board(ctx.store);
+      if (bidRows.length) {
+        const asSpend = bidsAsBoostSpend(bidRows, snap.sol || 0);
+        for (const [mint, b] of asSpend) {
+          const cur = byMint.get(mint);
+          if (cur) {
+            cur.liveUsd += b.liveUsd;
+            cur.spentUsd += b.spentUsd;
+            cur.until = Math.max(cur.until, b.until);
+            cur.rank = b.rank;
+            cur.bid = true;
+          } else {
+            byMint.set(mint, b);
+          }
+        }
+        for (const v of byMint.values()) v.bonus = bonusFromSpend(v.liveUsd);
+      }
       const tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
 
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
@@ -221,6 +245,108 @@ export async function handle(req, ctx) {
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
+    }
+
+    /* ---------------------------------------------------------- /api/bids */
+    /* The board, and what each rank costs to take. Public and unauthenticated:
+       the whole mechanic depends on everyone being able to see the price of
+       being #1 without committing to anything. */
+    if (path === '/api/bids') {
+      const rows = await board(ctx.store);
+      const top = await priceFor(ctx.store, 1);
+      return json({
+        ok: true,
+        floorSol: FLOOR_SOL,
+        incrementSol: INCREMENT_SOL,
+        treasury: ctx.env.TREASURY_WALLET || null,
+        top,
+        board: rows,
+      });
+    }
+
+    /* Where a given token stands, and the cheapest way up. Quoting the gap
+       rather than the full price is what makes defending a rank affordable
+       enough that a bidding war actually happens. */
+    if (path === '/api/bid/standing') {
+      const mint = url.searchParams.get('mint') || '';
+      if (!isMint(mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+      return json({ ok: true, ...(await standing(ctx.store, mint)) });
+    }
+
+    /* --------------------------------------------------- /api/bid/order */
+    if (path === '/api/bid/order' && req.method === 'POST') {
+      const limited = rateLimit(req, 'order', 30, 600_000);
+      if (limited) return limited;
+
+      /* Same three refusals as a boost: never quote a price we cannot honour. */
+      if (!ctx.env.TREASURY_WALLET) return json({ ok: false, error: 'bidding is not open yet' }, 503);
+      if (!ctx.store.available) return json({ ok: false, error: 'bidding is temporarily closed — storage is not configured' }, 503);
+      if (!ctx.env.SOLANA_RPC) return json({ ok: false, error: 'bidding is temporarily closed — no Solana RPC configured' }, 503);
+
+      const body = await req.json().catch(() => ({}));
+      if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+
+      const solAmount = Number(body.sol);
+      if (!(solAmount >= FLOOR_SOL)) {
+        return json({ ok: false, error: `the smallest bid is ${FLOOR_SOL} SOL` }, 400);
+      }
+
+      /* Identity comes from our own data, never the caller — same rule as a
+         boost. A bid can name any pump.fun token, including one too small to be
+         on the map, which is exactly who wants to buy visibility. */
+      let tok = null;
+      for (const sid of ['pumpfun', 'bonding']) {
+        const s = cacheFor(sid).data;
+        tok = s?.tokens.find(t => t.mint === body.mint);
+        if (tok) break;
+      }
+      if (!tok) tok = await fetchCoin(body.mint, ctx.env.IMG_SECRET);
+      if (!tok) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
+
+      const solPrice = cacheFor('pumpfun').data?.sol || 0;
+      if (!(solPrice > 0)) return json({ ok: false, error: 'no SOL price available right now' }, 503);
+
+      const inFlight = (await listPending(ctx.store)).map(o => o.lamports);
+      const refCode = isCode(body.ref) && await getAffiliate(ctx.store, body.ref) ? body.ref : '';
+
+      let order;
+      try {
+        order = await createOrder({
+          kind: 'bid', bidSol: solAmount, taken: inFlight,
+          mint: body.mint, sym: tok.sym, name: tok.name, img: tok.img, mcap: tok.mcap,
+          grad: !!tok.grad, solPrice, treasury: ctx.env.TREASURY_WALLET, ref: refCode,
+        });
+      } catch (e) {
+        return json({ ok: false, error: String(e.message || e) }, 400);
+      }
+
+      /* Say plainly where this lands them, before they pay. Being outbid later
+         is the product working, but being surprised at checkout is not. */
+      const st = await standing(ctx.store, body.mint);
+      const rows = await board(ctx.store);
+      const after = (st.current?.sol || 0) + order.amountSol;
+      const wouldBeRank = rows.filter(r => r.mint !== body.mint && r.sol > after).length + 1;
+      order.projection = {
+        currentSol: st.current?.sol || 0,
+        afterSol: Math.round(after * 1e6) / 1e6,
+        rankNow: st.current?.rank || null,
+        rankAfter: wouldBeRank,
+      };
+
+      await addPending(ctx.store, order);
+      const token = await signOrder(order, ctx.env.IMG_SECRET);
+      return json({ ok: true, order, token });
+    }
+
+    /* Click-throughs on a ranked token. Counted here rather than in the page so
+       the number belongs to us — it is the evidence the next bidder weighs. */
+    if (path === '/api/bid/click') {
+      const mint = url.searchParams.get('mint') || '';
+      if (!isMint(mint)) return json({ ok: false, error: 'bad mint' }, 400);
+      const limited = rateLimit(req, 'click', 120, 60_000);
+      if (limited) return limited;
+      const clicks = await countClick(ctx.store, mint);
+      return json({ ok: true, clicks });
     }
 
     /* ------------------------------------------------------------ /market */
