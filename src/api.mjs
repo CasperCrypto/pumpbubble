@@ -803,7 +803,22 @@ export async function handle(req, ctx) {
     /* ---------------------------------------------------------- /api/ads */
     /* House ads live in KV so a slot can be sold without a deploy. */
     if (path === '/api/ads') {
-      const ads = (await ctx.store.get('ads')) || [];
+      const raw = (await ctx.store.get('ads')) || [];
+      /* Ad art goes through the signed proxy for the same reason token art
+         does: the page is served img-src 'self', so any upstream URL renders as
+         a broken image. A sold slot showing no logo is worse than an empty one,
+         because the empty slot is at least an advert for the inventory. */
+      const ads = [];
+      for (const a of raw) {
+        let img = a.img || '';
+        if (img && ctx.env.IMG_SECRET && !img.startsWith('/api/img?')) {
+          try {
+            img = '/api/img?u=' + encodeURIComponent(img) +
+                  '&s=' + await signUrl(img, ctx.env.IMG_SECRET);
+          } catch { img = ''; }
+        }
+        ads.push({ ...a, img });
+      }
       return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '' });
     }
 
