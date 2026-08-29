@@ -4,7 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
@@ -265,6 +265,25 @@ export async function handle(req, ctx) {
       const have = new Set(tokens.map(t => t.mint));
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
+
+        /* Art has to go through the signed proxy, exactly like every token in
+           the feed. A raw ipfs.io URL is blocked by the page's own CSP
+           (img-src 'self'), so a re-added bubble rendered with no picture at
+           all — which is the whole point of a paid bubble, missing. The tokens
+           built by buildSnapshot are signed there; these never passed through
+           it, so they are signed here. */
+        let img = '';
+        if (b.img && ctx.env.IMG_SECRET) {
+          try {
+            /* Already a proxy URL if the boost was stored after this landed;
+               a raw upstream URL if it was stored before. Sign only the raw
+               ones, or the second signing would sign the proxy path itself. */
+            img = b.img.startsWith('/api/img?')
+              ? b.img
+              : '/api/img?u=' + encodeURIComponent(b.img) +
+                '&s=' + await signUrl(b.img, ctx.env.IMG_SECRET);
+          } catch { img = ''; }
+        }
         /* A paid bubble appears in whichever view the visitor is looking at,
            regardless of which feed the token came from. Scoping it to its own
            feed meant a boosted bonding token was invisible on the default map —
@@ -277,7 +296,7 @@ export async function handle(req, ctx) {
         tokens.push({
           id: mint, mint,
           sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
-          img: b.img || '', mcap: b.mcap || 0, vol: 0,
+          img, mcap: b.mcap || 0, vol: 0,
           pc: { m5: 0, h1: 0, h6: 0, h24: 0 },
           grad: true, solid: true, flags: [], copies: 1,
           boost: b.bonus, boostUsd: b.spentUsd, boostUntil: b.until,
