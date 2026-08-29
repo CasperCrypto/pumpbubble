@@ -356,6 +356,12 @@ export function bonusFromSpend(usd) {
    It decays the *spend*, which then goes through the curve above; decaying the
    bonus directly would make two half-spent boosts worth more than one whole. */
 export function liveSpend(b, now = Date.now()) {
+  /* A house boost is the operator's own permanent feature, not a purchase, so
+     it neither decays nor expires. Everything downstream — pooling, the bonus
+     curve, the gold-share guardrail, the re-add path for a token that leaves
+     the feed — treats it exactly like any other boost, which is the point:
+     one definition of paid size, not two that drift apart. */
+  if (b.house) return b.usd;
   const span = b.until - b.startedAt;
   if (span <= 0) return 0;
   const left = (b.until - now) / span;
@@ -460,7 +466,7 @@ export async function sweepPayments(store, rpcUrl, treasury, resolveRef = null) 
 
 export async function activeBoosts(store, now = Date.now()) {
   const list = (await store.get('boosts')) || [];
-  const live = list.filter(b => b.until > now);
+  const live = list.filter(b => b.house || b.until > now);
   const byMint = new Map();
   for (const b of live) {
     const cur = byMint.get(b.mint) ||

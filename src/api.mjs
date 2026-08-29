@@ -4,7 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint, fetchCoin } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
@@ -153,6 +153,48 @@ async function snapshot(ctx, source, force = false) {
     }
   })();
   return cache.inflight;
+}
+
+/* The SOL price, reliably.
+
+   Both a boost and a bid need it to price an order, and both used to read it
+   off whatever snapshot happened to be cached. On a cold isolate that is empty,
+   so checkout answered "no SOL price available right now" — the one error that
+   costs a sale outright. It now falls through three sources, and the KV copy
+   means a cold isolate never has to wait on pump.fun to quote a price. */
+let solMem = { at: 0, price: 0 };
+const SOL_TTL = 120_000;
+
+async function solPriceNow(ctx) {
+  const now = Date.now();
+  if (solMem.price > 0 && now - solMem.at < SOL_TTL) return solMem.price;
+
+  const cached = cacheFor('pumpfun').data?.sol;
+  if (cached > 0) { solMem = { at: now, price: cached }; return cached; }
+
+  try {
+    const saved = await ctx.store.get('sol:price');
+    if (saved?.price > 0 && now - saved.at < 10 * 60_000) {
+      solMem = { at: now, price: saved.price };
+      return saved.price;
+    }
+  } catch { /* KV miss just means we fetch */ }
+
+  const fresh = await fetchSolPrice().catch(() => 0);
+  if (fresh > 0) {
+    solMem = { at: now, price: fresh };
+    try { await ctx.store.put('sol:price', { price: fresh, at: now }); } catch {}
+    return fresh;
+  }
+
+  /* Last resort: a stale KV price beats refusing the sale. A rate that is ten
+     minutes old misprices an order by a fraction of a percent; refusing to
+     quote loses the whole thing. */
+  try {
+    const saved = await ctx.store.get('sol:price');
+    if (saved?.price > 0) return saved.price;
+  } catch {}
+  return 0;
 }
 
 /* =============================================================== routes */
@@ -342,7 +384,7 @@ export async function handle(req, ctx) {
       if (!tok) tok = await fetchCoin(body.mint, ctx.env.IMG_SECRET);
       if (!tok) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
 
-      const solPrice = cacheFor('pumpfun').data?.sol || 0;
+      const solPrice = await solPriceNow(ctx);
       if (!(solPrice > 0)) return json({ ok: false, error: 'no SOL price available right now' }, 503);
 
       const inFlight = (await listPending(ctx.store)).map(o => o.lamports);
@@ -595,7 +637,7 @@ export async function handle(req, ctx) {
            right map if the token later drops out of it */
         grad: tok ? !!tok.grad : true,
         tierId: body.tier,
-        solPrice: snap?.sol || 0,
+        solPrice: (snap?.sol > 0 ? snap.sol : await solPriceNow(ctx)),
         treasury: ctx.env.TREASURY_WALLET,
       });
 
