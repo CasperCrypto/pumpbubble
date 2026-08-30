@@ -248,6 +248,7 @@ export default {
         /* One slice of stock long-windows per tick. The whole universe warms up
            over roughly half an hour and then only refreshes daily. */
         await handle(new Request('https://pumpbubble.fun/api/stocks/windows'), ctx);
+        await handle(new Request('https://pumpbubble.fun/api/majors/windows'), ctx);
         await saveHist(env);
         await flushStats(makeStore(env));
       } catch { /* next tick will retry */ }

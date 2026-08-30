@@ -245,13 +245,41 @@ which is a statement about the asset rather than about our data.
 | source | 1H | 24H | 1W | 1M | 1Y |
 |---|---|---|---|---|---|
 | pumpfun | yes | yes | — | — | — |
-| majors | yes | yes | yes | — | — |
+| majors | yes | yes | yes | yes | yes |
 | stocks | — | yes | — | yes | yes |
 
-Crypto has no 30d or 1y because no keyless source publishes them: CoinPaprika exposes the fields
-and returns zero for every coin on the free tier. Stocks do, via `src/stockwin.mjs` — Yahoo's chart
-endpoint, keyless and accurate, but one symbol per request, so it is filled in ~30 symbols per cron
-tick and cached in KV for a day. The map never waits on it; an unenriched symbol reports null.
+CoinPaprika returns zero for 30d and 1y on the free tier, so those two windows come from elsewhere
+for both asset classes, by two different shapes of the same idea.
+
+Stocks use `src/stockwin.mjs` — Yahoo's chart endpoint, keyless and accurate, but one symbol per
+request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Majors use
+`src/cryptowin.mjs` — DefiLlama, which takes ~60 coins per request, so the whole map rebuilds in
+twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
+symbol reports null.
+
+**A green API check is not a working feature.** The client mapper copied only `m5/h1/h6/h24` out
+of `pc`, so `d7`, `d30` and `y1` were dropped before they ever reached a bubble. Every long window
+read `+0.00%` on every asset while `/api/tokens` returned correct numbers for all of them — and the
+windows were signed off on the strength of that API response. Long windows are now carried as null
+and never coerced to zero, because `||0` turns "we don't know" into "it didn't move".
+
+Related: `scripts/page-refs.test.mjs` exists because removing the caption strip left a write to a
+deleted `#cnt`, which threw inside `rebuild()` and hung every tab on "loading…" forever, while all
+three feeds still answered 200 with full token counts in under three seconds. Server-side health
+says nothing about whether the page draws.
+
+**Test an upstream from the Worker, never from a laptop.** Binance answers a laptop and 403s
+Cloudflare's egress; so do its `.vision`, `api1` and `.us` hosts. CryptoCompare wants a key, OKX
+429s the shared egress. Kraken, Bybit and DefiLlama answer. This has now bitten twice — CoinGecko
+was the first — and a candidate that has not been probed from a deployed Worker has not been tested.
+
+DefiLlama is keyed by CoinGecko id, which the feed does not carry, so `src/cgmap.mjs` is a committed
+ticker→id map built by `scripts/cgmap.mjs` (CoinGecko's list endpoint rate-limits Cloudflare, hence
+offline). **Every entry is verified against a live price before it is written.** That check rejected
+eleven ticker collisions on the first run: `TON` matched a tokenized AT&T stock quoting 1854% off,
+and a second coin named Jupiter shadowed the real `JUP`. Ticker matching alone silently returns a
+real price for the wrong asset, which on a map of coloured circles is undetectable. Regenerate with
+`node scripts/cgmap.mjs --write` when the top 250 turns over.
 
 Two traps in that file, both of which produced numbers that looked plausible. Yahoo returns **two
 bars for the month in progress**, both equal to the current price, so picking "the previous monthly

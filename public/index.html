@@ -123,14 +123,32 @@ button,input{font-family:inherit}
 #stats .s b{font-size:13px;font-variant-numeric:tabular-nums}
 
 #boostTop{
-  margin-left:auto;flex:0 0 auto;height:32px;padding:0 14px;border:0;border-radius:999px;
-  background:linear-gradient(180deg,#ffe07a,var(--gold) 55%,#e09b00);
-  color:#2b1c00;font-weight:900;font-size:12px;letter-spacing:.01em;cursor:pointer;
-  box-shadow:0 4px 18px rgba(255,201,60,.35);white-space:nowrap;
-  transition:transform .12s,box-shadow .12s;
+  margin-left:auto;flex:0 0 auto;height:34px;padding:0 16px;border:0;border-radius:999px;
+  background:linear-gradient(180deg,#ffe9a3,var(--gold) 50%,#e6a400);
+  color:#1a1200;font-weight:800;font-size:12px;letter-spacing:.13em;
+  text-transform:uppercase;cursor:pointer;white-space:nowrap;
+  display:flex;align-items:center;gap:7px;
+  position:relative;overflow:hidden;
+  transition:transform .12s;
+  /* The glow is the point: this is the one control on the page that is for
+     sale, so it advertises itself rather than waiting to be found. */
+  animation:boostGlow 2.4s ease-in-out infinite;
 }
+#boostTop svg{width:13px;height:13px;flex:0 0 auto}
 #boostTop:active{transform:scale(.95)}
-#boostTop:hover{box-shadow:0 6px 26px rgba(255,201,60,.5)}
+@keyframes boostGlow{
+  0%,100%{box-shadow:0 3px 14px rgba(255,201,60,.30),inset 0 1px 0 rgba(255,255,255,.5)}
+  50%    {box-shadow:0 5px 26px rgba(255,201,60,.66),inset 0 1px 0 rgba(255,255,255,.5)}
+}
+/* Same light that crosses the card button, so the two read as one product. */
+#boostTop::after{
+  content:"";position:absolute;top:0;left:-45%;width:38%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);
+  transform:skewX(-18deg);animation:boostShine 3.6s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){
+  #boostTop{animation:none;box-shadow:0 4px 18px rgba(255,201,60,.4)}
+  #boostTop::after{display:none}
+}
 
 /* ============ sponsor rail ============ */
 #rail{
@@ -268,12 +286,13 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #card .acts button.pf{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0;
   box-shadow:0 6px 22px rgba(40,224,140,.35)}
 #card .acts button.bo{
-  flex:1 0 100%;order:-1;height:52px;font-size:15px;letter-spacing:-.01em;
+  flex:1 0 100%;order:-1;height:52px;font-size:14px;
+  letter-spacing:.15em;text-transform:uppercase;font-weight:800;
   background:linear-gradient(180deg,#ffe9a3,var(--gold) 52%,#e6a400);color:#2b1c00;border:0;
   box-shadow:0 8px 26px -6px rgba(255,201,60,.55);
   position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;gap:8px}
-#card .acts button.bo span{font-size:17px;line-height:1}
+#card .acts button.bo svg{width:16px;height:16px;flex:0 0 auto}
 #card .acts button.bo:active{transform:scale(.985)}
 /* A light crossing the button, matched to the gold bubbles it sells. */
 #card .acts button.bo::after{
@@ -491,7 +510,7 @@ body.embed #brandbadge.on{display:flex}
     <div class="s"><u>Top mover</u><b id="stTop">—</b></div>
   </div>
 
-  <button id="boostTop">⚡ Boost</button>
+  <button id="boostTop"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></svg>BOOST</button>
 </div>
 
 <!-- ================= sponsor rail ================= -->
@@ -571,7 +590,7 @@ body.embed #brandbadge.on{display:flex}
   <div class="acts">
     <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
     <button class="pf" id="cOpen">Chart ↗</button>
-    <button class="bo" id="cBoost"><span>⚡</span> Boost this bubble</button>
+    <button class="bo" id="cBoost"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></svg>BOOST</button>
   </div>
 </div>
 
@@ -760,7 +779,12 @@ async function fetchLive(){
     id:t.id||t.mint, mint:t.mint, sym:t.sym, name:t.name,
     img:t.img||null,                     // already a signed, cached proxy URL
     mcap:+t.mcap||0, vol:+t.vol||0,
-    pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0},
+    /* The long windows are carried as null when absent, never as 0: the map
+       greys a null and paints a 0 as a flat market. Dropping them here is
+       what made 1W, 1M and 1Y read +0.00% on every bubble regardless of
+       what the feed actually sent. */
+    pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0,
+        d7:NN(t.pc.d7),d30:NN(t.pc.d30),y1:NN(t.pc.y1)},
     boost:+t.boost||0,                   // server owns this: it is paid for
     boostUsd:+t.boostUsd||0, boostUntil:t.boostUntil||0,
     grad:!!t.grad, ath:+t.ath||0, liveStream:!!t.liveStream,
@@ -818,6 +842,10 @@ async function refresh(first){
   }
   rebuild(); rail();
 }
+/* null stays null. A window the upstream did not supply must not become a
+   zero, which the map would paint as a flat market. Declared as a function
+   so it is hoisted above the mapper that calls it. */
+function NN(v){return (v==null||!Number.isFinite(+v))?null:+v}
 function merge(fresh){
   const old=new Map(S.tokens.map(t=>[t.id,t]));
   /* Carry physics across a refresh so bubbles keep their place and momentum.
@@ -885,8 +913,6 @@ function rebuild(){
   P.forEach(t=>{t.noData=!hasTf(t);t.chg=t.noData?0:t.pc[S.tf];t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
   S.view=P;
   sizes();
-  document.getElementById('cnt').textContent=
-    `${P.length} bubbles · size = ${S.sizeBy==='mcap'?'mcap':S.sizeBy==='gain'?'|change|':'volume'}`;
   /* Say what was hidden and why — a filtered screener that hides the fact it is
      filtering is the same lie as showing the paper caps in the first place. */
   const hn=document.getElementById('hiddenNote');

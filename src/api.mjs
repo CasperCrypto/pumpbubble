@@ -8,6 +8,11 @@ import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } f
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
+import {
+  loadWindows as loadCryptoWin,
+  applyWindows as applyCryptoWin,
+  refreshWindows as refreshCryptoWin,
+} from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -290,6 +295,11 @@ export async function handle(req, ctx) {
          renders grey rather than holding up the map. */
       if (src.id === 'stocks') {
         try { tokens = applyWindows(tokens, await loadWindows(ctx.store)); } catch {}
+      }
+      /* Same arrangement for the whole-market view, from Binance rather than
+         Yahoo. CoinPaprika's own 30d and 1y are zero on the free tier. */
+      if (src.id === 'majors') {
+        try { tokens = applyCryptoWin(tokens, await loadCryptoWin(ctx.store)); } catch {}
       }
 
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
@@ -784,6 +794,18 @@ export async function handle(req, ctx) {
         const snap = await snapshot(ctx, sourceOf('stocks'));
         const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
         return json({ ok: true, ...(await refreshWindows(ctx.store, syms)) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
+      }
+    }
+
+    /* Called by cron. Rebuilds every majors long-window in one pass, at most
+       once a day; see src/cryptowin.mjs for why this one needs no warm-up. */
+    if (path === '/api/majors/windows') {
+      try {
+        const snap = await snapshot(ctx, sourceOf('majors'));
+        const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
+        return json({ ok: true, ...(await refreshCryptoWin(ctx.store, syms)) });
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }
