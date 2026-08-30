@@ -7,6 +7,10 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
+import { pctLabel, TF_LABEL, CARD_W } from './card.mjs';
+import { cardSvgFor, sharePage } from './share.mjs';
+import { svgToPng } from './png.mjs';
+import { creds as xCreds, KEY as XBOT_KEY } from './xbot.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import {
   loadWindows as loadCryptoWin,
@@ -98,6 +102,35 @@ function resolveSource(url) {
   if (SOURCES[q]) return SOURCES[q];
   const legacy = LEGACY_MODES[url.searchParams.get('mode') || ''];
   return SOURCES[legacy] || SOURCES[DEFAULT_SOURCE];
+}
+
+/* Locate one token for a share card. Goes through the same feed the map is
+   built from rather than a source directly, so a card carries the merged
+   figures - boosts, and the long windows filled in by cron - instead of the
+   raw upstream row, which has neither. */
+async function findToken(ctx, origin, { mint, sym, srcId }) {
+  const order = srcId ? [srcId] : (mint ? ['pumpfun'] : ['majors', 'stocks', 'pumpfun']);
+  for (const id of order) {
+    if (!sourceOf(id)) continue;
+    try {
+      const r = await handle(new Request(origin + '/api/tokens?source=' + id), ctx);
+      if (!r || !r.ok) continue;
+      const j = await r.json();
+      const list = (j && j.tokens) || [];
+      const hit = mint
+        ? list.find(t => t.mint === mint)
+        : list.find(t => String(t.sym || '').toUpperCase() === sym);
+      if (hit) return { t: hit, srcId: id };
+    } catch { /* try the next source */ }
+  }
+  /* A mint the map does not currently rank is still a real token. */
+  if (mint && isMint(mint)) {
+    try {
+      const t = await fetchCoin(mint, ctx.env.IMG_SECRET);
+      if (t) return { t, srcId: 'pumpfun' };
+    } catch { /* fall through */ }
+  }
+  return null;
 }
 
 async function snapshot(ctx, source, force = false) {
@@ -572,6 +605,94 @@ export async function handle(req, ctx) {
       return json({ ok: true, token: t, from: 'pump.fun' });
     }
 
+    /* ------------------------------------------------------- /api/card */
+    /* The share image. A PNG rather than the SVG it is built from, because X,
+       Telegram and Discord all decline SVG in link previews. */
+    if (path === '/api/card') {
+      const limited = rateLimit(req, 'card', 60, 60_000);
+      if (limited) return limited;
+
+      const tf = url.searchParams.get('tf') || 'h24';
+      if (!TF_LABEL[tf]) return json({ ok: false, error: 'unknown timeframe' }, 400);
+
+      const found = await findToken(ctx, url.origin, {
+        mint: url.searchParams.get('mint') || '',
+        sym: (url.searchParams.get('sym') || '').toUpperCase(),
+        srcId: url.searchParams.get('source') || '',
+      });
+      if (!found) return json({ ok: false, error: 'no token by that name' }, 404);
+
+      /* Rendering costs real CPU and one post can bring a burst of identical
+         requests, so the result is held at the edge. Five minutes is long
+         enough to absorb that burst and short enough that the number on the
+         card is still the number on the map. */
+      const store = globalThis.caches && globalThis.caches.default;
+      const ck = new Request(url.origin + '/api/card/v1/'
+        + encodeURIComponent((found.t.mint || found.t.sym) + ':' + tf));
+      if (store) {
+        const hit = await store.match(ck);
+        if (hit) return hit;
+      }
+
+      const svg = await cardSvgFor(found.t, tf);
+      if (!svg) return json({ ok: false, error: 'no measured change for that window' }, 404);
+
+      const png = await svgToPng(svg, CARD_W);
+      const res = new Response(png, {
+        headers: {
+          'content-type': 'image/png',
+          'cache-control': 'public, max-age=300',
+          'access-control-allow-origin': '*',
+        },
+      });
+      if (store) await store.put(ck, res.clone());
+      return res;
+    }
+
+    /* ------------------------------------------------------------- /s/ */
+    /* A share link. Crawlers read the Open Graph tags and show the card;
+       people get a page with a way through to the map, because an image on
+       its own is a dead end for a visitor. */
+    if (path === '/s' || path.startsWith('/s/')) {
+      const home = Response.redirect(url.origin + '/', 302);
+      const id = decodeURIComponent(path.slice(3).replace(/\/+$/, ''));
+      const tf = url.searchParams.get('tf') || 'h24';
+      if (!id || !TF_LABEL[tf]) return home;
+
+      const asMint = isMint(id);
+      const found = await findToken(ctx, url.origin, {
+        mint: asMint ? id : '',
+        sym: asMint ? '' : id.toUpperCase(),
+        srcId: url.searchParams.get('source') || '',
+      });
+      const t = found && found.t;
+      const pct = t && t.pc ? t.pc[tf] : null;
+      /* No measured value means no card, and no card means no page — better a
+         visitor lands on the map than on an image asserting a number we do not
+         have. */
+      if (!t || pct == null || !Number.isFinite(Number(pct))) return home;
+
+      const q = (t.mint ? 'mint=' + encodeURIComponent(t.mint)
+                        : 'sym=' + encodeURIComponent(t.sym) + '&source=' + found.srcId)
+        + '&tf=' + tf;
+      const key = encodeURIComponent(t.mint || t.sym);
+      const share = url.origin + '/s/' + key + (tf === 'h24' ? '' : '?tf=' + tf);
+      const text = '$' + t.sym + ' ' + pctLabel(pct) + ' in ' + (TF_LABEL[tf] || '').toLowerCase();
+
+      return new Response(sharePage({
+        origin: url.origin, t, tf, pct,
+        cardUrl: url.origin + '/api/card?' + q,
+        mapUrl: url.origin + '/' + (found.srcId === 'pumpfun' ? '' : '?source=' + found.srcId),
+        tweetUrl: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text)
+          + '&url=' + encodeURIComponent(share),
+      }), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'public, max-age=120',
+        },
+      });
+    }
+
     /* ---------------------------------------------------------- /api/img */
     /* Signed proxy. Unsigned URLs are refused, so this can never be used as an
        open relay. See core.mjs → image proxy. */
@@ -809,6 +930,19 @@ export async function handle(req, ctx) {
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }
+    }
+
+    /* Whether the X poster is live, and what it has done. Booleans and
+       timestamps only — never the credentials, and never the account. */
+    if (path === '/api/xbot/status') {
+      const st = (await ctx.store.get(XBOT_KEY)) || {};
+      return json({
+        ok: true,
+        configured: !!xCreds(ctx.env),
+        postedToday: st.count || 0,
+        lastPostAt: st.lastAt || 0,
+        onCooldown: Object.keys(st.recent || {}).length,
+      });
     }
 
     if (path === '/api/boost/sweep') {

@@ -257,6 +257,37 @@ request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Ma
 twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
 symbol reports null.
 
+## Share cards and the X poster
+
+`/s/<mint>` or `/s/<TICKER>` is a share link. Crawlers get Open Graph tags pointing at
+`/api/card`, which returns a PNG built from `src/card.mjs` and rasterised by `src/png.mjs`.
+People get a small page with the card and a way through to the map, because an image alone is a
+dead end for a visitor.
+
+**PNG, not SVG.** X, Telegram and Discord all decline SVG in link previews. That forces a
+rasteriser into the Worker: `@resvg/resvg-wasm`, ~2.4MB, the only real dependency this project has.
+It is instantiated lazily, on the first card rather than at startup, and the homepage was measured
+before and after at 0.22s to confirm nothing else pays for it. **A Worker has no system fonts** —
+Archivo Black is compiled in as bytes via a `[[rules]] type = "Data"` entry. Without it every
+string rasterises to nothing at all, silently, and the card still returns 200.
+
+**A window with no measured value gets no card.** `/api/card` 404s and `/s/` redirects to the map.
+`pctLabel(null)` returned `+0.00%` on the first pass, because `Number(null)` is 0 — the same
+coercion that had just been fixed on the map. Here it would have minted a shareable image asserting
+a flat market we never measured, with our domain printed on it.
+
+The poster (`src/xbot.mjs`) is off unless `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and
+`X_ACCESS_SECRET` are all set; `/api/xbot/status` reports whether it is live without revealing
+anything. It posts a link, never an uploaded image, so the card lands in the timeline *and* the
+click comes back. OAuth 1.0a signing is split into `baseString()` and `hmacSha1B64()` so each half
+is checked against something authoritative — the published example and RFC 2202 — because a wrong
+signature returns a bare 401 that names none of the six steps that could be at fault.
+
+Its filters exist for credibility, not data quality: the map still shows everything. pump.fun's top
+mover is routinely a token minted minutes ago showing +1452986%, which is a real number that reads
+as a scam. Posting those teaches people to scroll past us, so a candidate needs $50k market cap,
+$10k volume, and a gain between 25% and 1500%. Rate: 5 a day, 3 hours apart, one week per token.
+
 **A green API check is not a working feature.** The client mapper copied only `m5/h1/h6/h24` out
 of `pc`, so `d7`, `d30` and `y1` were dropped before they ever reached a bubble. Every long window
 read `+0.00%` on every asset while `/api/tokens` returned correct numbers for all of them — and the

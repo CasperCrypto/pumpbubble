@@ -77,3 +77,11 @@ id = "769139d9eb6d428bbe95b7341bb0f09f"
 [[routes]]
 pattern = "pumpbubble.fun"
 custom_domain = true
+
+# The share-card renderer needs its display font as bytes, not as a file the
+# browser fetches: the card is rasterised inside the Worker, where there are no
+# system fonts at all. Text would silently render as nothing without this.
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true

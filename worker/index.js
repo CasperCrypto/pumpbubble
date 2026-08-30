@@ -12,6 +12,7 @@
 import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
+import { tick as xbotTick } from '../src/xbot.mjs';
 
 /* Per-isolate memory. Cloudflare recycles isolates freely, so this is a cache,
    never the source of truth — KV holds anything that must survive. */
@@ -249,6 +250,13 @@ export default {
            over roughly half an hour and then only refreshes daily. */
         await handle(new Request('https://pumpbubble.fun/api/stocks/windows'), ctx);
         await handle(new Request('https://pumpbubble.fun/api/majors/windows'), ctx);
+        /* Marketing. Silent unless four X secrets are set, and rate-limited
+           inside itself rather than by how often this fires. */
+        await xbotTick(env, makeStore(env), async () => {
+          const r = await handle(new Request('https://pumpbubble.fun/api/tokens?source=pumpfun'), ctx);
+          const j = await r.json();
+          return (j && j.tokens) || [];
+        });
         await saveHist(env);
         await flushStats(makeStore(env));
       } catch { /* next tick will retry */ }

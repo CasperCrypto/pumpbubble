@@ -590,6 +590,7 @@ body.embed #brandbadge.on{display:flex}
   <div class="acts">
     <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
     <button class="pf" id="cOpen">Chart ↗</button>
+    <button class="pf" id="cShare">Share ↗</button>
     <button class="bo" id="cBoost"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></svg>BOOST</button>
   </div>
 </div>
@@ -1391,6 +1392,17 @@ function closeAll(){
   card.classList.remove('on');sheet.classList.remove('on');scrim.classList.remove('on');
 }
 scrim.onclick=closeAll;
+/* The share page carries an Open Graph card showing the number, which is what
+   actually travels on X. Linking straight to the image would post a picture
+   with no way back to the map. */
+document.getElementById('cShare').onclick=()=>{
+  const t=S.target;if(!t)return;
+  const id=t.mint||t.sym;if(!id)return;
+  const q=t.mint?'':'?source='+encodeURIComponent(S.mode||'majors');
+  const sep=q?'&':'?';
+  const tf=S.tf==='h24'?'':sep+'tf='+S.tf;
+  open('/s/'+encodeURIComponent(id)+q+tf,'_blank','noopener');
+};
 document.getElementById('cOpen').onclick=()=>{
   const t=S.target;if(!t)return;
   /* Stocks have no mint, so the chart for those is the ticker on a stock site
