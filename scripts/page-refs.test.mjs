@@ -50,5 +50,16 @@ const strays = [...html.slice(0, headEnd).matchAll(/<div\s+id="([A-Za-z0-9_-]+)"
 if (strays.length) no('no markup above </head>', 'found: ' + strays.join(', '));
 else ok('no markup above </head>');
 
+/* ...and below the script that uses it. This page has no defer and no
+   DOMContentLoaded: the app script runs inline and wires handlers as it goes,
+   so markup placed after it does not exist yet. Moving the share dialog out of
+   the head put it at the end of the body instead, and sveil.querySelector
+   threw on null - which killed the render loop and left every tab on
+   'loading...' again, from the opposite mistake. */
+const bodyScript = html.indexOf('<script>', html.indexOf('</head>'));
+const late = [...html.slice(bodyScript).matchAll(/<div\s+id="([A-Za-z0-9_-]+)"/g)].map(m => m[1]);
+if (late.length) no('no markup below the app script', 'found: ' + late.join(', '));
+else ok('no markup below the app script');
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

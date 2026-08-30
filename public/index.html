@@ -692,6 +692,25 @@ body.embed #brandbadge.on{display:flex}
   </div>
 </div>
 
+<!-- ================= share popup ================= -->
+<div id="sveil">
+  <div class="bg"></div>
+  <div class="modal">
+    <div class="grab"></div>
+    <h3>Share <em id="shTk">bubble</em></h3>
+    <div id="shImgWrap">
+      <img id="shImg" alt="">
+      <div id="shSpin">drawing card…</div>
+    </div>
+    <div id="shActs">
+      <button id="shX"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23 22h-6.3l-4.9-6.4L6.2 22H3l7.3-8.3L2.4 2h6.4l4.4 5.9L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z"/></svg>Post on X</button>
+      <a id="shDl" download>Download</a>
+      <button id="shCopy">Copy link</button>
+    </div>
+    <p id="shNote">X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.</p>
+  </div>
+</div>
+
 <script>
 "use strict";
 /* ==========================================================================
@@ -1959,25 +1978,6 @@ setInterval(()=>{tick();rebuild()},2500);
 /* Boost decay lives on the server now (boosts.mjs → bonusOf): it has to be
    the same number for everyone, and it must survive a page reload. */
 </script>
-
-<!-- ================= share popup ================= -->
-<div id="sveil">
-  <div class="bg"></div>
-  <div class="modal">
-    <div class="grab"></div>
-    <h3>Share <em id="shTk">bubble</em></h3>
-    <div id="shImgWrap">
-      <img id="shImg" alt="">
-      <div id="shSpin">drawing card…</div>
-    </div>
-    <div id="shActs">
-      <button id="shX"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23 22h-6.3l-4.9-6.4L6.2 22H3l7.3-8.3L2.4 2h6.4l4.4 5.9L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z"/></svg>Post on X</button>
-      <a id="shDl" download>Download</a>
-      <button id="shCopy">Copy link</button>
-    </div>
-    <p id="shNote">X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.</p>
-  </div>
-</div>
 
 </body>
 </html>
