@@ -490,6 +490,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="bonding">Bonding</button>
     <button data-mode="majors">Whole market</button>
+    <button data-mode="stocks">Stocks</button>
   </div>
   <div class="seg acc" id="tf">
     <button data-tf="m5">5M</button>
@@ -506,7 +507,12 @@ body.embed #brandbadge.on{display:flex}
        dozen mints sharing one ticker, printing paper market caps against pools
        nobody could sell into. Nothing is deleted: this filters the view, the
        count of what it hid is shown, and one click brings it all back. -->
-  <button class="iconbtn act" id="realBtn" title="Hide tokens whose market cap is not backed by liquidity, and copycat ticker swarms">✓ Real only</button>
+  <!-- The filter used to be a toggle. It is now simply how the map works:
+       showing a market cap that no pool backs is not a view somebody should
+       have to opt out of, and every visitor who left it on was seeing the
+       honest map while anyone who turned it off saw a worse one. The count of
+       what it hid is still disclosed next to the bubble count, and ?real=0
+       still turns it off for debugging. -->
   <button class="iconbtn" id="openSheet">☰ Filters</button>
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
@@ -857,7 +863,7 @@ function rebuild(){
      filtering is the same lie as showing the paper caps in the first place. */
   const hn=document.getElementById('hiddenNote');
   hn.textContent=S.hidden?`${S.hidden} unbacked hidden`:'';
-  hn.title=S.hidden?'Market cap far above pool liquidity, no trading, or a ticker shared across many mints. Click "Real only" to show them.':'';
+  hn.title=S.hidden?'Hidden: market cap far above pool liquidity, no trading, a ticker shared across many mints, or below the size worth charting.':'';
   stats();
 }
 function stats(){
@@ -1351,13 +1357,6 @@ wire('mode',b=>{
   refresh(true);
 });
 wire('tf',b=>{S.tf=b.dataset.tf;rebuild()});
-document.getElementById('realBtn').onclick=e=>{
-  S.realOnly=!S.realOnly;
-  const b=e.currentTarget;
-  b.classList.toggle('act',S.realOnly);
-  b.textContent=(S.realOnly?'✓ ':'')+'Real only';
-  rebuild();rail();
-};
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
 wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
 wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});
@@ -1723,7 +1722,7 @@ async function initEmbed(){
   if(lim>=10&&lim<=200)S.limit=lim;
   if(['m5','h1','h6','h24'].includes(q.get('tf')))S.tf=q.get('tf');
   const src=q.get('source')||q.get('mode');
-  if(['pumpfun','bonding','majors','graduated'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
+  if(['pumpfun','bonding','majors','stocks','graduated'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
   if(q.get('real')==='0')S.realOnly=false;
 
   let cfg={brand:true,accent:'',pin:''};
