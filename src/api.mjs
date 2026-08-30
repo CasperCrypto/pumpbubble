@@ -4,7 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl, enrich } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, TF_LABEL, CARD_W } from './card.mjs';
@@ -88,6 +88,22 @@ function rateLimit(req, bucket, max, windowMs) {
 /* One cache per mode: graduated and bonding are separate feeds with different
    lifetimes, and a shared cache would have them evicting each other every poll. */
 const caches = new Map();
+
+/* Market data for boosted tokens that are not in the feed being shown.
+
+   A boost is bought for a small token, and small is exactly what does not make
+   pump.fun's top-cap pages — so the paid bubble is re-added below, from the
+   boost record. That record holds what was paid, not what the token is doing,
+   and for a long time the re-added bubble therefore carried a hardcoded zero
+   change and zero volume. It rendered as a confident "+0.00%" on the token the
+   site most wants people to look at, and would now mint share cards saying the
+   same. DexScreener has the real figures; they just were never asked for.
+
+   Cached separately from the snapshot because the re-add happens per request,
+   after it. One upstream call a minute for a handful of paid mints. */
+const boostMkt = new Map();
+const BOOST_MKT_TTL = 60_000;
+
 const cacheFor = mode => {
   if (!caches.has(mode)) caches.set(mode, { at: 0, data: null, inflight: null, err: null });
   return caches.get(mode);
@@ -338,6 +354,7 @@ export async function handle(req, ctx) {
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
          paid bubble never disappears before its time is up. */
       const have = new Set(tokens.map(t => t.mint));
+      const readd = [];
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
 
@@ -368,14 +385,45 @@ export async function handle(req, ctx) {
            belongs, in sizes(): a boosted bubble is sized by what was paid rather
            than by its market cap, so an out-of-place cap no longer distorts
            anything. */
-        tokens.push({
+        readd.push({
           id: mint, mint,
           sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
           img, mcap: b.mcap || 0, vol: 0,
-          pc: { m5: 0, h1: 0, h6: 0, h24: 0 },
+          /* null, not zero. If nothing below fills these in, the map greys the
+             bubble and the share card refuses to render — both of which say
+             "we do not know" instead of "it did not move". */
+          pc: { m5: null, h1: null, h6: null, h24: null },
           grad: true, solid: true, flags: [], copies: 1,
           boost: b.bonus, boostUsd: b.spentUsd, boostUntil: b.until,
         });
+      }
+
+      if (readd.length) {
+        const now = Date.now();
+        const stale = readd.filter(t => {
+          const c = boostMkt.get(t.mint);
+          return !c || (now - c.at) > BOOST_MKT_TTL;
+        });
+        if (stale.length) {
+          try {
+            await enrich(stale);
+            for (const t of stale) {
+              /* enrich fills rawImg when a token has no art; these already
+                 carry a signed proxy URL, so the raw one would only travel
+                 unused and blocked by the page's own CSP. */
+              delete t.rawImg;
+              boostMkt.set(t.mint, { at: now, pc: t.pc, vol: t.vol, price: t.price });
+            }
+          } catch { /* leave them null; grey is honest */ }
+        }
+        for (const t of readd) {
+          const c = boostMkt.get(t.mint);
+          if (!c) continue;
+          if (c.pc) t.pc = c.pc;
+          if (Number.isFinite(c.vol)) t.vol = c.vol;
+          if (Number.isFinite(c.price)) t.price = c.price;
+        }
+        tokens.push(...readd);
       }
 
       return json({

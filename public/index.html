@@ -1253,7 +1253,10 @@ function draw(){
     if(wPct){
       ctx.font=`800 ${clamp(r*.23,9,22)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle=c.gold?(t.chg>=0?'#0b3a20':'#4d0d17'):'rgba(255,255,255,.9)';
-      ctx.fillText(fmtPct(t.chg),t.x,t.y+r*.55);
+      /* A dash, not a number. A grey bubble reading +0.00% still says the
+         market was flat; only the colour said otherwise, and colour alone
+         is not how anyone reads a percentage. */
+      ctx.fillText(t.noData?'—':fmtPct(t.chg),t.x,t.y+r*.55);
     }
     if(c.gold&&r>=34){
       ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;

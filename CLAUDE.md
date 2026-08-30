@@ -288,6 +288,18 @@ mover is routinely a token minted minutes ago showing +1452986%, which is a real
 as a scam. Posting those teaches people to scroll past us, so a candidate needs $50k market cap,
 $10k volume, and a gain between 25% and 1500%. Rate: 5 a day, 3 hours apart, one week per token.
 
+**A boosted token that is not in the feed still needs real numbers.** A boost is bought for a small
+token, and small is what does not reach pump.fun's top-cap pages, so the paid bubble is re-added
+from the boost record. That record holds what was *paid*, not what the token is *doing*, and it
+carried a hardcoded `pc: {m5:0,h1:0,h6:0,h24:0}` and `vol: 0` — so the one token the site most wants
+people to look at rendered a confident `+0.00%`. DexScreener had it at +1.22% on $27k of volume the
+whole time; it was simply never asked. Re-added tokens now go through `enrich()` (cached a minute,
+since the re-add happens per request rather than inside the snapshot), and start as null rather than
+zero so an upstream miss greys out instead of asserting a flat market.
+
+The bubble label draws `—` for a window with no data. Grey alone did not carry it: a grey bubble
+reading `+0.00%` still says the market was flat, and nobody reads a percentage by its colour.
+
 **A green API check is not a working feature.** The client mapper copied only `m5/h1/h6/h24` out
 of `pc`, so `d7`, `d30` and `y1` were dropped before they ever reached a bubble. Every long window
 read `+0.00%` on every asset while `/api/tokens` returned correct numbers for all of them — and the
