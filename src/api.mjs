@@ -6,6 +6,7 @@
 
 import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
+import { buyConfig } from './refs.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -312,6 +313,9 @@ export async function handle(req, ctx) {
         sourceLabel: snap.sourceLabel,
         boostable: snap.boostable,
         sources: publicSources(),
+        /* Sent once per response rather than per token: 300 near-identical
+           URLs for a button most visitors never press is wasted payload. */
+        buy: buyConfig(ctx.env),
         enriched: snap.enriched,
         withArt: snap.withArt,
         signed: snap.signed,

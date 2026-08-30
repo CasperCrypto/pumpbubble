@@ -556,7 +556,8 @@ body.embed #brandbadge.on{display:flex}
   </div>
   <div id="cWarn"></div>
   <div class="acts">
-    <button class="pf" id="cOpen">Open on pump.fun ↗</button>
+    <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
+    <button class="pf" id="cOpen">Chart ↗</button>
     <button class="bo" id="cBoost">⚡ Boost</button>
   </div>
 </div>
@@ -641,6 +642,7 @@ const TOUCH=matchMedia('(hover:none)').matches;
 /* The only feed the generated fallback is shaped like. */
 const DEFAULT_SOURCE='pumpfun';
 
+let BUY={enabled:false};
 const S={
   tokens:[], view:[], tf:'h1', sizeBy:'mcap', limit: innerWidth<640?50:100,
   minMc:0, q:'', mv:'all', live:false, hover:null, drag:null, dragged:false,
@@ -729,6 +731,9 @@ async function fetchLive(){
   catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),15000) }
   if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
+  /* The referral template arrives with the feed rather than per token, so the
+     Buy button knows where to send people without 300 copies of one URL. */
+  if(j.buy)BUY=j.buy;
   S.boostable=j.boostable!==false;
   applyBoostability();
   return j.tokens.map(t=>({
@@ -1306,6 +1311,9 @@ addEventListener('pointerup',e=>{
 const card=document.getElementById('card'),scrim=document.getElementById('scrim');
 function openCard(t){
   S.target=t;
+  /* Only for something with a mint, and only when a referral is set up. */
+  document.getElementById('cBuy').style.display =
+    (BUY.enabled && t && t.mint) ? '' : 'none';
   const e=id=>document.getElementById(id);
   const im=e('cIm');
   if(t.img){im.outerHTML=`<img class="im" id="cIm" src="${esc(t.img)}" alt="">`}
@@ -1330,7 +1338,20 @@ function closeAll(){
 }
 scrim.onclick=closeAll;
 document.getElementById('cOpen').onclick=()=>{
-  const t=S.target;if(t&&t.mint)open('https://pump.fun/coin/'+t.mint,'_blank','noopener');
+  const t=S.target;if(!t)return;
+  /* Stocks have no mint, so the chart for those is the ticker on a stock site
+     rather than a pump.fun coin page. */
+  const url=t.mint?('https://pump.fun/coin/'+t.mint)
+    :('https://finance.yahoo.com/quote/'+encodeURIComponent(t.sym||''));
+  open(url,'_blank','noopener');
+  closeAll();
+};
+/* The Buy button exists only when a referral is configured and the token is
+   actually buyable through it. A button that opens a terminal with no referral
+   attached earns nothing and still costs the click. */
+document.getElementById('cBuy').onclick=()=>{
+  const t=S.target;if(!t||!t.mint||!BUY.enabled)return;
+  open(BUY.template.replace('__MINT__',encodeURIComponent(t.mint)),'_blank','noopener');
   closeAll();
 };
 document.getElementById('cBoost').onclick=()=>{const t=S.target;closeAll();openBoost(t)};
