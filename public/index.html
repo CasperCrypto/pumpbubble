@@ -493,10 +493,11 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="stocks">Stocks</button>
   </div>
   <div class="seg acc" id="tf">
-    <button data-tf="m5">5M</button>
     <button data-tf="h1" class="on">1H</button>
-    <button data-tf="h6">6H</button>
     <button data-tf="h24">24H</button>
+    <button data-tf="d7">1W</button>
+    <button data-tf="d30">1M</button>
+    <button data-tf="y1">1Y</button>
   </div>
   <div class="seg" id="sz">
     <button data-sz="mcap" class="on">Mcap</button>
@@ -705,6 +706,9 @@ function warnLine(t){
 /* ---------------------------------------------------------------- colours */
 function tone(t){
   if(t.boost>0)return{h:44,s:96,l:56,gold:true};
+  /* Grey where the window has no figure. Green would read as "flat and fine",
+     which is a claim about the token rather than about our data. */
+  if(t.noData)return{h:215,s:8,l:26,gold:false};
   const m=clamp(Math.abs(t.chg)/40,.10,1);
   return t.chg>=0
     ? {h:152,s:lerp(52,86,m),l:lerp(30,50,m),gold:false}
@@ -852,14 +856,21 @@ function rebuild(){
   }else S.hidden=0;
   if(S.q){const q=S.q.toLowerCase();
     L=L.filter(t=>t.sym.toLowerCase().includes(q)||(t.name||'').toLowerCase().includes(q))}
-  if(S.mv!=='all')L=L.filter(t=>S.mv==='up'?(t.pc[S.tf]||0)>=0:(t.pc[S.tf]||0)<0);
+  /* A window with no data is not a flat window. pump.fun tokens carry nothing
+     past 24h — most are younger than a week — and the stocks feed publishes
+     only a daily move, so those arrive null. Painting them 0% would turn a
+     whole map neutral-green and present that as information. `chg` stays a
+     number so every consumer of it keeps working; `noData` is what the colour
+     and the card read. */
+  const hasTf=t=>t.pc[S.tf]!=null&&Number.isFinite(t.pc[S.tf]);
+  if(S.mv!=='all')L=L.filter(t=>hasTf(t)&&(S.mv==='up'?t.pc[S.tf]>=0:t.pc[S.tf]<0));
   const M=t=>S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1:S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
   L.sort((a,b)=>M(b)-M(a));
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
   /* a partner's pinned token stays on screen regardless of ranking */
   if(S.pin)S.tokens.forEach(t=>{if(t.mint===S.pin&&!P.includes(t))P.unshift(t)});
-  P.forEach(t=>{t.chg=t.pc[S.tf]||0;t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
+  P.forEach(t=>{t.noData=!hasTf(t);t.chg=t.noData?0:t.pc[S.tf];t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
   S.view=P;
   sizes();
   document.getElementById('cnt').textContent=
@@ -874,12 +885,17 @@ function rebuild(){
 function stats(){
   const v=S.view; if(!v.length)return;
   const cap=v.reduce((s,t)=>s+t.mcap,0);
-  const up=v.filter(t=>t.chg>=0).length;
-  const top=v.reduce((a,t)=>Math.abs(t.chg)>Math.abs(a.chg)?t:a,v[0]);
+  const up=v.filter(t=>!t.noData&&t.chg>=0).length;
+  const rated=v.filter(t=>!t.noData);
+  const top=rated.length?rated.reduce((a,t)=>Math.abs(t.chg)>Math.abs(a.chg)?t:a,rated[0]):null;
   const e=id=>document.getElementById(id);
   e('stCap').textContent=fmtUsd(cap);
   e('stGR').innerHTML=`<span class="up">${up}</span> / <span class="dn">${v.length-up}</span>`;
-  e('stTop').innerHTML=`${esc(top.sym)} <span class="${top.chg>=0?'up':'dn'}">${fmtPct(top.chg)}</span>`;
+  /* No rated token means no top mover — which happens the moment somebody
+     picks a window this feed does not publish. */
+  e('stTop').innerHTML=top
+    ? `${esc(top.sym)} <span class="${top.chg>=0?'up':'dn'}">${fmtPct(top.chg)}</span>`
+    : '<span class="sb">—</span>';
 }
 
 let W=0,H=0,DPR=1,GX=.002,GY=.002,PT=4,PB=36;
@@ -1322,9 +1338,9 @@ function openCard(t){
     im.replaceWith(d)}
   e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
   e('cName').textContent=(t.name||'').slice(0,32);
-  e('cChg').textContent=fmtPct(t.chg);
-  e('cChg').className=t.chg>=0?'up':'dn';
-  e('cTf').textContent=({m5:'5 min',h1:'1 hour',h6:'6 hours',h24:'24 hours'})[S.tf];
+  e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
+  e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
+  e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
   e('cMc').textContent=fmtUsd(t.mcap);
   e('cVol').textContent=fmtUsd(t.vol);
   e('cA').innerHTML=`<span class="${t.pc.m5>=0?'up':'dn'}">${fmtPct(t.pc.m5)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h1>=0?'up':'dn'}">${fmtPct(t.pc.h1)}</span>`;

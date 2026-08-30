@@ -24,6 +24,10 @@ const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
+/* Distinguishes "no data" from "no movement". A coin listed last week has no
+   one-year change, and drawing that as 0% is a lie the map would tell on every
+   single new listing. */
+const pick = v => (v == null || !Number.isFinite(+v)) ? null : +v;
 
 /* CoinGecko rate-limits by IP, and Cloudflare's egress addresses are shared
    across every Worker on the platform — so an unauthenticated call competes
@@ -52,7 +56,7 @@ async function coingeckoMarkets(pages = 2, perPage = 100) {
   for (let p = 1; p <= pages; p++) {
     const rows = await jget(
       `${CG}/coins/markets?vs_currency=usd&order=market_cap_desc` +
-      `&per_page=${perPage}&page=${p}&price_change_percentage=1h%2C24h`);
+      `&per_page=${perPage}&page=${p}&price_change_percentage=1h%2C24h%2C7d%2C30d%2C1y`);
     if (!Array.isArray(rows) || !rows.length) break;
     for (const c of rows) {
       if (!c || !c.id) continue;
@@ -77,6 +81,13 @@ async function coingeckoMarkets(pages = 2, perPage = 100) {
           h1: num(c.price_change_percentage_1h_in_currency),
           h6: 0,
           h24: num(c.price_change_percentage_24h),
+          /* Longer windows exist for listed coins and nowhere else in this
+             product: a pump.fun token is usually younger than the shortest of
+             them. Null rather than zero where a coin has no history that far
+             back, so the map can show "no data" instead of "flat". */
+          d7: pick(c.price_change_percentage_7d_in_currency),
+          d30: pick(c.price_change_percentage_30d_in_currency),
+          y1: pick(c.price_change_percentage_1y_in_currency),
         },
         rank: num(c.market_cap_rank),
         created: 0,
