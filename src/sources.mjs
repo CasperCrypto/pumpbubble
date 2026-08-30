@@ -51,61 +51,62 @@ async function jget(url, ms = 12000) {
 
 /* ---------------------------------------------------------------- CoinGecko */
 /* The wider market: everything ranked by real market cap, art included. */
-async function coingeckoMarkets(pages = 2, perPage = 100) {
-  const out = [];
-  for (let p = 1; p <= pages; p++) {
-    const rows = await jget(
-      `${CG}/coins/markets?vs_currency=usd&order=market_cap_desc` +
-      `&per_page=${perPage}&page=${p}&price_change_percentage=1h%2C24h%2C7d%2C30d%2C1y`);
-    if (!Array.isArray(rows) || !rows.length) break;
-    for (const c of rows) {
-      if (!c || !c.id) continue;
-      out.push({
+/* CoinPaprika rather than CoinGecko.
+
+   CoinGecko's free tier rate-limits by IP, and Cloudflare's egress addresses
+   are shared across every Worker on the platform, so an unauthenticated call
+   competes with the whole platform for one bucket. Measured repeatedly: 200
+   from a laptop, 429 from the Worker, same second. The documented fix is a demo
+   key, which is not available here, so the dependency goes instead.
+
+   CoinPaprika needs no key, returns 2,000 coins in one request, and publishes
+   1h, 24h and 7d. It also publishes 30d and 1y fields — but they are zero for
+   every coin on the free tier, which is why those windows are not offered
+   anywhere in this product rather than being drawn as a flat line. */
+const PAPRIKA = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
+
+async function paprikaMarkets(limit = 250) {
+  const rows = await jget(PAPRIKA, 15000);
+  if (!Array.isArray(rows)) return [];
+
+  return rows
+    .map(c => {
+      const q = (c.quotes && c.quotes.USD) || {};
+      const mcap = num(q.market_cap);
+      if (!mcap || !c.symbol) return null;
+      return {
         id: 'cg:' + c.id,
-        mint: '',                                  // not on Solana: cannot be boosted
-        addr: c.id,
-        chain: 'cg',
-        sym: String(c.symbol || '?').toUpperCase().slice(0, 12),
-        name: String(c.name || c.symbol || '').slice(0, 48),
-        rawImg: fastImage(c.image || ''),
+        mint: '',
+        sym: String(c.symbol).toUpperCase().slice(0, 12),
+        name: String(c.name || c.symbol).slice(0, 48),
+        rawImg: 'https://static.coinpaprika.com/coin/' + encodeURIComponent(c.id) + '/logo.png',
         img: '',
-        mcap: num(c.market_cap),
-        vol: num(c.total_volume),
-        /* Majors trade across every venue at once, so no single pool's depth
-           describes them. Leave liquidity unset rather than invent it — the
-           quality scoring is told to skip these instead. */
-        liq: 0,
-        price: num(c.current_price),
+        mcap,
+        ath: 0,
+        vol: num(q.volume_24h),
+        price: num(q.price),
         pc: {
           m5: 0,
-          h1: num(c.price_change_percentage_1h_in_currency),
-          h6: 0,
-          h24: num(c.price_change_percentage_24h),
-          /* Longer windows exist for listed coins and nowhere else in this
-             product: a pump.fun token is usually younger than the shortest of
-             them. Null rather than zero where a coin has no history that far
-             back, so the map can show "no data" instead of "flat". */
-          d7: pick(c.price_change_percentage_7d_in_currency),
-          d30: pick(c.price_change_percentage_30d_in_currency),
-          y1: pick(c.price_change_percentage_1y_in_currency),
+          h1: num(q.percent_change_1h),
+          h6: num(q.percent_change_6h),
+          h24: num(q.percent_change_24h),
+          /* 7d is real here. 30d and 1y come back as zero for every coin on the
+             free tier, so they are reported as absent rather than as no
+             movement — the map greys those out instead of painting them flat. */
+          d7: pick(q.percent_change_7d),
+          d30: null,
+          y1: null,
         },
-        rank: num(c.market_cap_rank),
-        created: 0,
-        lastTrade: 0,
-        grad: true,
-        boost: 0,
-      });
-    }
-  }
-  if (!out.length) throw new Error('coingecko returned nothing');
-  return out;
+        grad: true, liveStream: false, pumpBoost: false,
+        created: 0, lastTrade: Date.now(), nsfw: false, banned: false,
+        liq: 0, curveSol: 0,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mcap - a.mcap)
+    .slice(0, limit);
 }
 
-/* ================================================================ registry */
-/* `ttl` is the snapshot cache lifetime. `enrich` says whether DexScreener
-   should be asked for art and change data — pointless for CoinGecko, which
-   already carries both, and essential for GeckoTerminal pools, which carry
-   neither. `boostable` says whether a bubble here can be sold. */
 export const SOURCES = {
   pumpfun: {
     id: 'pumpfun', label: 'pump.fun', group: 'Solana launchpads',
@@ -126,8 +127,8 @@ export const SOURCES = {
        cold isolate fetched independently, multiplying our request count by the
        number of isolates Cloudflare happens to be running. Market caps of this
        size do not move meaningfully in five minutes. */
-    chain: 'cg', ttl: 300_000, shared: true, enrich: false, boostable: false, quality: 'major',
-    fetch: () => coingeckoMarkets(1, 250),
+    chain: 'cg', ttl: 180_000, shared: true, enrich: false, boostable: false, quality: 'major',
+    fetch: () => paprikaMarkets(250),
   },
   /* Listed companies. Not boostable for the same reason majors are not: a boost
      is paid in SOL against a Solana mint, and Apple does not have one. */
@@ -220,10 +221,15 @@ async function nasdaqStocks(limit = 300) {
         ath: 0,
         vol: money(r.volume),
         price: money(r.lastsale),
-        /* A daily percentage is the only change this feed carries. Copying it
-           into 5m and 1h would be inventing numbers, so those stay zero and the
-           front end shows the 24h axis for this source. */
-        pc: { m5: 0, h1: 0, h6: 0, h24: Number.isFinite(pct) ? pct : 0 },
+        /* A daily percentage is the only change this feed carries. The shorter
+           windows are null, not zero: zero is a claim that the stock has not
+           moved this hour, which is a statement about the company rather than
+           about our data, and it painted 300 bubbles flat green on the 1h tab. */
+        pc: {
+          m5: null, h1: null, h6: null,
+          h24: Number.isFinite(pct) ? pct : null,
+          d7: null, d30: null, y1: null,
+        },
         sector: String(r.sector || '').slice(0, 40),
         industry: String(r.industry || '').slice(0, 60),
         country: String(r.country || '').slice(0, 40),
