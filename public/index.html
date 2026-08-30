@@ -256,15 +256,32 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #card .box u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--dim);font-weight:800;margin-bottom:2px}
 #card .box b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:900}
-#card .acts{display:flex;gap:9px}
+/* Boost is the product, so it gets the full width and its own row while the
+   secondary links share the one below. It was previously a 108px chip wedged
+   beside two others, which is how you price something at $149 and present it
+   like a tooltip. */
+#card .acts{display:flex;gap:9px;flex-wrap:wrap}
 #card .acts button{
   flex:1;height:46px;border-radius:13px;border:1px solid var(--line);background:var(--glass2);
   color:var(--ink);font-weight:900;font-size:14px;cursor:pointer
 }
 #card .acts button.pf{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0;
   box-shadow:0 6px 22px rgba(40,224,140,.35)}
-#card .acts button.bo{background:linear-gradient(180deg,#ffe07a,var(--gold));color:#2b1c00;border:0;
-  box-shadow:0 6px 22px rgba(255,201,60,.32);flex:0 0 108px}
+#card .acts button.bo{
+  flex:1 0 100%;order:-1;height:52px;font-size:15px;letter-spacing:-.01em;
+  background:linear-gradient(180deg,#ffe9a3,var(--gold) 52%,#e6a400);color:#2b1c00;border:0;
+  box-shadow:0 8px 26px -6px rgba(255,201,60,.55);
+  position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+#card .acts button.bo span{font-size:17px;line-height:1}
+#card .acts button.bo:active{transform:scale(.985)}
+/* A light crossing the button, matched to the gold bubbles it sells. */
+#card .acts button.bo::after{
+  content:"";position:absolute;top:0;left:-45%;width:38%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:skewX(-18deg);animation:boostShine 3.6s ease-in-out infinite}
+@keyframes boostShine{0%{left:-45%}55%,100%{left:130%}}
+@media(prefers-reduced-motion:reduce){#card .acts button.bo::after{display:none}}
 
 /* ============ bottom sheet (filters) ============ */
 #sheet{
@@ -514,7 +531,6 @@ body.embed #brandbadge.on{display:flex}
   <button class="iconbtn" id="openSheet">☰ Filters</button>
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
-  <a class="iconbtn act" href="/board" title="Pay to rank #1 — biggest bubble on the map">👑 Bid #1</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps">📊 Market overview</a>
   <a class="iconbtn" href="/partners" title="Put this map on your own site">&lt;/&gt; Embed</a>
   <div class="spacer"></div>
@@ -525,14 +541,11 @@ body.embed #brandbadge.on{display:flex}
 <div id="stage">
   <canvas id="cv"></canvas>
   <div id="tip"></div>
-  <div id="hud">
-    <div class="tagline">
-      <span class="lg"><i style="background:var(--mint)"></i>gainers</span>
-      <span class="lg"><i style="background:var(--rose)"></i>losers</span>
-      <span><i style="background:var(--gold);box-shadow:0 0 8px var(--gold)"></i>boosted = paid, not mcap</span>
-      <span id="cnt"></span>
-    </div>
-  </div>
+  <!-- The legend is gone. It explained three colours to somebody who had
+       already worked them out from a screen full of red and green, and the
+       "boosted = paid" line is carried by the gold bubbles themselves — they
+       are the only gold thing on the map and they say ★ ×N on their face. -->
+</div>
 </div>
 
 <!-- ================= token card ================= -->
@@ -556,7 +569,7 @@ body.embed #brandbadge.on{display:flex}
   <div class="acts">
     <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
     <button class="pf" id="cOpen">Chart ↗</button>
-    <button class="bo" id="cBoost">⚡ Boost</button>
+    <button class="bo" id="cBoost"><span>⚡</span> Boost this bubble</button>
   </div>
 </div>
 
@@ -1354,8 +1367,13 @@ document.getElementById('cOpen').onclick=()=>{
   const t=S.target;if(!t)return;
   /* Stocks have no mint, so the chart for those is the ticker on a stock site
      rather than a pump.fun coin page. */
-  const url=t.mint?('https://pump.fun/coin/'+t.mint)
-    :('https://finance.yahoo.com/quote/'+encodeURIComponent(t.sym||''));
+  /* A stock has no mint, so pump.fun would 404 on its ticker. Route by what
+     the thing actually is rather than assuming everything is a memecoin. */
+  const url = t.mint
+    ? 'https://pump.fun/coin/' + t.mint
+    : (S.mode === 'stocks'
+        ? 'https://finance.yahoo.com/quote/' + encodeURIComponent(t.sym || '')
+        : 'https://www.coingecko.com/en/search?query=' + encodeURIComponent(t.sym || ''));
   open(url,'_blank','noopener');
   closeAll();
 };

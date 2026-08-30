@@ -19,7 +19,8 @@ Business model, in priority order:
    a deploy. Empty slots stay visible on purpose: they are the sales pitch. *Built, sold manually.*
 3. **Trade referrals** — a Buy button on each bubble routed through Jupiter or a trading-bot
    referral (Axiom / Photon / BullX / Trojan). Expected to out-earn ads at volume, zero sales
-   effort. *Not built yet — highest-value next thing.*
+   effort. *Built — `src/refs.mjs`. Dormant until `REF_PROVIDER` and `REF_CODE` are set; the
+   button does not render without a code, because one that earns nothing still spends the click.*
 4. **Pro subscription** — alerts, more bubbles, saved filters, no ads. *Not built.*
 
 ## Current state
@@ -86,6 +87,13 @@ the whole architecture.
 Snapshots are cached 10s per isolate with in-flight de-duplication, so a traffic burst cannot
 become a burst of pump.fun calls. Stale data is served for up to 2 minutes rather than failing —
 the front end shows the age.
+
+**A build is also capped at 6 seconds.** Each upstream call has its own 9s timeout, but a pump.fun
+snapshot makes six paged requests plus ten DexScreener ones in sequence, so one slow upstream can
+stall the build for a minute — and because callers share the in-flight promise, every visitor waits
+that long. Measured in production: one request hung 60s while the next returned in 1.2s, and the
+page sat on "loading pump.fun…" forever. Past the deadline whatever is cached is served however old
+it is, and the build finishes in the background.
 
 ### Images
 Two thirds of pump.fun token art is IPFS-hosted. Hotlinking it tanks framerate, so everything goes
@@ -215,6 +223,30 @@ were paid for.
 **Volume is absent, not zero, for bonding-curve tokens.** DexScreener only indexes graduated mints,
 so a briskly trading curve reports $0. `last_trade_timestamp` from pump.fun stands in. If you ever
 tighten the volume rule, re-check bonding mode first — an earlier version hid 285 of 300.
+
+## Sources
+
+`pumpfun` (default), `majors`, `stocks`. Each is an adapter in `src/sources.mjs` declaring its own
+cache TTL and whether it is boostable.
+
+- **majors** is CoinPaprika, not CoinGecko. CoinGecko's free tier rate-limits by IP and
+  Cloudflare's egress is shared platform-wide, so it returned 429 from the Worker while working
+  from a laptop; the documented fix is a demo key we do not have. CoinPaprika needs none and
+  returns 2,000 coins in one request.
+- **stocks** is Nasdaq's own screener: every listed company in one keyless request, with sector and
+  industry on each row. One company can list several share classes and *each reports the whole
+  company's market cap*, so listings are grouped by company and only the largest is kept —
+  Alphabet otherwise appears four times and the map shows $9.6T of a $4.2T company.
+
+**Timeframes are 1H / 24H / 1W and nothing longer.** No keyless source publishes 30d or 1y:
+CoinPaprika exposes the fields and returns zero for every coin on the free tier. A window with no
+data is **null, not zero**, and renders grey — zero is a claim the asset did not move, which is a
+statement about the asset rather than about our data.
+
+**Bonding was removed.** Its screening problem was real and fixable — `real_sol_reserves` is the
+honest denominator, and it correctly rejects a token claiming $141M against an empty curve — but
+what survived filtering was still mostly $5–12k tokens. Deep links to `?source=bonding` still
+resolve so nothing already shared breaks.
 
 ## Modes
 
