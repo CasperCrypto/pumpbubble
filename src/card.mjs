@@ -69,6 +69,7 @@ export function pctLabel(pct) {
 export function mcapLabel(n) {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return null;
+  if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
   if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
   if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
   if (v >= 1e3) return '$' + Math.round(v / 1e3) + 'K';
@@ -142,5 +143,71 @@ ${art}
       font-size="27" fill="#8b98a8" letter-spacing="2">${esc(meta)}</text>
 ${sub ? `<text x="90" y="574" font-family="Archivo Black" font-size="25"
       fill="#5d6a7a">${esc(sub)}</text>` : ''}
+</svg>`;
+}
+
+/* ==========================================================================
+   The ranked card.
+
+   A single token's card flatters one community. A leaderboard flatters five,
+   and every project on it has a reason to repost something that shows them
+   ranked — which is the whole point of publishing it. It is also the honest
+   shape for "what moved today", because it shows the field rather than one
+   cherry-picked number.
+
+   rows: [{ sym, pct, mcap, logo }]. Logos are data URIs or null.
+   ========================================================================== */
+export function buildBoardSvg({ rows, title = 'TOP MOVERS', sub = '24 HOUR', tag = 'PUMPBUBBLE.FUN' }) {
+  const list = (rows || []).filter(r => r && pctLabel(r.pct) != null).slice(0, 5);
+  if (!list.length) throw new Error('no rows');
+
+  const TOP = 214;        /* first row baseline block */
+  const H = 78;           /* row pitch */
+
+  const body = list.map((r, i) => {
+    const y = TOP + i * H;
+    const up = Number(r.pct) >= 0;
+    const hot = up ? '#2bd46e' : '#ff4d5e';
+    const label = pctLabel(r.pct);
+    const cap = mcapLabel(r.mcap);
+    const ticker = '$' + (renderable(r.sym) ? String(r.sym).slice(0, 12) : '???');
+
+    /* Rank, art, ticker on the left; the number hard-right so the column of
+       percentages lines up and can be read down in one movement. */
+    const art = r.logo
+      ? `<image href="${esc(r.logo)}" x="150" y="${y - 34}" width="46" height="46"
+                preserveAspectRatio="xMidYMid slice" clip-path="url(#rr${i})"/>
+         <rect x="150" y="${y - 34}" width="46" height="46" rx="14" fill="none"
+               stroke="${hot}" stroke-width="2" opacity="0.7"/>`
+      : `<rect x="150" y="${y - 34}" width="46" height="46" rx="14" fill="#151b24"
+               stroke="${hot}" stroke-width="2" opacity="0.6"/>`;
+
+    return `
+  <clipPath id="rr${i}"><rect x="150" y="${y - 34}" width="46" height="46" rx="14"/></clipPath>
+  <text x="92" y="${y}" font-family="Archivo Black" font-size="30" fill="#48545f">${i + 1}</text>
+  ${art}
+  <text x="214" y="${y}" font-family="Archivo Black" font-size="30" fill="#ffffff">${esc(ticker)}</text>
+  ${cap ? `<text x="214" y="${y + 25}" font-family="Archivo Black" font-size="16"
+        fill="#5d6a7a">${esc(cap)}</text>` : ''}
+  <text x="1110" y="${y + 4}" text-anchor="end" font-family="Archivo Black"
+        font-size="38" fill="${hot}">${esc(label)}</text>`;
+  }).join('');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">
+<defs>
+  <radialGradient id="bg" cx="20%" cy="18%" r="88%">
+    <stop offset="0" stop-color="#12351f"/><stop offset="1" stop-color="#080b0f"/>
+  </radialGradient>
+</defs>
+<rect width="${CARD_W}" height="${CARD_H}" fill="url(#bg)"/>
+<circle cx="1090" cy="70" r="150" fill="#2bd46e" opacity="0.10"/>
+<circle cx="120" cy="600" r="70" fill="#2bd46e" opacity="0.08"/>
+<text x="90" y="98" font-family="Archivo Black" font-size="28" fill="#8b98a8"
+      letter-spacing="4">${esc(tag)}</text>
+<text x="90" y="164" font-family="Archivo Black" font-size="52" fill="#ffffff">${esc(title)}</text>
+<text x="1110" y="164" text-anchor="end" font-family="Archivo Black" font-size="30"
+      fill="#2bd46e" letter-spacing="3">${esc(sub)}</text>
+<rect x="90" y="186" width="1020" height="2" fill="#1e2733"/>
+${body}
 </svg>`;
 }

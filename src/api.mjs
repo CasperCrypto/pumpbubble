@@ -8,9 +8,9 @@ import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl, en
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
-import { cardSvgFor, sharePage } from './share.mjs';
+import { cardSvgFor, boardCardSvgFor, sharePage, page } from './share.mjs';
 import { svgToPng } from './png.mjs';
-import { creds as xCreds, KEY as XBOT_KEY } from './xbot.mjs';
+import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import {
   loadWindows as loadCryptoWin,
@@ -101,6 +101,17 @@ const caches = new Map();
 
    Cached separately from the snapshot because the re-add happens per request,
    after it. One upstream call a minute for a handful of paid mints. */
+/* Which feeds the ranked card is allowed to draw from, and what it calls them.
+   A table rather than free text out of the query string: the value reaches the
+   rasteriser and is printed onto an image that carries our domain. */
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks' };
+const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
+const BOARD_TITLE = {
+  pumpfun: 'Top movers on pump.fun today',
+  majors: 'Top movers in crypto today',
+  stocks: 'Biggest movers in stocks today',
+};
+
 const boostMkt = new Map();
 const BOOST_MKT_TTL = 60_000;
 
@@ -663,6 +674,37 @@ export async function handle(req, ctx) {
       const tf = url.searchParams.get('tf') || 'h24';
       if (!TF_LABEL[tf]) return json({ ok: false, error: 'unknown timeframe' }, 400);
 
+      /* The ranked card. Same filters the poster uses, so what a project sees
+         on the leaderboard is what the account would say about it. */
+      if (url.searchParams.get('kind') === 'board') {
+        const srcId = BOARD_SRC[url.searchParams.get('source') || 'pumpfun'];
+        if (!srcId) return json({ ok: false, error: 'unknown source' }, 400);
+
+        const store0 = globalThis.caches && globalThis.caches.default;
+        const bk = new Request(url.origin + '/api/card/board/v1/' + srcId + ':' + tf);
+        if (store0) {
+          const hit = await store0.match(bk);
+          if (hit) return hit;
+        }
+
+        const snap = await snapshot(ctx, sourceOf(srcId));
+        const top = topMovers(snap.tokens || [], tf, 5, srcId);
+        if (top.length < 3) return json({ ok: false, error: 'not enough movers' }, 404);
+
+        const svg = await boardCardSvgFor(top, tf, 'TOP MOVERS', BOARD_SUB[srcId]);
+        if (!svg) return json({ ok: false, error: 'no measured changes' }, 404);
+        const buf = await svgToPng(svg, CARD_W);
+        const out = new Response(buf, {
+          headers: {
+            'content-type': 'image/png',
+            'cache-control': 'public, max-age=600',
+            'access-control-allow-origin': '*',
+          },
+        });
+        if (store0) await store0.put(bk, out.clone());
+        return out;
+      }
+
       const found = await findToken(ctx, url.origin, {
         mint: url.searchParams.get('mint') || '',
         sym: (url.searchParams.get('sym') || '').toUpperCase(),
@@ -701,6 +743,42 @@ export async function handle(req, ctx) {
     /* A share link. Crawlers read the Open Graph tags and show the card;
        people get a page with a way through to the map, because an image on
        its own is a dead end for a visitor. */
+    /* The ranked share page. A leaderboard gives five projects a reason to
+       repost instead of one, which is the whole reason it is published. */
+    if (path === '/s/top') {
+      const tf = url.searchParams.get('tf') || 'h24';
+      const srcId = BOARD_SRC[url.searchParams.get('source') || 'pumpfun'];
+      if (!TF_LABEL[tf] || !srcId) return Response.redirect(url.origin + '/', 302);
+
+      const snap = await snapshot(ctx, sourceOf(srcId));
+      const top5 = topMovers(snap.tokens || [], tf, 5, srcId);
+      /* Nothing to rank is not a page. Better the map than a card asserting a
+         leaderboard we could not fill. */
+      if (top5.length < 3) return Response.redirect(url.origin + '/', 302);
+
+      const q = 'kind=board&source=' + srcId + '&tf=' + tf;
+      const title = BOARD_TITLE[srcId] + ' — pumpbubble.fun';
+      const desc = top5.map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
+        + Number(t.pc[tf]).toFixed(0) + '%').join(' · ');
+      const share = url.origin + '/s/top'
+        + (srcId === 'pumpfun' ? '' : '?source=' + srcId);
+
+      return new Response(page({
+        title, desc,
+        canonical: url.origin + '/s/top',
+        cardUrl: url.origin + '/api/card?' + q,
+        mapUrl: url.origin + '/' + (srcId === 'pumpfun' ? '' : '?source=' + srcId),
+        tweetUrl: 'https://twitter.com/intent/tweet?text='
+          + encodeURIComponent(BOARD_TITLE[srcId]) + '&url=' + encodeURIComponent(share),
+        alt: desc,
+      }), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'public, max-age=300',
+        },
+      });
+    }
+
     if (path === '/s' || path.startsWith('/s/')) {
       const home = Response.redirect(url.origin + '/', 302);
       const id = decodeURIComponent(path.slice(3).replace(/\/+$/, ''));
@@ -986,6 +1064,26 @@ export async function handle(req, ctx) {
 
     /* Whether the X poster is live, and what it has done. Booleans and
        timestamps only — never the credentials, and never the account. */
+    /* What the poster would say if it ran right now, without posting it.
+       The content has to be judgeable before anybody hands it credentials. */
+    if (path === '/api/xbot/preview') {
+      const limited = rateLimit(req, 'xpreview', 20, 60_000);
+      if (limited) return limited;
+      const feed = async (src) => {
+        try { return (await snapshot(ctx, sourceOf(src))).tokens || []; } catch { return []; }
+      };
+      const [pumpfun, majors, stocks] = await Promise.all(
+        [feed('pumpfun'), feed('majors'), feed('stocks')]);
+      const st = (await ctx.store.get(XBOT_KEY)) || { recent: {} };
+      const post = buildPost({ pumpfun, majors, stocks }, ctx.env, st, Date.now(), url.origin);
+      if (!post) return json({ ok: true, would: null, why: 'nothing worth posting' });
+      return json({
+        ok: true,
+        would: { kind: post.kind, text: post.text, chars: post.text.length,
+                 card: url.origin + post.share },
+      });
+    }
+
     if (path === '/api/xbot/status') {
       const st = (await ctx.store.get(XBOT_KEY)) || {};
       return json({

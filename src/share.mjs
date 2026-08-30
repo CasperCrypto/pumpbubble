@@ -11,7 +11,7 @@
    map — never a bare image, which is a dead end for a visitor.
    ========================================================================== */
 
-import { buildCardSvg, pctLabel, mcapLabel, TF_LABEL } from './card.mjs';
+import { buildCardSvg, buildBoardSvg, pctLabel, mcapLabel, TF_LABEL } from './card.mjs';
 
 /* base64 for a byte array. String.fromCharCode(...buf) on a megabyte of image
    overflows the argument stack, so it goes in chunks. */
@@ -69,27 +69,32 @@ export async function cardSvgFor(t, tf) {
   });
 }
 
+/* The ranked card for a set of tokens. Art is fetched in parallel because it
+   is five round trips to five different hosts and they are the whole latency. */
+export async function boardCardSvgFor(tokens, tf, title, sub) {
+  const list = (tokens || []).slice(0, 5);
+  if (!list.length) return null;
+  const rows = await Promise.all(list.map(async t => ({
+    sym: t.sym, pct: t && t.pc ? t.pc[tf] : null, mcap: t.mcap,
+    logo: await logoDataUri(t),
+  })));
+  if (!rows.some(r => r.pct != null && Number.isFinite(Number(r.pct)))) return null;
+  return buildBoardSvg({ rows, title, sub });
+}
+
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
 
 /* The human-facing page. Deliberately tiny and self-contained: it is mostly
    opened from a phone, one tap after a link in a timeline. */
-export function sharePage({ origin, t, tf, pct, cardUrl, mapUrl, tweetUrl }) {
-  const label = pctLabel(pct);
-  const up = Number(pct) >= 0;
-  const cap = mcapLabel(t.mcap);
-  const title = '$' + t.sym + ' ' + label + ' · ' + (TF_LABEL[tf] || '') + ' — pumpbubble.fun';
-  const desc = [t.name, cap ? 'Market cap ' + cap : null, 'Live bubble map of pump.fun and the whole market.']
-    .filter(Boolean).join(' · ');
-  const hot = up ? '#2bd46e' : '#ff4d5e';
-
+export function page({ title, desc, canonical, cardUrl, mapUrl, tweetUrl, alt, hot = '#2bd46e' }) {
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
-<link rel="canonical" href="${esc(origin)}/s/${encodeURIComponent(t.mint || t.sym)}">
+<link rel="canonical" href="${esc(canonical)}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="pumpbubble.fun">
 <meta property="og:title" content="${esc(title)}">
@@ -116,11 +121,25 @@ a.btn{display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 22px;
 .x{background:#12171f;color:#e8eef6;border:1px solid #223}
 .n{font-size:13px;color:#7d8a99}
 </style></head><body>
-<img src="${esc(cardUrl)}" alt="${esc('$' + t.sym + ' ' + label)}" width="1200" height="630">
+<img src="${esc(cardUrl)}" alt="${esc(alt)}" width="1200" height="630">
 <div class="row">
   <a class="btn go" href="${esc(mapUrl)}">Open the live map</a>
   <a class="btn x" href="${esc(tweetUrl)}" rel="noopener">Share on X</a>
 </div>
 <div class="n">${esc(desc)}</div>
 </body></html>`;
+}
+
+export function sharePage({ origin, t, tf, pct, cardUrl, mapUrl, tweetUrl }) {
+  const label = pctLabel(pct);
+  const cap = mcapLabel(t.mcap);
+  return page({
+    title: '$' + t.sym + ' ' + label + ' · ' + (TF_LABEL[tf] || '') + ' — pumpbubble.fun',
+    desc: [t.name, cap ? 'Market cap ' + cap : null,
+           'Live bubble map of pump.fun and the whole market.'].filter(Boolean).join(' · '),
+    canonical: origin + '/s/' + encodeURIComponent(t.mint || t.sym),
+    cardUrl, mapUrl, tweetUrl,
+    alt: '$' + t.sym + ' ' + label,
+    hot: Number(pct) >= 0 ? '#2bd46e' : '#ff4d5e',
+  });
 }

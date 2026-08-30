@@ -253,9 +253,19 @@ export default {
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {
-          const r = await handle(new Request('https://pumpbubble.fun/api/tokens?source=pumpfun'), ctx);
-          const j = await r.json();
-          return (j && j.tokens) || [];
+          /* Only reached once the poster has decided it is actually going to
+             post, so this is three cached snapshot reads a day, not per tick. */
+          const feed = async (src) => {
+            try {
+              const r = await handle(new Request(
+                'https://pumpbubble.fun/api/tokens?source=' + src), ctx);
+              const j = await r.json();
+              return (j && j.tokens) || [];
+            } catch { return []; }
+          };
+          const [pumpfun, majors, stocks] = await Promise.all(
+            [feed('pumpfun'), feed('majors'), feed('stocks')]);
+          return { pumpfun, majors, stocks };
         });
         await saveHist(env);
         await flushStats(makeStore(env));

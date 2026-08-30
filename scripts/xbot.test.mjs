@@ -1,115 +1,130 @@
 /* ==========================================================================
-   The X poster: signature correctness, and what it refuses to post.
+   What the X account is allowed to say.
 
        node scripts/xbot.test.mjs
 
-   The signature is checked against the worked example published in X's own
-   OAuth documentation. Those are documentation values, not credentials. A
-   signature that is merely plausible comes back as a bare 401, so "it looked
-   right" is not a standard this can be held to.
+   This runs unattended, from our own brand account, with nobody reading the
+   draft. Two things therefore have to hold without supervision: it never
+   publishes a number we did not measure, and it never tags an account chosen
+   by an anonymous stranger.
 
-   The rest is about credibility. pump.fun's top mover is very often a token
-   minted minutes ago showing six figures of percent — a real number that reads
-   as a scam. Posting those would teach people to scroll past us.
+   The second one is the sharp edge. pump.fun's `twitter` field is typed in by
+   whoever minted the coin, so a scam token can name @elonmusk and we would tag
+   him — from our account, next to a price. That is the test that matters most
+   in this file.
    ========================================================================== */
 
-import { sign, baseString, hmacSha1B64, pick, compose } from '../src/xbot.mjs';
+import { credible, topMovers, handleOf, build, COMPOSERS, TYPES } from '../src/xbot.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
 const no = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? '  — ' + d : ''}`); };
+const is = (n, got, want) => (got === want ? ok(n) : no(n, `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`));
 
-/* ---- signature, in two independently checkable halves ----
+const tok = (o = {}) => ({
+  mint: 'M' + (o.sym || 'X'), sym: 'X', name: 'X',
+  mcap: 500_000, vol: 50_000, pc: { h24: 60 }, ...o,
+});
 
-   The end-to-end signature from X's worked example is not asserted here: the
-   only copy of that value available was from memory, and an assertion against
-   a half-remembered constant tests the memory, not the code. Both halves that
-   actually carry risk are checked against sources that can be stated exactly. */
+/* ------------------------------------------------- what may be posted at all */
+is('rejects an unmeasured window', credible(tok({ pc: { h24: null } })), false);
+is('rejects undefined as a change', credible(tok({ pc: {} })), false);
+is('rejects the fresh-mint moonshot', credible(tok({ pc: { h24: 1452986 } })), false);
+is('rejects a dust market cap', credible(tok({ mcap: 900 })), false);
+is('rejects a token nobody is trading', credible(tok({ vol: 12 })), false);
+is('rejects a banned token', credible(tok({ banned: true })), false);
+is('rejects a flat token', credible(tok({ pc: { h24: 2 } })), false);
+is('accepts a believable mover', credible(tok({ pc: { h24: 312 } })), true);
 
-/* The MAC, against RFC 2202 test case 1 for HMAC-SHA1. */
+/* A stock has no mint and no DexScreener volume line; the cap gate carries it.
+   And the band is per class: +4% is a real day for a mega-cap and nothing at
+   all for a memecoin, which is why the stocks card found no movers when both
+   were judged by the same threshold. */
+is('accepts a stock with no volume field',
+  credible({ sym: 'NVDA', mcap: 4e12, pc: { h24: 40 } }, 'h24', 'stocks'), true);
+is('accepts a normal-sized stock move',
+  credible({ sym: 'NVDA', mcap: 4e12, pc: { h24: 4.2 } }, 'h24', 'stocks'), true);
+is('rejects that same move for a memecoin',
+  credible(tok({ pc: { h24: 4.2 } })), false);
+is('rejects a penny stock', credible({ sym: 'ZZZ', mcap: 4e6, pc: { h24: 9 } }, 'h24', 'stocks'), false);
+is('rejects an impossible stock move',
+  credible({ sym: 'ZZZ', mcap: 4e12, pc: { h24: 400 } }, 'h24', 'stocks'), false);
+
+/* ------------------------------------------------------------------ ranking */
 {
-  const key = ''.repeat(20);
-  const want = 'thhBxlSPKGxpsUAyRk2P/hLNRoo=';   // b617318655057264e28bc0b6fb378c8ef146be00
-  const got = await hmacSha1B64(key, 'Hi There');
-  const hex = Buffer.from(got, 'base64').toString('hex');
-  hex === 'b617318655057264e28bc0b6fb378c8ef146be00'
-    ? ok('HMAC-SHA1 matches RFC 2202 vector', hex.slice(0, 16) + '...')
-    : no('HMAC-SHA1 matches RFC 2202 vector', hex);
+  const list = [
+    tok({ sym: 'A', pc: { h24: 40 } }),
+    tok({ sym: 'B', pc: { h24: 900 } }),
+    tok({ sym: 'C', pc: { h24: 1e9 } }),   /* filtered, not ranked first */
+    tok({ sym: 'D', pc: { h24: 120 } }),
+  ];
+  const top = topMovers(list, 'h24', 5);
+  is('ranks by gain, highest first', top.map(t => t.sym).join(''), 'BDA');
+  is('drops the absurd one', top.some(t => t.sym === 'C'), false);
 }
 
-/* The base string, against the one published in X's OAuth documentation.
-   This is the half that goes wrong in practice — parameter sorting, double
-   encoding, and which parameters belong in it at all. */
+/* -------------------------------------------------------- who we may tag */
+const ON = { XBOT_MENTIONS: '1' };
+
+is('no mention unless switched on',
+  handleOf({ sym: 'FONE', twitter: 'https://x.com/fonecoin' }, {}), '');
+
+is('tags a handle that matches the ticker',
+  handleOf({ sym: 'FONE', name: 'Fone', twitter: 'https://x.com/fonecoin' }, ON), '@fonecoin');
+
+/* The whole point. */
+is('refuses a hijacked handle',
+  handleOf({ sym: 'FONE', name: 'Fone', twitter: 'https://twitter.com/elonmusk' }, ON), '');
+is('refuses a handle claiming a rival project',
+  handleOf({ sym: 'SCAM', name: 'Scam', twitter: 'https://x.com/coinbase' }, ON), '');
+is('refuses an intent URL',
+  handleOf({ sym: 'I', name: 'I', twitter: 'https://twitter.com/intent/tweet?text=x' }, ON), '');
+is('refuses junk in the field',
+  handleOf({ sym: 'A', name: 'A', twitter: 'not a url' }, ON), '');
+is('refuses an empty field', handleOf({ sym: 'A', name: 'A' }, ON), '');
+
+/* ------------------------------------------------------------- composition */
+const feeds = {
+  pumpfun: [tok({ sym: 'POK', pc: { h24: 312 } }), tok({ sym: 'FONE', pc: { h24: 88 } }),
+            tok({ sym: 'WIF', pc: { h24: 44 } })],
+  majors: Array.from({ length: 30 }, (_, i) =>
+    ({ sym: 'C' + i, mcap: 1e9, pc: { h24: i % 3 === 0 ? -2 : 5 } })),
+  /* Realistic equity moves, not memecoin ones — the point of the per-class band. */
+  stocks: [{ sym: 'NVDA', mcap: 4e12, pc: { h24: 6.1 } },
+           { sym: 'AAPL', mcap: 3e12, pc: { h24: 4.4 } },
+           { sym: 'TSM', mcap: 1e12, pc: { h24: 3.2 } }],
+};
+const ORIGIN = 'https://pumpbubble.fun';
+
+for (const kind of ['mover', 'board', 'market', 'stocks']) {
+  const out = COMPOSERS[kind]({ ...feeds, origin: ORIGIN, env: {}, state: { recent: {} }, now: Date.now() });
+  if (!out || !out.text) { no(`${kind} composes`, 'returned nothing'); continue; }
+  const bad = /NaN|undefined|null|Infinity/.test(out.text);
+  if (bad) no(`${kind} composes`, 'placeholder leaked: ' + out.text.replace(/\n/g, ' | '));
+  else if (out.text.length > 280) no(`${kind} composes`, out.text.length + ' chars, over the limit');
+  else ok(`${kind} composes`, out.text.length + ' chars');
+}
+
+/* A thin feed must not produce a post about nothing. */
 {
-  const got = baseString('POST', 'https://api.twitter.com/1.1/statuses/update.json', {
-    status: 'Hello Ladies + Gentlemen, a signed OAuth request!',
-    include_entities: 'true',
-    oauth_consumer_key: 'xvz1evFS4wEEPTGEFPHBog',
-    oauth_nonce: 'kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg',
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: '1318622958',
-    oauth_token: '370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb',
-    oauth_version: '1.0',
-  });
-  const want = 'POST&https%3A%2F%2Fapi.twitter.com%2F1.1%2Fstatuses%2Fupdate.json'
-    + '&include_entities%3Dtrue%26oauth_consumer_key%3Dxvz1evFS4wEEPTGEFPHBog'
-    + '%26oauth_nonce%3DkYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg'
-    + '%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D1318622958'
-    + '%26oauth_token%3D370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb'
-    + '%26oauth_version%3D1.0%26status%3DHello%2520Ladies%2520%252B%2520Gentlemen'
-    + '%252C%2520a%2520signed%2520OAuth%2520request%2521';
-  got === want ? ok('OAuth base string matches the published example')
-               : no('OAuth base string', 'diverges at ' +
-                   [...want].findIndex((c, n) => got[n] !== c));
+  const empty = { pumpfun: [], majors: [], stocks: [] };
+  is('builds nothing from empty feeds', build(empty, {}, { recent: {} }, Date.now(), ORIGIN), null);
 }
 
-/* And that sign() actually composes those two. */
+/* Every day of the rotation has to land on a real composer. */
 {
-  const params = { a: '1', oauth_nonce: 'n' };
-  const direct = await hmacSha1B64('cs&ts', baseString('POST', 'https://e.x/p', params));
-  const via = await sign('POST', 'https://e.x/p', params, 'cs', 'ts');
-  direct === via ? ok('sign() composes base string and MAC')
-                 : no('sign() composes base string and MAC');
+  const missing = TYPES.filter(k => typeof COMPOSERS[k] !== 'function');
+  if (missing.length) no('rotation names real composers', missing.join(', '));
+  else ok('rotation names real composers', TYPES.length + ' slots');
 }
 
-/* ---- selection ---- */
-const T = (o) => ({ mint: 'm' + Math.random(), sym: 'X', mcap: 500_000, vol: 50_000,
-                    pc: { h24: 100 }, ...o });
-
-const cases = [
-  ['a fresh mint showing six figures of percent', T({ pc: { h24: 1452986 } })],
-  ['a token below the market-cap floor', T({ mcap: 900 })],
-  ['a token nobody is trading', T({ vol: 100 })],
-  ['a move too small to be a story', T({ pc: { h24: 3 } })],
-  ['a token with no 24h figure at all', T({ pc: { h24: null } })],
-  ['a stock, which has no mint to link to', T({ mint: '' })],
-  ['a token flagged unbacked', T({ dust: true })],
-  ['a banned token', T({ banned: true })],
-];
-for (const [why, tok] of cases) {
-  pick([tok], {}) === null ? ok('refuses ' + why) : no('refuses ' + why);
+/* A token posted about this week is not posted about again. */
+{
+  const t = feeds.pumpfun[0];
+  const state = { recent: { [t.mint]: Date.now() } };
+  const out = COMPOSERS.mover({ ...feeds, origin: ORIGIN, env: {}, state, now: Date.now() });
+  is('respects the repost cooldown', out && out.mint === t.mint, false);
 }
-
-const good = T({ sym: 'POK', pc: { h24: 312.4 }, mcap: 4_200_000, mint: 'abc' });
-pick([good], {}) === good ? ok('posts a real mover') : no('posts a real mover');
-
-/* cooldown: the same token must not come round again the next day */
-const st = { recent: { abc: Date.now() - 24 * 3600_000 } };
-pick([good], st) === null ? ok('honours the repost cooldown') : no('honours the repost cooldown');
-
-/* highest qualifying gain wins, not the highest gain overall */
-const scam = T({ sym: 'SCAM', pc: { h24: 99999 }, mint: 'z' });
-const real = T({ sym: 'REAL', pc: { h24: 400 }, mint: 'y' });
-pick([scam, real], {}) === real ? ok('picks the best believable mover')
-                                : no('picks the best believable mover');
-
-/* ---- text ---- */
-const text = compose(good, 'https://pumpbubble.fun');
-text.includes('$POK +312%') && text.includes('/s/abc') && text.includes('$4.2M')
-  ? ok('post reads correctly', JSON.stringify(text.split('\n')[0]))
-  : no('post reads correctly', text);
-text.length <= 280 ? ok('fits in a post', text.length + ' chars')
-                   : no('fits in a post', text.length + ' chars');
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

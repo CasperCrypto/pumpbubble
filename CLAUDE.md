@@ -285,8 +285,39 @@ signature returns a bare 401 that names none of the six steps that could be at f
 
 Its filters exist for credibility, not data quality: the map still shows everything. pump.fun's top
 mover is routinely a token minted minutes ago showing +1452986%, which is a real number that reads
-as a scam. Posting those teaches people to scroll past us, so a candidate needs $50k market cap,
-$10k volume, and a gain between 25% and 1500%. Rate: 5 a day, 3 hours apart, one week per token.
+as a scam. Posting those teaches people to scroll past us.
+
+**The band is per asset class**, because "a move worth posting about" is not one number: a memecoin
+doing +25% in a day is a Tuesday, a listed company doing +25% is a takeover. The first version
+judged everything by the memecoin band and the stocks card 404'd for want of movers — the right
+answer to the wrong question.
+
+| class | min mcap | min vol | gain band |
+|---|---|---|---|
+| pumpfun | $50k | $10k | 25% – 1500% |
+| majors | $10M | — | 10% – 500% |
+| stocks | $1B | — | 3% – 100% |
+
+Rate: once a day by default (`XBOT_PER_DAY`, max 5), at 15:00 UTC (`XBOT_HOUR`), one week's
+cooldown per token. The hour is fixed so the account has a rhythm instead of firing at whatever
+minute the first cron after midnight happens to run.
+
+Four post types rotate on the day number, weighted towards the single-coin post because that is the
+one a community reposts: `mover` (one token), `board` (top five), `market` (green/red across the
+top 250), `stocks`. A thin feed falls through to the next type rather than skipping the day.
+`/api/xbot/preview` renders what it would post right now without posting it, so the copy can be
+judged before anyone hands it credentials.
+
+**Cashtags by default; @mentions are opt-in and filtered.** pump.fun's `twitter` field is typed in
+by whoever minted the coin, so it is an attacker-controlled string — a scam token can name
+`@elonmusk` and we would tag him from our own account, next to a price, which reads as vouching for
+it. Mentions need `XBOT_MENTIONS=1` *and* a handle that resembles the ticker or the name.
+`$FONE` as a cashtag is clickable on X and is how these communities already find posts about
+themselves, so the reach is there without the risk. `scripts/xbot.test.mjs` covers this specifically.
+
+The ranked card (`/api/card?kind=board&source=…`, page at `/s/top`) exists because a leaderboard
+gives five projects a reason to repost instead of one. It draws through the same `topMovers()` the
+poster uses, so what a project sees on the card is what the account would say about it.
 
 **A boosted token that is not in the feed still needs real numbers.** A boost is bought for a small
 token, and small is what does not reach pump.fun's top-cap pages, so the paid bubble is re-added
