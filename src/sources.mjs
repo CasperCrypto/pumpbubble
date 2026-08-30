@@ -150,21 +150,57 @@ const money = v => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/* One company, one bubble.
+
+   Every share class in this feed reports the WHOLE company's market cap, not
+   its own slice. Alphabet arrives four times — Class A, Class C and two
+   depositary lines — at $4,239B, $4,193B, $601B and $596B, so a map drawing all
+   four shows $9.6 trillion of a $4.2 trillion company and inflates the tracked
+   total with it. Berkshire does the same across A and B.
+
+   Grouping is by the company name with its class qualifier removed, keeping the
+   largest listing: that is the primary line, and the one whose figure is the
+   company's real market cap. */
+function companyKey(name) {
+  /* Cut at the first qualifier rather than stripping each one with its own
+     pattern. A chain of strips has to fire in the right order, and every added
+     variant is another chance for one to miss — which is what happened:
+     "Common Stock" was removed while "Class A" survived, so Alphabet's two
+     lines kept different keys and both stayed on the map. */
+  const cut = String(name || '').split(
+    /\s+(?:Class|Common|Capital|Ordinary|Depositary|American|Series|Non-Voting)\s/i)[0];
+  return cut.replace(/[.,-\s]+$/, '').trim().toLowerCase();
+}
+
+/* Instruments whose market-cap field cannot be trusted.
+
+   A depositary line quotes the parent's capitalisation against a fractional
+   share, so its price and its cap describe different things. SPCX is the sharp
+   case: "Space Exploration Technologies Corp" priced at $141.50 with a claimed
+   $1,921B cap implies about 13.6 billion shares, roughly seven times any public
+   estimate of SpaceX. The house rule is that a screener never shows a number it
+   made up, and a number this feed cannot substantiate is the same thing —
+   somebody would check, and be right. */
+const UNTRUSTED = /depositary|ADR|preferred|warrant|rights?|units?|tracking/i;
+
 async function nasdaqStocks(limit = 300) {
   const j = await jget(NASDAQ + '?tableonly=true&limit=6000&offset=0&download=true', 15000);
   const rows = (j && j.data && (j.data.rows || (j.data.table && j.data.table.rows))) || [];
 
-  return rows
+  const out = rows
     .map(r => {
       const mcap = money(r.marketCap);
       const pct = parseFloat(String(r.pctchange || '').replace('%', ''));
       const sym = String(r.symbol || '').trim().toUpperCase();
+      const rawName = String(r.name || sym);
       if (!sym || !(mcap > 0)) return null;
+      if (UNTRUSTED.test(rawName)) return null;
       return {
         id: 'stock:' + sym,
         mint: '',                       // no chain, so nothing to boost against
         sym,
-        name: String(r.name || sym).replace(/\s+(Common Stock|Class [A-Z].*)$/i, '').slice(0, 48),
+        name: rawName.replace(/\s+(Common Stock|Capital Stock|Class [A-Z].*)$/i, '').slice(0, 48),
+        companyKey: companyKey(rawName),
         /* Logos come from a symbol-keyed CDN, so no per-company lookup is
            needed. A miss renders as initials like any other missing art. */
         rawImg: 'https://assets.parqet.com/logos/symbol/' + encodeURIComponent(sym) + '?format=png',
@@ -187,8 +223,18 @@ async function nasdaqStocks(limit = 300) {
       };
     })
     .filter(Boolean)
+    .sort((a, b) => b.mcap - a.mcap);
+
+  const best = new Map();
+  for (const t of out) {
+    const key = t.companyKey;
+    const prev = best.get(key);
+    if (!prev || t.mcap > prev.mcap) best.set(key, t);
+  }
+  return [...best.values()]
     .sort((a, b) => b.mcap - a.mcap)
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(t => { delete t.companyKey; return t; });
 }
 
 export const DEFAULT_SOURCE = 'pumpfun';
