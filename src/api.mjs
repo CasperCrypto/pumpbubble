@@ -7,7 +7,7 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl, enrich } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
-import { pctLabel, TF_LABEL, CARD_W } from './card.mjs';
+import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, sharePage } from './share.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY } from './xbot.mjs';
@@ -720,12 +720,16 @@ export async function handle(req, ctx) {
          have. */
       if (!t || pct == null || !Number.isFinite(Number(pct))) return home;
 
+      /* X caches a link preview for days. Stamping the URL with the value it
+         is showing means a changed number is a new URL and gets refetched,
+         while an unchanged one still hits their cache. */
+      const v = String(Math.round(Number(pct) * 100));
       const q = (t.mint ? 'mint=' + encodeURIComponent(t.mint)
                         : 'sym=' + encodeURIComponent(t.sym) + '&source=' + found.srcId)
-        + '&tf=' + tf;
+        + '&tf=' + tf + '&v=' + v;
       const key = encodeURIComponent(t.mint || t.sym);
       const share = url.origin + '/s/' + key + (tf === 'h24' ? '' : '?tf=' + tf);
-      const text = '$' + t.sym + ' ' + pctLabel(pct) + ' in ' + (TF_LABEL[tf] || '').toLowerCase();
+      const text = '$' + t.sym + ' ' + pctLabel(pct) + ' in ' + (TF_SHORT[tf] || tf);
 
       return new Response(sharePage({
         origin: url.origin, t, tf, pct,

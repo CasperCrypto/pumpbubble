@@ -39,6 +39,7 @@
      (same origin, so this is really just a DNS/TLS hint for the CDN edge). -->
 <link rel="preload" href="/api/tokens?mode=graduated" as="fetch" crossorigin>
 
+
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -488,6 +489,36 @@ body.embed #brandbadge.on{display:flex}
 @media (max-width:400px){
   .wordmark i{display:none}
 }
+
+/* ============ share popup ============
+   The card is the product here, so it gets the room and the buttons sit under
+   it. Sized by aspect-ratio rather than a fixed height: the PNG arrives a
+   moment after the modal opens, and a box that grows on load pushes the
+   buttons out from under whichever finger is already reaching for them. */
+#sveil{position:fixed;inset:0;z-index:62;display:none;place-items:end center;--safe:0px}
+#sveil.on{display:grid}
+#sveil .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px)}
+#shImgWrap{
+  position:relative;width:100%;aspect-ratio:1200/630;border-radius:14px;overflow:hidden;
+  background:#0d1117;border:1px solid var(--line);margin:2px 0 14px}
+#shImg{width:100%;height:100%;display:block;opacity:0;transition:opacity .25s}
+#shImg.on{opacity:1}
+#shSpin{
+  position:absolute;inset:0;display:grid;place-items:center;
+  font-size:11px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+#shImg.on+#shSpin{display:none}
+#shActs{display:flex;gap:8px;flex-wrap:wrap}
+#shActs a,#shActs button{
+  flex:1 1 0;min-width:120px;height:46px;border:1px solid var(--line);border-radius:12px;
+  background:rgba(255,255,255,.04);color:var(--ink);font:inherit;font-weight:700;font-size:13px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;
+  text-decoration:none;transition:transform .12s,background .12s}
+#shActs a:active,#shActs button:active{transform:scale(.97)}
+#shActs #shX{
+  flex:1 1 100%;background:#fff;color:#000;border-color:#fff;font-weight:800;letter-spacing:.02em}
+#shActs #shX svg{width:15px;height:15px}
+#shNote{margin:12px 0 0;font-size:11.5px;line-height:1.45;color:var(--dim)}
+#shNote b{color:var(--ink);font-weight:700}
 </style>
 </head>
 <body>
@@ -1398,14 +1429,79 @@ scrim.onclick=closeAll;
 /* The share page carries an Open Graph card showing the number, which is what
    actually travels on X. Linking straight to the image would post a picture
    with no way back to the map. */
-document.getElementById('cShare').onclick=()=>{
-  const t=S.target;if(!t)return;
-  const id=t.mint||t.sym;if(!id)return;
-  const q=t.mint?'':'?source='+encodeURIComponent(S.mode||'majors');
-  const sep=q?'&':'?';
-  const tf=S.tf==='h24'?'':sep+'tf='+S.tf;
-  open('/s/'+encodeURIComponent(id)+q+tf,'_blank','noopener');
-};
+document.getElementById('cShare').onclick=()=>{const t=S.target;closeAll();openShare(t)};
+
+/* Timeframe in prose, for tweet text and the no-data message. The pills
+   above the map carry the same set as their labels. */
+const TFN={h1:'1h',h24:'24h',d7:'7d',d30:'30d',y1:'1y'};
+
+const sveil=document.getElementById('sveil');
+function closeShare(){sveil.classList.remove('on')}
+sveil.querySelector('.bg').onclick=closeShare;
+
+/* Builds both URLs for one token in one window. The `v` stamp is the value the
+   card is showing: X keeps a link preview for days, so a moved number has to be
+   a different URL or the old picture is what everyone sees. */
+function shareUrls(t,tf){
+  const id=t.mint||t.sym;if(!id)return null;
+  const pct=t.pc?t.pc[tf]:null;
+  if(pct==null||!Number.isFinite(+pct))return null;
+  const q=t.mint?'mint='+encodeURIComponent(t.mint)
+                :'sym='+encodeURIComponent(t.sym)+'&source='+encodeURIComponent(S.mode||'majors');
+  const v=Math.round(+pct*100);
+  return {
+    pct:+pct,
+    card:'/api/card?'+q+'&tf='+tf+'&v='+v,
+    page:location.origin+'/s/'+encodeURIComponent(id)
+        +(t.mint?'?':'?source='+encodeURIComponent(S.mode||'majors')+'&')
+        +'tf='+tf+'&v='+v,
+  };
+}
+
+function openShare(t){
+  if(!t)return;
+  const tf=S.tf, u=shareUrls(t,tf);
+  const tk=document.getElementById('shTk');
+  /* Refuse rather than show a card for a window we never measured — the server
+     404s this same case, and a broken image in a share dialog is worse than a
+     plain no. */
+  if(!u){
+    tk.textContent='$'+(t.sym||'');
+    document.getElementById('shNote').innerHTML=
+      '<b>No measured change for '+esc(TFN[tf]||tf)+' on this one yet.</b> Pick another timeframe and try again.';
+    document.getElementById('shActs').style.display='none';
+    document.getElementById('shImgWrap').style.display='none';
+    sveil.classList.add('on');
+    return;
+  }
+  document.getElementById('shActs').style.display='';
+  document.getElementById('shImgWrap').style.display='';
+  document.getElementById('shNote').innerHTML=
+    'X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.';
+  tk.textContent='$'+(t.sym||'');
+
+  const img=document.getElementById('shImg');
+  img.classList.remove('on');
+  img.onload=()=>img.classList.add('on');
+  img.src=u.card;
+
+  const dl=document.getElementById('shDl');
+  dl.href=u.card;
+  dl.setAttribute('download',(t.sym||'token')+'-'+tf+'.png');
+
+  const text='$'+(t.sym||'')+' '+fmtPct(u.pct)+' in '+(TFN[tf]||tf);
+  document.getElementById('shX').onclick=()=>{
+    open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text)
+      +'&url='+encodeURIComponent(u.page),'_blank','noopener');
+  };
+  const cp=document.getElementById('shCopy');
+  cp.onclick=async()=>{
+    try{await navigator.clipboard.writeText(u.page);cp.textContent='Copied';}
+    catch{cp.textContent='Copy failed';}
+    setTimeout(()=>{cp.textContent='Copy link'},1400);
+  };
+  sveil.classList.add('on');
+}
 document.getElementById('cOpen').onclick=()=>{
   const t=S.target;if(!t)return;
   /* Stocks have no mint, so the chart for those is the ticker on a stock site
@@ -1863,5 +1959,25 @@ setInterval(()=>{tick();rebuild()},2500);
 /* Boost decay lives on the server now (boosts.mjs → bonusOf): it has to be
    the same number for everyone, and it must survive a page reload. */
 </script>
+
+<!-- ================= share popup ================= -->
+<div id="sveil">
+  <div class="bg"></div>
+  <div class="modal">
+    <div class="grab"></div>
+    <h3>Share <em id="shTk">bubble</em></h3>
+    <div id="shImgWrap">
+      <img id="shImg" alt="">
+      <div id="shSpin">drawing card…</div>
+    </div>
+    <div id="shActs">
+      <button id="shX"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23 22h-6.3l-4.9-6.4L6.2 22H3l7.3-8.3L2.4 2h6.4l4.4 5.9L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z"/></svg>Post on X</button>
+      <a id="shDl" download>Download</a>
+      <button id="shCopy">Copy link</button>
+    </div>
+    <p id="shNote">X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.</p>
+  </div>
+</div>
+
 </body>
 </html>

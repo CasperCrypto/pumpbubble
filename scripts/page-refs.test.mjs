@@ -41,5 +41,14 @@ for (const id of ['boostTop', 'cBoost']) {
   else no('boost control present', '#' + id + ' is gone');
 }
 
+/* Markup belongs in the body. A share dialog once landed above </head>
+   because it was inserted before the first <script>, which is the JSON-LD in
+   the head - the parser dropped it, the button silently did nothing, and no
+   console error appeared to say why. */
+const headEnd = html.indexOf('</head>');
+const strays = [...html.slice(0, headEnd).matchAll(/<div\s+id="([A-Za-z0-9_-]+)"/g)].map(m => m[1]);
+if (strays.length) no('no markup above </head>', 'found: ' + strays.join(', '));
+else ok('no markup above </head>');
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

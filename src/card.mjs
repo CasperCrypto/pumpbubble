@@ -75,6 +75,10 @@ export function mcapLabel(n) {
   return '$' + Math.round(v);
 }
 
+/* Short forms for prose. "in 24 hour" is what the long labels produce, and the
+   tweet text is the part a human actually reads. */
+export const TF_SHORT = { h1: '1h', h24: '24h', d7: '7d', d30: '30d', y1: '1y' };
+
 export const TF_LABEL = {
   h1: '1 HOUR', h24: '24 HOUR', d7: '7 DAY', d30: '30 DAY', y1: '1 YEAR',
 };
