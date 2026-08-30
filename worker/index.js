@@ -245,6 +245,9 @@ export default {
            this a correct payment can sit unclaimed indefinitely — which is
            exactly what happened in production before the sweep existed. */
         await handle(new Request('https://pumpbubble.fun/api/boost/sweep'), ctx);
+        /* One slice of stock long-windows per tick. The whole universe warms up
+           over roughly half an hour and then only refreshes daily. */
+        await handle(new Request('https://pumpbubble.fun/api/stocks/windows'), ctx);
         await saveHist(env);
         await flushStats(makeStore(env));
       } catch { /* next tick will retry */ }

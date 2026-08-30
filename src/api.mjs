@@ -7,6 +7,7 @@
 import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
+import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -282,7 +283,14 @@ export async function handle(req, ctx) {
         }
         for (const v of byMint.values()) v.bonus = bonusFromSpend(v.liveUsd);
       }
-      const tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
+      let tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
+
+      /* Monthly and yearly change for stocks is filled in by cron, one slice at
+         a time, and merged here. A symbol not reached yet reports null and
+         renders grey rather than holding up the map. */
+      if (src.id === 'stocks') {
+        try { tokens = applyWindows(tokens, await loadWindows(ctx.store)); } catch {}
+      }
 
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
          paid bubble never disappears before its time is up. */
@@ -769,6 +777,18 @@ export async function handle(req, ctx) {
        and callable by anyone — it grants nothing that the chain has not already
        paid for, so there is nothing to protect. It is what makes a payment
        survive the buyer closing the tab. */
+    /* Called by cron. Enriches the next slice of stock symbols with their
+       monthly and yearly change; see src/stockwin.mjs for why it is gradual. */
+    if (path === '/api/stocks/windows') {
+      try {
+        const snap = await snapshot(ctx, sourceOf('stocks'));
+        const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
+        return json({ ok: true, ...(await refreshWindows(ctx.store, syms)) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
+      }
+    }
+
     if (path === '/api/boost/sweep') {
       if (!ctx.env.SOLANA_RPC || !ctx.env.TREASURY_WALLET) {
         return json({ ok: false, error: 'payments are not configured' }, 503);

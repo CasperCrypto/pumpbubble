@@ -512,6 +512,8 @@ body.embed #brandbadge.on{display:flex}
     <button data-tf="h1" class="on">1H</button>
     <button data-tf="h24">24H</button>
     <button data-tf="d7">1W</button>
+    <button data-tf="d30">1M</button>
+    <button data-tf="y1">1Y</button>
   </div>
   <div class="seg" id="sz">
     <button data-sz="mcap" class="on">Mcap</button>
@@ -1350,7 +1352,7 @@ function openCard(t){
   e('cName').textContent=(t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
-  e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days'})[S.tf]||S.tf;
+  e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
   e('cMc').textContent=fmtUsd(t.mcap);
   e('cVol').textContent=fmtUsd(t.vol);
   e('cA').innerHTML=`<span class="${t.pc.m5>=0?'up':'dn'}">${fmtPct(t.pc.m5)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h1>=0?'up':'dn'}">${fmtPct(t.pc.h1)}</span>`;

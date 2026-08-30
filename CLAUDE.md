@@ -238,10 +238,26 @@ cache TTL and whether it is boostable.
   company's market cap*, so listings are grouped by company and only the largest is kept —
   Alphabet otherwise appears four times and the map shows $9.6T of a $4.2T company.
 
-**Timeframes are 1H / 24H / 1W and nothing longer.** No keyless source publishes 30d or 1y:
-CoinPaprika exposes the fields and returns zero for every coin on the free tier. A window with no
-data is **null, not zero**, and renders grey — zero is a claim the asset did not move, which is a
-statement about the asset rather than about our data.
+**Timeframes are 1H / 24H / 1W / 1M / 1Y, and which ones carry data varies by source.** A window
+with no data is **null, not zero**, and renders grey — zero is a claim the asset did not move,
+which is a statement about the asset rather than about our data.
+
+| source | 1H | 24H | 1W | 1M | 1Y |
+|---|---|---|---|---|---|
+| pumpfun | yes | yes | — | — | — |
+| majors | yes | yes | yes | — | — |
+| stocks | — | yes | — | yes | yes |
+
+Crypto has no 30d or 1y because no keyless source publishes them: CoinPaprika exposes the fields
+and returns zero for every coin on the free tier. Stocks do, via `src/stockwin.mjs` — Yahoo's chart
+endpoint, keyless and accurate, but one symbol per request, so it is filled in ~30 symbols per cron
+tick and cached in KV for a day. The map never waits on it; an unenriched symbol reports null.
+
+Two traps in that file, both of which produced numbers that looked plausible. Yahoo returns **two
+bars for the month in progress**, both equal to the current price, so picking "the previous monthly
+close" by index compared today against today and reported every stock flat — anchors are dates, not
+indices. And `fiftyDayAverageChangePercent` is price against a moving average, *not* a one-month
+return; using it would have been a fabricated number wearing the right label.
 
 **Bonding was removed.** Its screening problem was real and fixable — `real_sol_reserves` is the
 honest denominator, and it correctly rejects a token claiming $141M against an empty curve — but
