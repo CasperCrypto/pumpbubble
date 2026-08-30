@@ -104,7 +104,7 @@ async function snapshot(ctx, source, force = false) {
      does not move enough in ten seconds to be worth a request. */
   const ttl = src.ttl || SNAPSHOT_TTL;
   if (!force && cache.data && now - cache.at < ttl) return cache.data;
-  if (cache.inflight) return cache.inflight;
+  if (cache.inflight) return raceStale(cache, cache.inflight);
 
   cache.inflight = (async () => {
     /* Sources marked `shared` are cached in KV as well as in memory. Isolates
@@ -153,7 +153,30 @@ async function snapshot(ctx, source, force = false) {
       cache.inflight = null;
     }
   })();
-  return cache.inflight;
+  return raceStale(cache, cache.inflight);
+}
+
+/* A build that is taking too long must not become a page that never loads.
+
+   Every upstream call has a 9s timeout, but a pump.fun snapshot makes six paged
+   requests plus ten DexScreener ones in sequence, so a slow upstream can stall
+   the build for a minute — and because everyone shares the in-flight promise,
+   every visitor waits exactly that long. Measured in production: one request
+   hung for 60 seconds while the next returned in 1.2.
+
+   So the wait is bounded. Past the deadline, whatever is already cached is
+   served however old it is, and the build carries on in the background to
+   refresh it. Stale data with its age shown beats a spinner, and the front end
+   already displays that age. With nothing cached there is nothing to serve, so
+   the wait is the only option and the build is awaited in full. */
+const BUILD_DEADLINE = 6000;
+
+function raceStale(cache, inflight) {
+  if (!cache.data) return inflight;
+  return Promise.race([
+    inflight,
+    new Promise(resolve => setTimeout(() => resolve(cache.data), BUILD_DEADLINE)),
+  ]);
 }
 
 /* The SOL price, reliably.

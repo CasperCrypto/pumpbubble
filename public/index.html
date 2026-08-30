@@ -488,7 +488,6 @@ body.embed #brandbadge.on{display:flex}
        a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
     <button data-mode="pumpfun" class="on">pump.fun</button>
-    <button data-mode="bonding">Bonding</button>
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
   </div>
@@ -1759,7 +1758,7 @@ async function initEmbed(){
   if(lim>=10&&lim<=200)S.limit=lim;
   if(['m5','h1','h6','h24'].includes(q.get('tf')))S.tf=q.get('tf');
   const src=q.get('source')||q.get('mode');
-  if(['pumpfun','bonding','majors','stocks','graduated'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
+  if(['pumpfun','majors','stocks','graduated','bonding'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
   if(q.get('real')==='0')S.realOnly=false;
 
   let cfg={brand:true,accent:'',pin:''};
