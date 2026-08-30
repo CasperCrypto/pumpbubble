@@ -124,6 +124,7 @@ export function normalizeCoin(c) {
        not on a DEX yet. Converted to USD in buildSnapshot. */
     curveSol: num(c.real_sol_reserves) / 1e9,
     nsfw: !!c.nsfw,
+    banned: !!c.is_banned,
     twitter: c.twitter || '',
     boost: 0,                                // our paid boost, applied by the worker
   };
@@ -323,6 +324,20 @@ export function histFromJSON(o) {
    so the bar is set where the number stops meaning anything, and the copycat
    count below carries most of the weight. */
 const THIN_RATIO = 120;     // mcap/liquidity above this is essentially paper
+
+/* A floor on what is worth drawing.
+
+   The backing test was doing its job — a third of the bonding feed fails it —
+   but passing it does not make a token worth looking at. What survived included
+   a $51 market cap and several under $2,000: correctly backed, economically
+   nothing, and together they make the map look like junk.
+
+   This is inventory selection, not a quality judgement dressed as arithmetic. A
+   screener chooses what to put on screen, and a bubble worth $51 is noise
+   rather than information. The number sits above the dust and well below
+   anything with a community: measured on a live feed, the median bonding token
+   was $11.5k. */
+const MIN_BONDING_MCAP = 5000;
 const DEAD_VOLUME = 1000;   // USD in 24h, below this nobody is trading it
 const MAX_COPIES = 2;       // same ticker across more mints than this is a swarm
 
@@ -384,7 +399,17 @@ function scoreMemecoins(tokens, solPrice = 0) {
     /* "is this market cap backed by anything" rather than "is this a scam" —
        intent is unknowable, backing is measurable. `new` is not disqualifying:
        plenty of real tokens are hours old, and this is a pump.fun screener. */
-    t.solid = !thin && !dead && t.copies <= MAX_COPIES;
+    /* pump.fun bans tokens itself. Ignoring that flag meant re-deciding, worse,
+       something they had already decided. */
+    if (t.banned) t.flags.push('banned');
+
+    /* Only bonding tokens get the floor. A graduated token with a small cap has
+       a real pool behind it and belongs on the map; a bonding one at $51 has
+       nothing behind it worth a bubble. */
+    const dust = !t.grad && t.mcap < MIN_BONDING_MCAP;
+    if (dust) t.flags.push('dust');
+
+    t.solid = !thin && !dead && !dust && !t.banned && t.copies <= MAX_COPIES;
   }
   for (const t of tokens) delete t.curveSol;
   return tokens;
