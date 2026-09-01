@@ -85,13 +85,17 @@ export function fastImage(u) {
 /* ========================================================= pump.fun source */
 /* Identity, art, ticker and market cap all come from pump.fun itself — that is
    the product requirement, not an implementation detail. */
+/* A window with no data is null, not zero. Zero is a claim the price did not
+   move, which is a statement about the asset rather than about our data. */
+const keep = v => (v == null || !Number.isFinite(+v)) ? null : +v;
+
 /* Token names and symbols are attacker-supplied: minting a coin called
    `<img src=x onerror=…>` costs a few cents, and it lands in every visitor's
    DOM. The front end escapes on write, but strip the dangerous characters here
    too — defence in depth, so one forgotten template is not an incident on a
    page that shows a payment address. Also drops control characters, which
    break layout and hide text. */
-const clean = (s, max) => String(s == null ? '' : s)
+export const clean = (s, max) => String(s == null ? '' : s)
   .replace(/[<>]/g, '')
   // control chars, zero-width joiners and bidi marks: layout breakage + spoofing
   .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202E\uFEFF]/g, '')
@@ -188,8 +192,19 @@ export async function fetchSolPrice() {
 /* pump.fun exposes no price-change field, and colour is the whole point of the
    map. DexScreener covers graduated pump.fun mints at ~100%, is free and needs
    no key, so it supplies change + volume only. Identity stays pump.fun's. */
-export async function enrich(tokens) {
-  const mints = tokens.map(t => t.mint).filter(Boolean);
+export async function enrich(tokens, chain = 'solana') {
+  /* Solana addresses are base58 and case-sensitive; EVM addresses are hex and
+     are not. Blockscout returns them checksummed and DexScreener does not
+     always agree on the casing, so for an EVM chain both sides are lowered
+     before they are compared — otherwise every lookup misses and the whole
+     chain renders grey with no error anywhere. */
+  const evm = chain !== 'solana';
+  const keyOf = t => {
+    const a = (t && (t.addr || t.mint)) || '';
+    return evm ? a.toLowerCase() : a;
+  };
+
+  const mints = tokens.map(keyOf).filter(Boolean);
   const byMint = new Map();
   const batches = [];
   for (let i = 0; i < mints.length; i += 30) batches.push(mints.slice(i, i + 30));
@@ -198,12 +213,13 @@ export async function enrich(tokens) {
   for (let i = 0; i < batches.length; i += 4) {
     const group = batches.slice(i, i + 4);
     const res = await Promise.allSettled(group.map(b =>
-      jget(DEXS + '/tokens/v1/solana/' + b.join(','), { ms: 7000 })));
+      jget(DEXS + '/tokens/v1/' + chain + '/' + b.join(','), { ms: 7000 })));
     for (const r of res) {
       if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
       for (const p of r.value) {
-        const k = p && p.baseToken && p.baseToken.address;
-        if (!k) continue;
+        const raw = p && p.baseToken && p.baseToken.address;
+        if (!raw) continue;
+        const k = evm ? raw.toLowerCase() : raw;
         /* a mint can have many pools; keep the deepest one */
         const prev = byMint.get(k);
         if (!prev || num(p.liquidity && p.liquidity.usd) > num(prev.liquidity && prev.liquidity.usd)) {
@@ -215,11 +231,17 @@ export async function enrich(tokens) {
 
   let hit = 0;
   for (const t of tokens) {
-    const p = byMint.get(t.mint);
+    const p = byMint.get(keyOf(t));
     if (!p) continue;
     hit++;
     const pc = p.priceChange || {};
-    t.pc = { m5: num(pc.m5), h1: num(pc.h1), h6: num(pc.h6), h24: num(pc.h24) };
+    /* Absent stays absent. DexScreener omits a window entirely when nothing
+       traded in it — LINK on Robinhood Chain comes back as {h24:-1.38} with no
+       h1 key at all — and num() turned that missing key into 0, so the map
+       asserted the price had not moved in an hour when nothing had measured
+       it. Invisible on pump.fun, where everything trades every minute;
+       glaring on a chain full of quiet pairs. */
+    t.pc = { m5: keep(pc.m5), h1: keep(pc.h1), h6: keep(pc.h6), h24: keep(pc.h24) };
     t.vol = num(p.volume && p.volume.h24);
     t.liq = num(p.liquidity && p.liquidity.usd);
     t.price = num(p.priceUsd);
@@ -431,7 +453,7 @@ export async function buildSnapshot({ source, hist, secret } = {}) {
 
   let enriched = 0;
   if (source.enrich !== false) {
-    try { enriched = await enrich(tokens); }
+    try { enriched = await enrich(tokens, source.chain); }
     catch { /* colour degrades, the map still renders */ }
   }
 

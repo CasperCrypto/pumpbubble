@@ -18,7 +18,7 @@
      quoting a price it cannot deliver.
    ========================================================================== */
 
-import { normalizeCoin, fetchPumpCoins, fastImage } from './core.mjs';
+import { normalizeCoin, fetchPumpCoins, fastImage, clean } from './core.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -107,6 +107,79 @@ async function paprikaMarkets(limit = 250) {
     .slice(0, limit);
 }
 
+
+/* ------------------------------------------------------------ Robinhood Chain */
+/* Robinhood Chain went live on 1 July 2026 and Pons is its pump.fun: a
+   permissionless bonding-curve launchpad. Getting it onto the map took a while
+   to work out because the obvious routes are all closed.
+
+   Pons publishes no REST API at all — its docs tell you to index the factory
+   events yourself. The chain's public RPC 429s after two calls, so that is not
+   an option from a Worker without a paid provider. GeckoTerminal does rank the
+   chain's pools, and 429s Cloudflare's shared egress on every single request,
+   exactly as CoinGecko does. DexScreener's search endpoint answers, but it caps
+   at 30 results per query: 28 different search words turned up 146 tokens and
+   were still climbing, which is a sample dressed up as a ranking.
+
+   What works is the chain's own Blockscout explorer for the ranked list and
+   DexScreener for the price change — the same split as pump.fun, where identity
+   comes from the launchpad and colour comes from a DEX aggregator.
+
+   This is the whole chain rather than Pons alone. Telling a Pons launch apart
+   from a bridged LINK means reading the factory, which is the door the RPC
+   closes; a tab claiming "Pons" while showing bridged majors would be worse
+   than one that says what it is. */
+const BLOCKSCOUT = 'https://robinhoodchain.blockscout.com/api/v2';
+
+async function robinhoodTokens(limit = 200) {
+  const out = [];
+  let url = BLOCKSCOUT + '/tokens?type=ERC-20';
+
+  /* Four pages of fifty. Blockscout ranks by circulating market cap, so the
+     first pages are the ones worth having and the walk stops early. */
+  for (let page = 0; page < 4 && out.length < limit; page++) {
+    let j;
+    try { j = await jget(url, 12000); } catch { break; }
+    const items = (j && j.items) || [];
+    if (!items.length) break;
+
+    for (const r of items) {
+      const addr = String(r.address_hash || '');
+      const sym = clean(r.symbol, 12);
+      const mcap = num(r.circulating_market_cap);
+      /* No cap is no bubble: size is the whole encoding here. */
+      if (!addr || !sym || !(mcap > 0)) continue;
+      out.push({
+        /* Prefixed and lowercased so history keys stay stable — the same token
+           arrives checksummed from one source and lowercase from another. */
+        id: 'rh:' + addr.toLowerCase(),
+        mint: '',                       // no Solana mint, so nothing to boost
+        addr,
+        sym,
+        name: clean(r.name || r.symbol, 48) || sym,
+        rawImg: typeof r.icon_url === 'string' ? r.icon_url : '',
+        img: '',
+        mcap,
+        ath: 0,
+        vol: num(r.volume_24h),
+        price: num(r.exchange_rate),
+        /* Blockscout carries no change at all. DexScreener fills these in
+           enrich(); until it does they stay null, because a zero here would
+           paint the whole chain flat green. */
+        pc: { m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null },
+      });
+    }
+
+    const np = j && j.next_page_params;
+    if (!np) break;
+    const qs = new URLSearchParams({ type: 'ERC-20' });
+    for (const [k, v] of Object.entries(np)) if (v != null) qs.set(k, String(v));
+    url = BLOCKSCOUT + '/tokens?' + qs;
+  }
+
+  return out.slice(0, limit);
+}
+
 export const SOURCES = {
   pumpfun: {
     id: 'pumpfun', label: 'pump.fun', group: 'Solana launchpads',
@@ -140,6 +213,17 @@ export const SOURCES = {
     chain: 'stock', ttl: 600_000, shared: true, enrich: false,
     boostable: false, quality: 'major',
     fetch: () => nasdaqStocks(300),
+  },
+  /* Robinhood Chain, home of the Pons launchpad. Not boostable for the same
+     reason stocks are not: a boost is paid in SOL against a Solana mint, and
+     an ERC-20 on an L2 does not have one. */
+  robinhood: {
+    id: 'robinhood', label: 'Robinhood', group: 'Robinhood Chain',
+    /* Two minutes. A build is four Blockscout pages plus seven DexScreener
+       batches, and shared through KV so cold isolates do not each pay it. */
+    chain: 'robinhood', ttl: 120_000, shared: true, enrich: true,
+    boostable: false, quality: 'major',
+    fetch: () => robinhoodTokens(200),
   },
 };
 

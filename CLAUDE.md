@@ -233,6 +233,19 @@ cache TTL and whether it is boostable.
   Cloudflare's egress is shared platform-wide, so it returned 429 from the Worker while working
   from a laptop; the documented fix is a demo key we do not have. CoinPaprika needs none and
   returns 2,000 coins in one request.
+- **robinhood** is Robinhood Chain, whose launchpad is Pons — its pump.fun. Every obvious route in
+  is closed: Pons publishes no REST API and its docs say to index the factory yourself; the chain's
+  public RPC 429s after two calls; GeckoTerminal ranks the chain's pools and 429s Cloudflare on
+  every single request, exactly as CoinGecko does. DexScreener's search answers but caps at 30 per
+  query — 28 different search words turned up 146 tokens and were still climbing, which is a sample
+  dressed as a ranking. What works is the chain's **Blockscout** explorer for the ranked list
+  (`/api/v2/tokens?type=ERC-20`, four pages of fifty, 98% matched) and **DexScreener** for the price
+  change: the same split as pump.fun, identity from one source and colour from another. Blockscout
+  403s a request with no User-Agent at all, which is why Node's bare `fetch` fails and the project's
+  own UA is fine.
+  It is **the whole chain, not Pons alone**. Separating a Pons launch from a bridged LINK means
+  reading the factory, which is the door the RPC closes — and a tab labelled "Pons" while showing
+  bridged majors would be worse than one that says what it is.
 - **stocks** is Nasdaq's own screener: every listed company in one keyless request, with sector and
   industry on each row. One company can list several share classes and *each reports the whole
   company's market cap*, so listings are grouped by company and only the largest is kept —
@@ -247,6 +260,7 @@ which is a statement about the asset rather than about our data.
 | pumpfun | yes | yes | — | — | — |
 | majors | yes | yes | yes | yes | yes |
 | stocks | — | yes | — | yes | yes |
+| robinhood | yes | yes | — | — | — |
 
 CoinPaprika returns zero for 30d and 1y on the free tier, so those two windows come from elsewhere
 for both asset classes, by two different shapes of the same idea.
@@ -330,6 +344,21 @@ zero so an upstream miss greys out instead of asserting a flat market.
 
 The bubble label draws `—` for a window with no data. Grey alone did not carry it: a grey bubble
 reading `+0.00%` still says the market was flat, and nobody reads a percentage by its colour.
+
+**`enrich()` turned a missing window into zero for as long as it has existed.** DexScreener omits a
+window entirely when nothing traded in it — LINK on Robinhood Chain comes back as `{h24:-1.38}`
+with no `h1` key at all — and `num(undefined)` is 0, so the map asserted a flat hour on a price
+nothing had measured. Invisible on pump.fun, where everything trades every minute; obvious on a
+chain full of quiet pairs. Absent is null now, and our own market-cap history still fills what it
+legitimately can.
+
+**A test suite that never imports a module cannot tell you the module is broken.** Moving one helper
+dropped `export` from `clean` in core.mjs, so `sources.mjs` could not import it — every feed on the
+site — and the whole suite passed, because nothing in it imported sources.mjs. `node --check` misses
+it too: a missing export is valid syntax and only fails when the graph is linked.
+`scripts/imports.test.mjs` now loads every module; `png.mjs` and `api.mjs` are skipped there because
+they reach the font and the WASM through wrangler's `[[rules]]`, and `npx wrangler deploy --dry-run`
+is what link-checks those.
 
 **A green API check is not a working feature.** The client mapper copied only `m5/h1/h6/h24` out
 of `pc`, so `d7`, `d30` and `y1` were dropped before they ever reached a bubble. Every long window
