@@ -441,12 +441,15 @@ function scoreMemecoins(tokens, solPrice = 0) {
 /* `source` is an adapter from sources.mjs: it knows how to fetch its own feed,
    whether DexScreener can tell us anything useful about it, and which quality
    rules apply. Everything downstream of the fetch is shared. */
-export async function buildSnapshot({ source, hist, secret } = {}) {
+export async function buildSnapshot({ source, hist, secret, store } = {}) {
   const now = Date.now();
   if (!source || typeof source.fetch !== 'function') throw new Error('no source');
 
   const [tokens, sol] = await Promise.all([
-    source.fetch(),
+    /* Most sources are a plain HTTP call. Robinhood Chain has no endpoint that
+       ranks it, so its list is accumulated in KV over many ticks and it needs
+       the store to read that registry. */
+    source.fetch(store),
     /* only needed to price bonding-curve liquidity, which is a Solana idea */
     source.chain === 'solana' ? fetchSolPrice() : Promise.resolve(0),
   ]);

@@ -11,6 +11,7 @@ import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, sharePage, page } from './share.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
+import { discover } from './rhchain.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import {
   loadWindows as loadCryptoWin,
@@ -104,12 +105,13 @@ const caches = new Map();
 /* Which feeds the ranked card is allowed to draw from, and what it calls them.
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
-const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks' };
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const BOARD_TITLE = {
   pumpfun: 'Top movers on pump.fun today',
   majors: 'Top movers in crypto today',
   stocks: 'Biggest movers in stocks today',
+  robinhood: 'Top movers on Robinhood Chain today',
 };
 
 const boostMkt = new Map();
@@ -194,6 +196,7 @@ async function snapshot(ctx, source, force = false) {
         source: src,
         hist: ctx.hist,
         secret: ctx.env.IMG_SECRET,
+        store: ctx.store,
       });
       cache.data = snap; cache.at = Date.now(); cache.err = null;
       if (src.shared) {
@@ -1045,6 +1048,16 @@ export async function handle(req, ctx) {
         const snap = await snapshot(ctx, sourceOf('stocks'));
         const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
         return json({ ok: true, ...(await refreshWindows(ctx.store, syms)) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
+      }
+    }
+
+    /* Called by cron. Widens the Robinhood Chain registry by one tick's worth;
+       see src/rhchain.mjs for why the list has to be accumulated at all. */
+    if (path === '/api/robinhood/discover') {
+      try {
+        return json({ ok: true, ...(await discover(ctx.store)) });
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }

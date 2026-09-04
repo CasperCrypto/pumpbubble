@@ -19,6 +19,7 @@
    ========================================================================== */
 
 import { normalizeCoin, fetchPumpCoins, fastImage, clean } from './core.mjs';
+import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -109,75 +110,91 @@ async function paprikaMarkets(limit = 250) {
 
 
 /* ------------------------------------------------------------ Robinhood Chain */
-/* Robinhood Chain went live on 1 July 2026 and Pons is its pump.fun: a
-   permissionless bonding-curve launchpad. Getting it onto the map took a while
-   to work out because the obvious routes are all closed.
+/* Robinhood Chain went live on 1 July 2026 and Pons is its pump.fun.
 
-   Pons publishes no REST API at all — its docs tell you to index the factory
-   events yourself. The chain's public RPC 429s after two calls, so that is not
-   an option from a Worker without a paid provider. GeckoTerminal does rank the
-   chain's pools, and 429s Cloudflare's shared egress on every single request,
-   exactly as CoinGecko does. DexScreener's search endpoint answers, but it caps
-   at 30 results per query: 28 different search words turned up 146 tokens and
-   were still climbing, which is a sample dressed up as a ranking.
+   The first version of this ranked the chain by Blockscout's market cap and
+   produced a map of bridged assets: LINK, thirty-three holders and barely used
+   here, sat on top at $9B, while ROBINCAT — thirteen thousand holders, trading
+   hard — came back with a null market cap and was dropped. Blockscout only
+   prices what its own feed covers, which is the opposite of the set worth
+   showing.
 
-   What works is the chain's own Blockscout explorer for the ranked list and
-   DexScreener for the price change — the same split as pump.fun, where identity
-   comes from the launchpad and colour comes from a DEX aggregator.
+   So the ranking authority is DexScreener, which knows exactly which tokens
+   have a pool and what they are worth. What DexScreener does not offer is a
+   chain-wide listing, so the *addresses* are accumulated in KV a few per tick
+   (src/rhchain.mjs) and this prices whatever has been found so far.
 
-   This is the whole chain rather than Pons alone. Telling a Pons launch apart
-   from a bridged LINK means reading the factory, which is the door the RPC
-   closes; a tab claiming "Pons" while showing bridged majors would be worse
-   than one that says what it is. */
-const BLOCKSCOUT = 'https://robinhoodchain.blockscout.com/api/v2';
+   Nothing without a pool survives: a market cap for a token nobody can trade
+   is a number with nothing behind it. */
 
-async function robinhoodTokens(limit = 200) {
-  const out = [];
-  let url = BLOCKSCOUT + '/tokens?type=ERC-20';
+async function robinhoodTokens(store, limit = 220) {
+  if (!store) return [];
 
-  /* Four pages of fifty. Blockscout ranks by circulating market cap, so the
-     first pages are the ones worth having and the walk stops early. */
-  for (let page = 0; page < 4 && out.length < limit; page++) {
-    let j;
-    try { j = await jget(url, 12000); } catch { break; }
-    const items = (j && j.items) || [];
-    if (!items.length) break;
+  let reg = await loadRegistry(store);
+  /* First run on a cold namespace: discover once inline rather than serve an
+     empty map until the next cron tick. */
+  if (!reg.addrs.length) {
+    try { await discover(store); reg = await loadRegistry(store); } catch { return []; }
+  }
+  if (!reg.addrs.length) return [];
 
-    for (const r of items) {
-      const addr = String(r.address_hash || '');
-      const sym = clean(r.symbol, 12);
-      const mcap = num(r.circulating_market_cap);
-      /* No cap is no bubble: size is the whole encoding here. */
-      if (!addr || !sym || !(mcap > 0)) continue;
-      out.push({
-        /* Prefixed and lowercased so history keys stay stable — the same token
-           arrives checksummed from one source and lowercase from another. */
-        id: 'rh:' + addr.toLowerCase(),
-        mint: '',                       // no Solana mint, so nothing to boost
-        addr,
-        sym,
-        name: clean(r.name || r.symbol, 48) || sym,
-        rawImg: typeof r.icon_url === 'string' ? r.icon_url : '',
-        img: '',
-        mcap,
-        ath: 0,
-        vol: num(r.volume_24h),
-        price: num(r.exchange_rate),
-        /* Blockscout carries no change at all. DexScreener fills these in
-           enrich(); until it does they stay null, because a zero here would
-           paint the whole chain flat green. */
-        pc: { m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null },
-      });
-    }
+  /* Seeds first: a hand-added token is in the map even if discovery has not
+     reached it and even if the address cap is full. */
+  const addrs = [...new Set([...(reg.seeds || []), ...reg.addrs])];
+  const priced = await priceAll(addrs);
+  const rows = [];
 
-    const np = j && j.next_page_params;
-    if (!np) break;
-    const qs = new URLSearchParams({ type: 'ERC-20' });
-    for (const [k, v] of Object.entries(np)) if (v != null) qs.set(k, String(v));
-    url = BLOCKSCOUT + '/tokens?' + qs;
+  for (const [addr, p] of priced) {
+    const sym = clean(p.baseToken && p.baseToken.symbol, 12);
+    const mcap = num(p.marketCap) || num(p.fdv);
+    if (!sym || !(mcap > 0)) continue;
+
+    const pc = p.priceChange || {};
+    rows.push({
+      id: 'rh:' + addr,
+      mint: '',                        // no Solana mint, so nothing to boost
+      addr,
+      sym,
+      name: clean((p.baseToken && p.baseToken.name) || sym, 48) || sym,
+      rawImg: (p.info && typeof p.info.imageUrl === 'string') ? p.info.imageUrl : '',
+      img: '',
+      mcap,
+      ath: 0,
+      vol: num(p.volume && p.volume.h24),
+      liq: num(p.liquidity && p.liquidity.usd),
+      price: num(p.priceUsd),
+      created: num(p.pairCreatedAt),
+      /* Absent stays absent. DexScreener omits a window entirely when nothing
+         traded in it, and a zero there would claim the price held still. */
+      pc: {
+        m5: pick(pc.m5), h1: pick(pc.h1), h6: pick(pc.h6), h24: pick(pc.h24),
+        d7: null, d30: null, y1: null,
+      },
+    });
   }
 
-  return out.slice(0, limit);
+  /* Forty-four tokens on this chain call themselves ROBINCAT and thirty call
+     themselves ROBIN. Keeping them all and letting the copy-count heuristic
+     sort it out hid the real ones: PONS, with $6.7M of liquidity behind it,
+     was flagged as a copycat swarm and vanished off the chain's own map.
+
+     So one survivor per ticker, chosen by pool depth, and the count of what it
+     replaced is kept. The market-cap-to-liquidity test then still runs over the
+     survivors, which is what catches bridged LINK — $54.7bn of claimed market
+     cap against $243 of liquidity. */
+  const byTicker = new Map();
+  for (const t of rows) {
+    const k = t.sym.toUpperCase();
+    const prev = byTicker.get(k);
+    if (!prev) { byTicker.set(k, { ...t, copies: 1 }); continue; }
+    const copies = prev.copies + 1;
+    byTicker.set(k, t.liq > prev.liq ? { ...t, copies } : { ...prev, copies });
+  }
+
+  /* Addresses that never priced are dead weight against the registry cap. */
+  try { await prune(store, priced); } catch { /* not worth failing a map over */ }
+
+  return [...byTicker.values()].sort((x, y) => y.mcap - x.mcap).slice(0, limit);
 }
 
 export const SOURCES = {
@@ -221,9 +238,13 @@ export const SOURCES = {
     id: 'robinhood', label: 'Robinhood', group: 'Robinhood Chain',
     /* Two minutes. A build is four Blockscout pages plus seven DexScreener
        batches, and shared through KV so cold isolates do not each pay it. */
-    chain: 'robinhood', ttl: 120_000, shared: true, enrich: true,
-    boostable: false, quality: 'major',
-    fetch: () => robinhoodTokens(200),
+    /* enrich is off: DexScreener already supplied every number here, so the
+       generic pass would repeat the same requests to answer the same thing. */
+    chain: 'robinhood', ttl: 180_000, shared: true, enrich: false,
+    /* memecoin, not major: this chain is thin pools and copied tickers, which
+       is what that scoring is for. */
+    boostable: false, quality: 'memecoin',
+    fetch: store => robinhoodTokens(store, 220),
   },
 };
 

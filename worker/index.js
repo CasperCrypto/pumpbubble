@@ -250,6 +250,9 @@ export default {
            over roughly half an hour and then only refreshes daily. */
         await handle(new Request('https://pumpbubble.fun/api/stocks/windows'), ctx);
         await handle(new Request('https://pumpbubble.fun/api/majors/windows'), ctx);
+        /* One tick's worth of Robinhood Chain discovery. The chain has no
+           endpoint that ranks it, so the list is widened a little at a time. */
+        await handle(new Request('https://pumpbubble.fun/api/robinhood/discover'), ctx);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {

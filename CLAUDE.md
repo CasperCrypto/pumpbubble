@@ -233,16 +233,42 @@ cache TTL and whether it is boostable.
   Cloudflare's egress is shared platform-wide, so it returned 429 from the Worker while working
   from a laptop; the documented fix is a demo key we do not have. CoinPaprika needs none and
   returns 2,000 coins in one request.
-- **robinhood** is Robinhood Chain, whose launchpad is Pons — its pump.fun. Every obvious route in
-  is closed: Pons publishes no REST API and its docs say to index the factory yourself; the chain's
-  public RPC 429s after two calls; GeckoTerminal ranks the chain's pools and 429s Cloudflare on
-  every single request, exactly as CoinGecko does. DexScreener's search answers but caps at 30 per
-  query — 28 different search words turned up 146 tokens and were still climbing, which is a sample
-  dressed as a ranking. What works is the chain's **Blockscout** explorer for the ranked list
-  (`/api/v2/tokens?type=ERC-20`, four pages of fifty, 98% matched) and **DexScreener** for the price
-  change: the same split as pump.fun, identity from one source and colour from another. Blockscout
-  403s a request with no User-Agent at all, which is why Node's bare `fetch` fails and the project's
-  own UA is fine.
+- **robinhood** is Robinhood Chain, whose launchpad is Pons — its pump.fun. See
+  `src/rhchain.mjs`, which exists because **nothing ranks this chain**. Pons publishes no REST API
+  and its docs say to index the factory yourself; the chain's public RPC 429s after two calls;
+  GeckoTerminal ranks it properly and 429s Cloudflare on every request, exactly as CoinGecko does.
+  Blockscout 403s a request carrying no User-Agent at all, which is why Node's bare `fetch` fails
+  against it and the project's own UA is fine.
+
+  **Ranking by Blockscout's market cap was the first version and it was wrong.** Blockscout only
+  prices what its own feed covers, so the map filled with bridged assets — LINK on top at $9bn with
+  thirty-three holders — while ROBINCAT, thirteen thousand holders and trading hard, returned
+  `circulating_market_cap: null` and was dropped entirely. Its other sorts are worse: by holders the
+  top is airdrop spam, one token with 1.6M holders and no market at all. So Blockscout is used to
+  *find* tokens and DexScreener to *judge* them — a market cap for a token with no pool is a number
+  with nothing behind it.
+
+  **Discovery is accumulated, not fetched.** Every query on this chain returns one ticker's clones —
+  forty-four tokens call themselves ROBINCAT, thirty call themselves ROBIN — and both engines cap
+  (DexScreener 30 cross-chain, Blockscout 50 chain-scoped). So each cron tick pages one term further
+  through Blockscout's search and adds what it finds to a KV registry, and the terms are
+  bootstrapped: every ticker already discovered becomes a later search term. Two traps, both of
+  which silently froze it at a fixed number: a failed request left the cursor where it was while
+  still reporting "more pages", and **Blockscout's cursor stops advancing after about five pages** —
+  it keeps returning the same fifty rows next to a `next_page_params` that never terminates. The
+  usable signal is whether a tick actually learned anything, not what the server claims.
+
+  `scripts/rh-seed.mjs --sym ROBINCAT --go` pins a token immediately, for when discovery has not
+  reached it yet. Pinned addresses are never pruned; everything else that turns out to have no pool
+  is dropped when the registry nears its cap.
+
+  **One survivor per ticker, chosen by pool depth.** Keeping the clones and letting the copy-count
+  heuristic sort them out hid the real ones: PONS, with $6.7M of liquidity, was flagged as a copycat
+  swarm and vanished off its own chain's map. The market-cap-to-liquidity test still runs over the
+  survivors, which is what catches bridged LINK — $54.7bn of claimed market cap against **$243** of
+  liquidity. Under the `major` quality tier that passed untouched, because that tier only asks
+  whether a market cap exists; this source uses `memecoin`.
+
   It is **the whole chain, not Pons alone**. Separating a Pons launch from a bridged LINK means
   reading the factory, which is the door the RPC closes — and a tab labelled "Pons" while showing
   bridged majors would be worse than one that says what it is.
