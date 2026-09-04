@@ -371,6 +371,30 @@ zero so an upstream miss greys out instead of asserting a flat market.
 The bubble label draws `—` for a window with no data. Grey alone did not carry it: a grey bubble
 reading `+0.00%` still says the market was flat, and nobody reads a percentage by its colour.
 
+**A bad build must never become the cached answer.** Every upstream here fails by returning
+*nothing* rather than by throwing — a 429, a timeout, a shape that moved — so `buildSnapshot`
+cannot tell "the feed is down" from "the market is empty", and it caches the result either way.
+Two shapes of this reached production within an hour of each other:
+
+- An empty snapshot went into KV during a deploy. Because `shared` sources read KV back as
+  authoritative, every isolate then served `tokens: []` for the whole TTL and kept re-serving it —
+  the Robinhood map showed one bubble for minutes after the upstream had recovered.
+- A pump.fun build returned all 301 tokens with the DexScreener pass failed. Liquidity is what
+  decides whether a market cap is backed, so with none of it every bubble scored unbacked, the
+  map's own filter hid 291 of them, and a healthy-looking snapshot rendered as **eight bubbles**.
+
+So `snapshot()` now refuses to cache a build that collapsed: zero tokens, under a quarter of the
+previous count, or — for sources that enrich — under a quarter of the previous `enriched`. It keeps
+the last good data and retries in 20 seconds instead of the full TTL. The KV read is guarded the
+same way, since a namespace may still hold an empty snapshot written by an older build.
+
+The lesson generalises past caching: **the count of rows is not a health check.** A feed can be the
+right length and still be missing the field the rest of the pipeline depends on.
+
+**`?source=` only worked on `/embed`.** The deep-link handling lived inside `initEmbed()`, so every
+share page linking back with `?source=stocks` or `?source=robinhood` quietly landed on pump.fun —
+including the ones this project generates itself.
+
 **`enrich()` turned a missing window into zero for as long as it has existed.** DexScreener omits a
 window entirely when nothing traded in it — LINK on Robinhood Chain comes back as `{h24:-1.38}`
 with no `h1` key at all — and `num(undefined)` is 0, so the map asserted a flat hour on a price

@@ -266,17 +266,24 @@ export async function prune(store, priced) {
    actually trades. DexScreener is the authority here: a token it has no pool
    for cannot be bought, and a market cap for it would be a number with nothing
    behind it. */
-export async function priceAll(addrs) {
+export async function priceAll(addrs, report) {
   const batches = [];
   for (let i = 0; i < addrs.length; i += 30) batches.push(addrs.slice(i, i + 30));
 
+  let ok = 0, bad = 0, why = '';
   const best = new Map();
   for (let i = 0; i < batches.length; i += 4) {
     const group = batches.slice(i, i + 4);
     const res = await Promise.allSettled(group.map(b =>
       jget(DEXS + '/tokens/v1/robinhood/' + b.join(','), 8000)));
     for (const r of res) {
-      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) {
+        bad++;
+        const m = String((r.reason && r.reason.message) || r.reason || 'not-an-array');
+        if (!why) why = m.slice(0, 60);
+        continue;
+      }
+      ok++;
       for (const p of r.value) {
         const a = p && p.baseToken && norm(p.baseToken.address);
         if (!a) continue;
@@ -289,5 +296,6 @@ export async function priceAll(addrs) {
       }
     }
   }
+  if (report) Object.assign(report, { batches: batches.length, ok, bad, why });
   return best;
 }

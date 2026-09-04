@@ -114,6 +114,10 @@ const BOARD_TITLE = {
   robinhood: 'Top movers on Robinhood Chain today',
 };
 
+/* How long a collapsed build waits before trying again. Short, because it
+   means an upstream is unwell rather than a market genuinely emptying. */
+const EMPTY_RETRY_MS = 20_000;
+
 const boostMkt = new Map();
 const BOOST_MKT_TTL = 60_000;
 
@@ -184,7 +188,10 @@ async function snapshot(ctx, source, force = false) {
     if (src.shared && !force) {
       try {
         const saved = await ctx.store.get(kvKey);
-        if (saved && Date.now() - saved.ts < ttl) {
+        /* Same rule on the way in. A namespace written by an older build may
+           still hold an empty snapshot, and reading it back would reinstate
+           exactly the outage the write guard exists to prevent. */
+        if (saved && saved.tokens && saved.tokens.length && Date.now() - saved.ts < ttl) {
           cache.data = saved; cache.at = Date.now(); cache.err = null;
           return saved;
         }
@@ -198,8 +205,52 @@ async function snapshot(ctx, source, force = false) {
         secret: ctx.env.IMG_SECRET,
         store: ctx.store,
       });
-      cache.data = snap; cache.at = Date.now(); cache.err = null;
-      if (src.shared) {
+      /* An empty build is a failure wearing a success's clothes. Every upstream
+         here fails by returning nothing rather than by throwing — a 429, a
+         timeout, a shape that changed — and buildSnapshot cannot tell the
+         difference between "the feed is down" and "the chain has no tokens".
+
+         Caching that answer is what turns a blip into an outage: an empty
+         snapshot went into KV during a deploy, every isolate then read it back
+         as valid for the whole TTL, and the map served one bubble for minutes
+         after the upstream had recovered. So an empty result never replaces
+         data we already have, and never reaches KV; it just retries sooner. */
+      const got = (snap.tokens && snap.tokens.length) || 0;
+      const had = (cache.data && cache.data.tokens && cache.data.tokens.length) || 0;
+
+      /* Not just empty — *collapsed*. A pump.fun snapshot is six paged requests
+         and ten DexScreener ones; when half of them fail the build still
+         succeeds, with a fraction of the feed in it. That is how a map that
+         should show three hundred bubbles showed eight, and then kept showing
+         eight because the result was cached like any other.
+
+         A quarter of what we had is far outside normal churn for every source
+         here, so it is treated as a bad build rather than a small market. */
+      /* Token count is not enough on its own. A pump.fun build can return all
+         three hundred tokens with the DexScreener pass having failed, and
+         liquidity is what decides whether a market cap is backed — so every
+         bubble becomes "unbacked", the map's own filter hides them, and three
+         hundred tokens render as eight. That is what this looked like from the
+         outside, and the snapshot behind it looked perfectly healthy by count.
+
+         So a collapse in enrichment is treated exactly like a collapse in
+         tokens, for the sources that depend on it. */
+      const enrNow = snap.enriched || 0;
+      const enrWas = (cache.data && cache.data.enriched) || 0;
+      const enrichBroke = src.enrich !== false && enrWas > 0 && enrNow < enrWas * 0.25;
+
+      const empty = got === 0 || (had > 0 && got < had * 0.25) || enrichBroke;
+
+      if (empty && had) {
+        /* Keep the good data, and come back well before the normal lifetime. */
+        cache.at = Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS);
+        return cache.data;
+      }
+
+      cache.data = snap;
+      cache.at = empty ? Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS) : Date.now();
+      cache.err = null;
+      if (src.shared && !empty) {
         try { await ctx.store.put(kvKey, snap); } catch { /* non-fatal */ }
       }
       ctx.onSnapshot?.(snap);

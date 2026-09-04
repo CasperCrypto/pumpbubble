@@ -1930,6 +1930,22 @@ function readRef(){
 
 const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location.search).get('embed')==='1';
 
+/* Which feed and window a link asks for, applied on any page load.
+
+   This lived inside initEmbed(), so it only ran for /embed — and every share
+   page links back with ?source=stocks or ?source=robinhood, which quietly
+   landed on pump.fun instead. The rest of what initEmbed reads really is
+   embed-only presentation; this pair is what the URL is *about*. */
+(function applyDeepLink(){
+  const q=new URLSearchParams(location.search);
+  const src=q.get('source')||q.get('mode');
+  const OK={pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
+            graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
+  if(OK[src])S.mode=OK[src];
+  const tf=q.get('tf');
+  if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
+})();
+
 async function initEmbed(){
   if(!EMBED)return;
   document.body.classList.add('embed');
@@ -1939,8 +1955,6 @@ async function initEmbed(){
   const lim=parseInt(q.get('limit'),10);
   if(lim>=10&&lim<=200)S.limit=lim;
   if(['m5','h1','h6','h24'].includes(q.get('tf')))S.tf=q.get('tf');
-  const src=q.get('source')||q.get('mode');
-  if(['pumpfun','majors','stocks','robinhood','graduated','bonding'].includes(src))S.mode=src==='graduated'?'pumpfun':src;
   if(q.get('real')==='0')S.realOnly=false;
 
   let cfg={brand:true,accent:'',pin:''};
