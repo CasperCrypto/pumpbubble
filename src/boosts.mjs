@@ -538,7 +538,11 @@ export async function activateBoost(store, order, payment) {
    no longer in the pump.fun feed are re-added, so a paid bubble never vanishes
    mid-flight. */
 export function applyBoosts(tokens, byMint) {
-  const idx = new Map(tokens.map(t => [t.mint, t]));
+  /* Keyed by whichever identifier the token actually has. A Solana token is its
+     mint; an ERC-20 on Base or Robinhood Chain has no mint and is its contract
+     address, so indexing on `mint` alone silently never matched them and a
+     house boost on an EVM token did nothing at all. */
+  const idx = new Map(tokens.map(t => [t.addr || t.mint, t]));
   for (const [mint, b] of byMint) {
     const t = idx.get(mint);
     if (t) { t.boost = b.bonus; t.boostUsd = b.spentUsd; t.boostUntil = b.until; }

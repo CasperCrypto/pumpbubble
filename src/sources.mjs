@@ -20,6 +20,7 @@
 
 import { normalizeCoin, fetchPumpCoins, fastImage, clean } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
+import { baseTokens } from './basechain.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -231,6 +232,16 @@ export const SOURCES = {
     boostable: false, quality: 'major',
     fetch: () => nasdaqStocks(300),
   },
+  /* Base. The universe comes from a maintained token list rather than from
+     searching, which is what keeps the clone swarms out; see src/basechain.mjs.
+     Reads a cache the cron fills, so a build is one KV read. */
+  base: {
+    id: 'base', label: 'Base', group: 'Base',
+    chain: 'base', ttl: 120_000, shared: true, enrich: false,
+    boostable: false, quality: 'memecoin',
+    fetch: store => baseTokens(store, 220),
+  },
+
   /* Robinhood Chain, home of the Pons launchpad. Not boostable for the same
      reason stocks are not: a boost is paid in SOL against a Solana mint, and
      an ERC-20 on an L2 does not have one. */

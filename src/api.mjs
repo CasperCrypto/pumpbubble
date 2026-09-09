@@ -12,6 +12,9 @@ import { cardSvgFor, boardCardSvgFor, sharePage, page } from './share.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import { discover } from './rhchain.mjs';
+import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
+import { adminEnabled, adminPath, authed, adminPage } from './admin.mjs';
+import { loadRegistry as rhRegistry, seed as rhSeed } from './rhchain.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import {
   loadWindows as loadCryptoWin,
@@ -105,13 +108,14 @@ const caches = new Map();
 /* Which feeds the ranked card is allowed to draw from, and what it calls them.
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
-const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood' };
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const BOARD_TITLE = {
   pumpfun: 'Top movers on pump.fun today',
   majors: 'Top movers in crypto today',
   stocks: 'Biggest movers in stocks today',
   robinhood: 'Top movers on Robinhood Chain today',
+  base: 'Top movers on Base today',
 };
 
 /* How long a collapsed build waits before trying again. Short, because it
@@ -418,7 +422,11 @@ export async function handle(req, ctx) {
 
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
          paid bubble never disappears before its time is up. */
-      const have = new Set(tokens.map(t => t.mint));
+      /* Keyed the same way applyBoosts is. Built from `mint` alone this set
+         was {''} for an EVM chain, so a boosted Base token was judged absent
+         and re-added next to the copy that was already there — two gold MAC
+         bubbles, one of them with no data behind it. */
+      const have = new Set(tokens.map(t => t.addr || t.mint));
       const readd = [];
       for (const [mint, b] of byMint) {
         if (have.has(mint)) continue;
@@ -450,8 +458,14 @@ export async function handle(req, ctx) {
            belongs, in sizes(): a boosted bubble is sized by what was paid rather
            than by its market cap, so an out-of-place cap no longer distorts
            anything. */
+        /* A boost on an EVM chain carries a contract address where a Solana
+           boost carries a mint. Putting that address in `mint` would send the
+           chart link to pump.fun, which has never heard of it. */
+        const evm = /^0x[0-9a-fA-F]{40}$/.test(mint);
         readd.push({
-          id: mint, mint,
+          id: (b.chain ? b.chain + ':' : '') + mint,
+          mint: evm ? '' : mint,
+          ...(evm ? { addr: mint.toLowerCase() } : {}),
           sym: b.sym || mint.slice(0, 4), name: b.name || b.sym || 'boosted',
           img, mcap: b.mcap || 0, vol: 0,
           /* null, not zero. If nothing below fills these in, the map greys the
@@ -1099,6 +1113,209 @@ export async function handle(req, ctx) {
         const snap = await snapshot(ctx, sourceOf('stocks'));
         const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
         return json({ ok: true, ...(await refreshWindows(ctx.store, syms)) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
+      }
+    }
+
+    /* ------------------------------------------------------------ console */
+    /* No link points here and there is no default path. With ADMIN_PATH or
+       ADMIN_PASS unset this block does not exist, and the URL 404s like any
+       other unknown one — a 401 would confirm that something is here. */
+    if (adminEnabled(ctx.env)) {
+      const root = adminPath(ctx.env);
+
+      if (path === root) {
+        return new Response(adminPage(root), {
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+            'x-robots-tag': 'noindex, nofollow, noarchive',
+          },
+        });
+      }
+
+      if (path === root + '/api' && req.method === 'POST') {
+        /* Guessing a password is the only way in, so make guessing slow. */
+        const limited = rateLimit(req, 'admin', 20, 60_000);
+        if (limited) return limited;
+        if (!await authed(req, ctx.env)) {
+          return json({ ok: false, error: 'no' }, 401);
+        }
+
+        let body = {};
+        try { body = await req.json(); } catch { /* empty body is a bad action */ }
+        const action = String(body.action || '');
+
+        const readAds = async () => (await ctx.store.get('ads')) || [];
+        const readBoosts = async () => (await ctx.store.get('boosts')) || [];
+
+        if (action === 'overview') {
+          const all = await readBoosts();
+          const { live } = await activeBoosts(ctx.store);
+          /* House boosts are the operator's own slot and were never paid for.
+             Counting them as revenue would be inventing income. */
+          const paid = all.filter(b => !b.house);
+          const revenueUsd = paid.reduce((a, b) => a + (Number(b.usd) || 0), 0);
+
+          let traffic = { viewsToday: 0, visitorsToday: 0, views7d: 0, visitors7d: 0 };
+          try {
+            const st = await statsSummary(ctx.store, 7);
+            const days = (st && st.days) || [];
+            traffic = {
+              viewsToday: (st.today && st.today.views) || 0,
+              visitorsToday: (st.today && st.today.visitors) || 0,
+              views7d: days.reduce((a, d) => a + (d.views || 0), 0),
+              visitors7d: days.reduce((a, d) => a + (d.visitors || 0), 0),
+            };
+          } catch { /* stats are a nice-to-have, not a reason to fail */ }
+
+          const feeds = [];
+          for (const id of ['pumpfun', 'majors', 'stocks', 'robinhood', 'base']) {
+            try {
+              const snap = await snapshot(ctx, sourceOf(id));
+              const toks = snap.tokens || [];
+              feeds.push({
+                id, tokens: toks.length,
+                solid: toks.filter(t => t.solid).length,
+                age: Date.now() - (snap.ts || Date.now()),
+              });
+            } catch { feeds.push({ id, tokens: 0, solid: 0, age: null }); }
+          }
+
+          let seeds = { base: [], robinhood: [] };
+          try { seeds.base = (await baseCache(ctx.store)).seeds || []; } catch {}
+          try { seeds.robinhood = (await rhRegistry(ctx.store)).seeds || []; } catch {}
+
+          let xbot = { configured: !!xCreds(ctx.env), postedToday: 0, would: null };
+          try {
+            const st = (await ctx.store.get(XBOT_KEY)) || {};
+            xbot.postedToday = st.count || 0;
+          } catch {}
+
+          return json({
+            ok: true,
+            money: {
+              revenueUsd,
+              paidCount: paid.length,
+              liveCount: live.length,
+              treasury: ctx.env.TREASURY_WALLET || '',
+            },
+            traffic, feeds,
+            ads: await readAds(),
+            boosts: all.slice(-40).reverse(),
+            seeds, xbot,
+          });
+        }
+
+        if (action === 'ad.add') {
+          const title = String(body.title || '').trim().slice(0, 24);
+          const url = String(body.url || '').trim();
+          if (!title) return json({ ok: false, error: 'title required' }, 400);
+          if (url && !/^https:\/\//i.test(url)) {
+            return json({ ok: false, error: 'url must be https' }, 400);
+          }
+          const img = String(body.img || '').trim();
+          if (img && !/^https:\/\//i.test(img)) {
+            return json({ ok: false, error: 'image must be https' }, 400);
+          }
+          const ads = (await readAds()).filter(a => (a.title || '').toUpperCase() !== title.toUpperCase());
+          ads.push({ title, sub: String(body.sub || 'sponsored').slice(0, 40), img, url });
+          await ctx.store.put('ads', ads.slice(0, 4));
+          return json({ ok: true });
+        }
+
+        if (action === 'ad.remove') {
+          const t = String(body.title || '').toUpperCase();
+          const ads = (await readAds()).filter(a => (a.title || '').toUpperCase() !== t);
+          await ctx.store.put('ads', ads);
+          return json({ ok: true });
+        }
+
+        if (action === 'boost.house') {
+          const id = String(body.mint || '').trim();
+          const chain = String(body.chain || '').trim();
+          const evm = /^0x[0-9a-f]{40}$/i.test(id);
+          if (!evm && !isMint(id)) return json({ ok: false, error: 'not a mint or contract' }, 400);
+          if (evm && chain !== 'base' && chain !== 'robinhood') {
+            return json({ ok: false, error: 'contract needs a chain' }, 400);
+          }
+
+          /* Identity comes from the chain rather than from the form, so a house
+             slot cannot be labelled as a token it is not. */
+          let sym = '', name = '', img = '', mcap = 0;
+          if (evm) {
+            const r = await fetch('https://api.dexscreener.com/tokens/v1/' + chain + '/' + id.toLowerCase(),
+              { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(9000) });
+            const arr = r.ok ? await r.json() : [];
+            const best = (Array.isArray(arr) ? arr : []).sort((a, b) =>
+              ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
+            if (!best) return json({ ok: false, error: 'no pool for that contract' }, 404);
+            sym = String((best.baseToken && best.baseToken.symbol) || '').slice(0, 12);
+            name = String((best.baseToken && best.baseToken.name) || sym).slice(0, 48);
+            img = (best.info && best.info.imageUrl) || '';
+            mcap = Number(best.marketCap) || Number(best.fdv) || 0;
+          } else {
+            const t = await fetchCoin(id, ctx.env.IMG_SECRET);
+            if (!t) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
+            sym = t.sym; name = t.name; img = t.rawImg || ''; mcap = t.mcap;
+          }
+
+          const key = evm ? id.toLowerCase() : id;
+          const all = await readBoosts();
+          const usd = Math.max(1, Math.min(10_000, Number(body.usd) || 400));
+          const next = all.filter(b => b.mint !== key);
+          next.push({
+            mint: key, sym, name, img, mcap,
+            ...(evm ? { chain } : {}),
+            usd, spentUsd: usd, tier: 'house', mult: 0,
+            at: Date.now(), until: Date.now() + 100 * 365 * 864e5,
+            house: true,
+          });
+          await ctx.store.put('boosts', next);
+          return json({ ok: true, sym });
+        }
+
+        if (action === 'boost.remove') {
+          const mint = String(body.mint || '').trim();
+          const all = await readBoosts();
+          await ctx.store.put('boosts', all.filter(b => b.mint !== mint));
+          return json({ ok: true });
+        }
+
+        if (action === 'seed.add' || action === 'seed.remove') {
+          const chain = String(body.chain || '');
+          const addr = String(body.addr || '').trim().toLowerCase();
+          if (!/^0x[0-9a-f]{40}$/.test(addr)) return json({ ok: false, error: 'not an address' }, 400);
+          if (chain !== 'base' && chain !== 'robinhood') {
+            return json({ ok: false, error: 'unknown chain' }, 400);
+          }
+          if (action === 'seed.add') {
+            const r = chain === 'base' ? await baseSeed(ctx.store, [addr])
+                                       : await rhSeed(ctx.store, [addr]);
+            return json({ ok: true, ...r });
+          }
+          if (chain === 'base') {
+            const c = await baseCache(ctx.store);
+            await ctx.store.put('basechain', { ...c, seeds: (c.seeds || []).filter(a => a !== addr) });
+          } else {
+            const r = await rhRegistry(ctx.store);
+            await ctx.store.put('rhchain', { ...r, seeds: (r.seeds || []).filter(a => a !== addr) });
+          }
+          return json({ ok: true });
+        }
+
+        return json({ ok: false, error: 'unknown action' }, 400);
+      }
+    }
+
+    /* Called by cron. Refreshes the Base token list at most once a day and
+       prices one slice of it; see src/basechain.mjs. */
+    if (path === '/api/base/sweep') {
+      try {
+        const uni = await refreshUniverse(ctx.store);
+        const swept = await baseSweep(ctx.store);
+        return json({ ok: true, ...uni, ...swept });
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }

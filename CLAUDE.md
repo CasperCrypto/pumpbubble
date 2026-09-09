@@ -272,6 +272,23 @@ cache TTL and whether it is boostable.
   It is **the whole chain, not Pons alone**. Separating a Pons launch from a bridged LINK means
   reading the factory, which is the door the RPC closes — and a tab labelled "Pons" while showing
   bridged majors would be worse than one that says what it is.
+- **base** is Base, and it is the one chain here with a **canonical list**. Its own Blockscout
+  instance answers 503 (eth.blockscout.com is fine from the same code, so it is theirs, not us),
+  GeckoTerminal 429s Cloudflare as always, and sixteen DexScreener searches turned up twenty-seven
+  unique Base tokens because every query returns one ticker's clones. CoinGecko publishes a token
+  list per platform as a *static file* — `tokens.coingecko.com/base/all.json`, 2,677 addresses, not
+  the rate-limited API — and that is the universe. DexScreener still supplies the ranking.
+
+  That ordering is the point, and it is what Robinhood Chain could not have. Discovery by search
+  returns whatever shares a name with a search term, which on a memecoin chain is a swarm of clones
+  of whatever is hot. Starting from a list somebody maintains means a token has to have been listed
+  before it can appear at all — the cheapest scam filter available. Pricing 2,677 addresses is
+  ninety requests, so `src/basechain.mjs` sweeps: a slice per cron tick, tokens with a pool
+  refreshed often and the rest re-checked slowly, and the map reads the cache so it never waits.
+
+  **A pinned token is never ranked off the map.** $MAC prices correctly at $256k and sat outside
+  the top 220 by market cap, so pinning it put it in the cache and still not on screen — which is
+  not what pinning means.
 - **stocks** is Nasdaq's own screener: every listed company in one keyless request, with sector and
   industry on each row. One company can list several share classes and *each reports the whole
   company's market cap*, so listings are grouped by company and only the largest is kept —
@@ -287,6 +304,7 @@ which is a statement about the asset rather than about our data.
 | majors | yes | yes | yes | yes | yes |
 | stocks | — | yes | — | yes | yes |
 | robinhood | yes | yes | — | — | — |
+| base | yes | yes | — | — | — |
 
 CoinPaprika returns zero for 30d and 1y on the free tier, so those two windows come from elsewhere
 for both asset classes, by two different shapes of the same idea.
@@ -296,6 +314,29 @@ request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Ma
 `src/cryptowin.mjs` — DefiLlama, which takes ~60 coins per request, so the whole map rebuilds in
 twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
 symbol reports null.
+
+## The console
+
+`src/admin.mjs`. There is no link to it anywhere and **no default path**: it lives at whatever
+`ADMIN_PATH` says, and with that or `ADMIN_PASS` unset the whole block does not exist and the URL
+404s like any other unknown one. A panel that answers 401 has told an attacker it is there.
+
+The secret path is convenience; the password is the control. It is compared as a SHA-256 digest so
+the comparison is fixed-cost whatever the input, arrives as a Bearer header rather than a query
+parameter (those reach logs, referrers and history), and is rate limited to twenty tries a minute.
+It is never echoed in a response.
+
+It shows revenue, traffic, per-feed health, and manages the ad rail, house boosts and pinned
+tokens. **House boosts are excluded from the revenue figure** — they are the operator's own slot and
+counting them would be inventing income. And the rule this project already learned about sweeps
+holds here: *where money goes is never a request parameter*, so nothing in the console accepts a
+destination address.
+
+**Boosts attach by `addr || mint`, not by `mint`.** A Solana token is its mint; an ERC-20 on Base or
+Robinhood Chain has no mint and is its contract address. Indexing on `mint` alone meant a house
+boost on an EVM token silently did nothing — and the re-add path, which builds its "already here"
+set the same way, saw `{''}` for an EVM feed, judged the boosted token absent, and added a second
+copy of it: two gold $MAC bubbles, one of them carrying no data.
 
 ## Share cards and the X poster
 

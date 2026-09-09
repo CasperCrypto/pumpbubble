@@ -558,6 +558,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
     <button data-mode="robinhood">Robinhood</button>
+    <button data-mode="base">Base</button>
   </div>
   <div class="seg acc" id="tf">
     <button data-tf="h1" class="on">1H</button>
@@ -1535,8 +1536,8 @@ document.getElementById('cOpen').onclick=()=>{
      three letters. */
   const url = t.mint
     ? 'https://pump.fun/coin/' + t.mint
-    : (S.mode === 'robinhood' && t.addr
-        ? 'https://dexscreener.com/robinhood/' + encodeURIComponent(t.addr)
+    : ((S.mode === 'robinhood' || S.mode === 'base') && t.addr
+        ? 'https://dexscreener.com/' + S.mode + '/' + encodeURIComponent(t.addr)
         : S.mode === 'stocks'
           ? 'https://finance.yahoo.com/quote/' + encodeURIComponent(t.sym || '')
           : 'https://www.coingecko.com/en/search?query=' + encodeURIComponent(t.sym || ''));
@@ -1940,7 +1941,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
   const OK={pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
-            graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
+            base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
   if(OK[src])S.mode=OK[src];
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;

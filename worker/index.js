@@ -253,6 +253,8 @@ export default {
         /* One tick's worth of Robinhood Chain discovery. The chain has no
            endpoint that ranks it, so the list is widened a little at a time. */
         await handle(new Request('https://pumpbubble.fun/api/robinhood/discover'), ctx);
+        /* One slice of Base pricing, and the token list once a day. */
+        await handle(new Request('https://pumpbubble.fun/api/base/sweep'), ctx);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {
