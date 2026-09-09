@@ -55,6 +55,55 @@ export async function authed(req, env) {
   return passOk(m[1].trim(), env.ADMIN_PASS);
 }
 
+/* ----------------------------------------------------------------- lockout */
+/* Failed logins are counted in KV rather than in memory.
+
+   The in-memory limiter this started with counted per isolate, and Cloudflare
+   spreads requests across many: eleven wrong passwords in a row all returned
+   401 and not one of them was ever throttled. It had exactly the wrong shape —
+   invisible to an attacker spread across isolates, while reliably locking out
+   the one person using the console from a single browser.
+
+   KV is the one thing every isolate can see. Only failures are written, and a
+   locked-out caller is rejected on the read alone, so ordinary use costs one
+   read and an attacker cannot make this expensive either.
+
+   KV is eventually consistent, so a fast burst may land a couple of extra
+   guesses. Against a bounded budget that is noise. */
+const FAIL_MAX = 8;
+const FAIL_WINDOW_MS = 10 * 60 * 1000;
+
+const ipOf = req =>
+  req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'local';
+
+const failKey = req => 'adminfail:' + ipOf(req);
+
+/* True when this caller has spent its budget. */
+export async function lockedOut(store, req) {
+  try {
+    const r = await store.get(failKey(req));
+    return !!(r && r.n >= FAIL_MAX && Date.now() < r.reset);
+  } catch { return false; }
+}
+
+export async function noteFailure(store, req) {
+  try {
+    const k = failKey(req);
+    const r = await store.get(k);
+    const live = r && Date.now() < r.reset;
+    const next = { n: (live ? r.n : 0) + 1, reset: live ? r.reset : Date.now() + FAIL_WINDOW_MS };
+    await store.put(k, next, { ttlSec: Math.ceil(FAIL_WINDOW_MS / 1000) + 60 });
+  } catch { /* a lockout that cannot be recorded must not block the request */ }
+}
+
+/* A good password clears the slate, so a typo or two never strands anyone. */
+export async function clearFailures(store, req) {
+  try {
+    const r = await store.get(failKey(req));
+    if (r) await store.put(failKey(req), { n: 0, reset: 0 }, { ttlSec: 120 });
+  } catch { /* nothing to do */ }
+}
+
 /* -------------------------------------------------------------------- page */
 /* Served from the Worker rather than from public/, so there is no file for
    anyone to find by guessing asset names. */

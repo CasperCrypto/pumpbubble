@@ -13,7 +13,8 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
-import { adminEnabled, adminPath, authed, adminPage } from './admin.mjs';
+import { adminEnabled, adminPath, authed, adminPage,
+         lockedOut, noteFailure, clearFailures } from './admin.mjs';
 import { loadRegistry as rhRegistry, seed as rhSeed } from './rhchain.mjs';
 import { loadWindows, applyWindows, refreshWindows } from './stockwin.mjs';
 import {
@@ -1136,19 +1137,39 @@ export async function handle(req, ctx) {
       }
 
       if (path === root + '/api' && req.method === 'POST') {
-        /* Guessing the password is the only way in, so make guessing slow.
-           Eight tries per ten minutes rather than twenty per minute: the
-           password here is short and human-chosen, and the thing that actually
-           defeats those is not being allowed to try very often.
+        /* Throttle guessing, not use.
 
-           This counter is per-isolate and in memory, so it is a speed bump
-           rather than a lock — the secret path is what keeps the door from
-           being found in the first place. */
-        const limited = rateLimit(req, 'admin', 8, 600_000);
-        if (limited) return limited;
+           The first version counted every request to this endpoint, which locked
+           the operator out of their own console in seconds: the panel refetches
+           the overview on load and again after every change, so eight requests
+           per ten minutes is a handful of clicks. Wrong. What needs slowing down
+           is somebody trying passwords, and a request that carries the right one
+           is not that.
+
+           So the password is checked first and only a *failure* costs an
+           attempt. Eight per ten minutes still applies to guessing, because the
+           password here is short and human-chosen. The counter is per-isolate
+           and in memory, so treat it as a speed bump — the secret path is what
+           keeps the door from being found at all. */
+        /* Checked before the password so a spent budget costs nothing to
+           reject, and so an attacker cannot keep the door open by guessing. */
+        if (await lockedOut(ctx.store, req)) {
+          return json({ ok: false, error: 'too many attempts, wait 10 minutes' }, 429);
+        }
+
         if (!await authed(req, ctx.env)) {
+          await noteFailure(ctx.store, req);
           return json({ ok: false, error: 'no' }, 401);
         }
+        /* A right answer wipes the slate: two typos should never strand the
+           one person who is supposed to be here. */
+        await clearFailures(ctx.store, req);
+
+        /* A separate, generous ceiling on authenticated use, so a runaway loop
+           in the page cannot hammer KV — never low enough to interrupt a
+           person clicking around. */
+        const busy = rateLimit(req, 'adminuse', 240, 60_000);
+        if (busy) return busy;
 
         let body = {};
         try { body = await req.json(); } catch { /* empty body is a bad action */ }

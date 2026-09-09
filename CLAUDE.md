@@ -325,10 +325,20 @@ The secret path is convenience; the password is the control. It is compared as a
 the comparison is fixed-cost whatever the input, arrives as a Bearer header rather than a query
 parameter (those reach logs, referrers and history), and is never echoed in a response.
 
-Attempts are capped at **eight per ten minutes** per IP. That is deliberately tighter than the rest
-of the API because the password here is short and human-chosen, and what defeats a guessable
-password is not being allowed to guess often. The counter is per-isolate and in memory, so treat it
-as a speed bump: the secret path is what stops the door being found at all.
+Failed logins are capped at **eight per ten minutes** per IP, counted **in KV**, and only a
+*failure* costs an attempt. Both halves of that were wrong on the first pass and both were wrong in
+the same direction — punishing the operator and not the attacker:
+
+- Counting *every* request locked the operator out of their own console in seconds, because the
+  panel refetches the overview on load and after every change. Eight requests is a few clicks.
+- Counting in memory counted **per isolate**, and Cloudflare spreads requests across many: eleven
+  wrong passwords in a row all returned 401 and not one was throttled. Meanwhile one person
+  clicking from a single browser reliably landed on the same isolate and got locked out.
+
+So the check is: locked-out callers are rejected on a KV read before the password is even examined,
+a failure writes a counter, and a success clears it so a typo or two never strands anyone. KV is
+eventually consistent, so a fast burst may land a couple of extra guesses; against a budget of
+eight that is noise. Verified live — guesses 1-8 return 401 and 9 onward return 429.
 
 Both values are Cloudflare secrets rather than `[vars]`. The repo is private, so committing them
 would not publish them to the world — but git history is forever and repos change visibility,
