@@ -1136,8 +1136,15 @@ export async function handle(req, ctx) {
       }
 
       if (path === root + '/api' && req.method === 'POST') {
-        /* Guessing a password is the only way in, so make guessing slow. */
-        const limited = rateLimit(req, 'admin', 20, 60_000);
+        /* Guessing the password is the only way in, so make guessing slow.
+           Eight tries per ten minutes rather than twenty per minute: the
+           password here is short and human-chosen, and the thing that actually
+           defeats those is not being allowed to try very often.
+
+           This counter is per-isolate and in memory, so it is a speed bump
+           rather than a lock — the secret path is what keeps the door from
+           being found in the first place. */
+        const limited = rateLimit(req, 'admin', 8, 600_000);
         if (limited) return limited;
         if (!await authed(req, ctx.env)) {
           return json({ ok: false, error: 'no' }, 401);

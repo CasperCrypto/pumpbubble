@@ -323,8 +323,16 @@ symbol reports null.
 
 The secret path is convenience; the password is the control. It is compared as a SHA-256 digest so
 the comparison is fixed-cost whatever the input, arrives as a Bearer header rather than a query
-parameter (those reach logs, referrers and history), and is rate limited to twenty tries a minute.
-It is never echoed in a response.
+parameter (those reach logs, referrers and history), and is never echoed in a response.
+
+Attempts are capped at **eight per ten minutes** per IP. That is deliberately tighter than the rest
+of the API because the password here is short and human-chosen, and what defeats a guessable
+password is not being allowed to guess often. The counter is per-isolate and in memory, so treat it
+as a speed bump: the secret path is what stops the door being found at all.
+
+Both values are Cloudflare secrets rather than `[vars]`. The repo is private, so committing them
+would not publish them to the world — but git history is forever and repos change visibility,
+whereas a secret can be rotated in one command without touching a commit.
 
 It shows revenue, traffic, per-feed health, and manages the ad rail, house boosts and pinned
 tokens. **House boosts are excluded from the revenue figure** — they are the operator's own slot and
