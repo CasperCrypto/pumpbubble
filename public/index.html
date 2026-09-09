@@ -762,15 +762,24 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
 /* A boost is paid in SOL against a Solana mint. Bitcoin has no mint, so on the
    whole-market view there is nothing to sell — say so plainly rather than
    offering a button that leads to a refusal. */
+/* The ad rail and the Boost button are not tied to the feed being shown.
+
+   They used to be: both were hidden whenever `boostable` was false, which is
+   every source except pump.fun. That hid sold ad inventory on four tabs out of
+   five — an advertiser paid for the rail and most visitors never saw it — and
+   it hid the Boost button on exactly the tabs where somebody is looking at a
+   token they might want to buy one for.
+
+   A boost is paid in SOL to a Solana treasury, and nothing about that requires
+   the *token* to be on Solana; the box takes any contract address. So the rail
+   and the button are always up. What is genuinely per-token is the "boost this
+   bubble" button in the card, which needs something to identify the bubble by —
+   see openCard(). A stock has no contract, so there it stays hidden. */
 function applyBoostability(){
-  const on=S.boostable!==false;
-  for(const id of ['boostTop','cBoost']){
-    const el=document.getElementById(id);
-    if(!el)continue;
-    el.style.display=on?'':'none';
-  }
   const rail=document.getElementById('rail');
-  if(rail)rail.style.display=on?'':'none';
+  if(rail)rail.style.display='';
+  const top=document.getElementById('boostTop');
+  if(top)top.style.display='';
 }
 
 /* Plain-language version of the server's quality flags. Says what was measured,
@@ -1431,6 +1440,10 @@ function openCard(t){
   else{const d=document.createElement('div');d.className='im';d.id='cIm';
     d.style.background=`hsl(${hue(t.sym)},38%,50%)`;d.textContent=t.sym[0]||'?';
     im.replaceWith(d)}
+  /* Only offer to boost a bubble we can name a contract for. Stocks have none,
+     and a boost that cannot identify its token is a payment with nowhere to go. */
+  const cb=document.getElementById('cBoost');
+  if(cb)cb.style.display=(t.mint||t.addr)?'':'none';
   e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
   e('cName').textContent=(t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
@@ -1726,7 +1739,9 @@ const closeVeil=()=>{veil.classList.remove('on');clearInterval(poll);poll=null};
 document.getElementById('mcancel').onclick=closeVeil;
 veil.querySelector('.bg').onclick=closeVeil;
 document.getElementById('boostTop').onclick=()=>openBoost(S.target||null);
-const CA_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/* Solana mint or an EVM contract. The boost box takes either, because the
+   payment is in SOL to a Solana treasury whatever chain the token is on. */
+const CA_RE=/^([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/;
 const caInput=document.getElementById('mca');
 const caMsg=document.getElementById('mcaMsg');
 /* The sheet is anchored to the bottom of the screen, which is exactly where the
@@ -1755,7 +1770,7 @@ function lookupCA(mint){
   clearTimeout(caTimer);
   const seq=++caSeq;
   caPre.className='capre on load';
-  caPre.innerHTML='<span class="av">…</span><div class="who"><b>checking…</b><span>asking pump.fun about this address</span></div>';
+  caPre.innerHTML='<span class="av">…</span><div class="who"><b>checking…</b><span>looking this address up</span></div>';
   caMsg.textContent='';caMsg.className='camsg';
   caTimer=setTimeout(async()=>{
     try{
@@ -1774,7 +1789,7 @@ function lookupCA(mint){
       if(seq!==caSeq)return;
       clearPreview();
       caMsg.textContent=/404|not found|no token/i.test(e.message)
-        ? 'pump.fun has no token with that address'
+        ? 'no token found with that address'
         : 'could not check that address — you can still continue';
       caMsg.className='camsg bad';
     }
@@ -1788,7 +1803,7 @@ caInput.addEventListener('input',()=>{
   const v=caInput.value.trim();
   caMsg.className='camsg';
   if(!v){clearPreview();caMsg.textContent=S.target?'':'paste a contract address, or tap a bubble';return}
-  if(!CA_RE.test(v)){clearPreview();caMsg.textContent='that does not look like a Solana address';caMsg.className='camsg bad';return}
+  if(!CA_RE.test(v)){clearPreview();caMsg.textContent='that does not look like a contract address';caMsg.className='camsg bad';return}
   /* say out loud that the pasted address now wins over the selected bubble,
      so nobody pays expecting the token whose name is still in the header */
   document.getElementById('mtk').textContent='pasted contract';

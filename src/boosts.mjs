@@ -89,9 +89,16 @@ export async function readOrder(token, secret) {
   } catch { return null; }
 }
 
-export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, solPrice, treasury, ref = '', taken = [], kind = 'boost', bidSol = 0 }) {
+export async function createOrder({ mint, chain = 'solana', sym, name, img, mcap, grad, tierId, solPrice, treasury, ref = '', taken = [], kind = 'boost', bidSol = 0 }) {
+  /* The treasury is always a Solana account — that is where the money lands,
+     whatever chain the advertised token is on. */
   if (!isPubkey(treasury)) throw new Error('treasury wallet not configured');
-  if (!isPubkey(mint)) throw new Error('that is not a valid token mint');
+  /* The token identifier is validated against its own chain. A Base contract is
+     not a Solana pubkey and checking it as one refused every non-Solana boost. */
+  const evm = chain !== 'solana';
+  if (evm ? !/^0x[0-9a-f]{40}$/i.test(mint) : !isPubkey(mint)) {
+    throw new Error('that is not a valid token address');
+  }
   if (!(solPrice > 0)) throw new Error('no SOL price available');
   /* Reject an unknown tier rather than quietly billing them for another one. */
   if (tierId && !TIERS[tierId]) throw new Error('unknown boost tier');
@@ -142,7 +149,7 @@ export async function createOrder({ mint, sym, name, img, mcap, grad, tierId, so
   const order = {
     id: 'ord_' + newReference().slice(0, 16),
     reference: newReference(),
-    mint, sym: sym || '', name: name || '', img: img || '', mcap: mcap || 0,
+    mint, chain, sym: sym || '', name: name || '', img: img || '', mcap: mcap || 0,
     grad: grad !== false,
     kind,
     tier: kind === 'bid' ? 'bid' : tier.id,
@@ -509,6 +516,9 @@ export async function activateBoost(store, order, payment) {
   const boost = {
     id: order.id,
     mint: order.mint,
+    /* Carried so the map knows which chain to price it on, and so the re-add
+       builds it as a contract rather than as a Solana mint. */
+    chain: order.chain || 'solana',
     sym: order.sym,
     /* kept so a boosted token that is outside the ranked feed still renders
        with its real art and name rather than as a blank circle */

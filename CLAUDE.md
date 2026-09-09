@@ -315,6 +315,35 @@ request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Ma
 twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
 symbol reports null.
 
+## Ads and boosts are not Solana-only
+
+**The ad rail and the Boost button are never hidden.** Both used to be gated on the source's
+`boostable` flag, which is false everywhere except pump.fun — so sold ad inventory was invisible on
+four tabs out of five, and the Boost button was missing from exactly the tabs where somebody is
+looking at a token they might buy one for. An advertiser paid for a rail most visitors never saw.
+
+**A boost is paid in SOL to a Solana treasury, and nothing about that requires the token to be on
+Solana.** The payment rail and the advertised token are independent, so the box takes any contract
+address — Solana mint, Base, Ethereum, Robinhood Chain. `resolveAnyToken()` in core.mjs turns one
+into a named, priced token: pump.fun first for a Solana mint (it knows graduation state and the
+original art), otherwise DexScreener's `/latest/dex/tokens/<address>`, which is chain-agnostic and
+says which chain each pair is on. Deepest pool wins. Verified live: POK/solana, MAC/base,
+PEPE/ethereum and PONS/robinhood all quote to the same treasury.
+
+What stays per-token is the *boost this bubble* button inside the card, which needs an identifier —
+a stock has no contract, so there it is hidden.
+
+**The chain is stamped on the token, never inferred from the address.** Reading it off the address
+format guessed "base" for anything EVM, which filed a Robinhood Chain token as Base inside a payment
+record. Feeds now set `chain` themselves, and a feed hit that cannot name its own chain is resolved
+rather than guessed.
+
+**Two order routes exist and they are not interchangeable.** `/api/bid/order` and
+`/api/boost/order` both begin by validating `body.mint`, so a patch aimed at one landed in the
+other: the boost route kept the Solana-only check *and* referenced a variable defined in the bid
+route, which took boost quotes down entirely. Bids stay Solana-only on purpose — the board ranks
+pump.fun tokens and nothing there has been taught to price anything else.
+
 ## The console
 
 `src/admin.mjs`. There is no link to it anywhere and **no default path**: it lives at whatever

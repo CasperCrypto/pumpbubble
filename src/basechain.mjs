@@ -232,7 +232,11 @@ export async function baseTokens(store, limit = 220) {
     if (!v || !v.sym || !(v.mcap > 0)) continue;
     rows.push({
       id: 'base:' + addr,
-      mint: '',                       // no Solana mint, so nothing to boost
+      mint: '',                       // no Solana mint; the contract is the id
+      /* Stamped on the token, not inferred later. A boost order read the chain
+         off the address format and guessed "base" for everything EVM, which
+         labelled a Robinhood Chain token as Base inside a payment record. */
+      chain: 'base',
       addr,
       sym: v.sym,
       name: v.name || v.sym,

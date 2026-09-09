@@ -4,7 +4,8 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint, fetchCoin, fetchSolPrice, signUrl, enrich } from './core.mjs';
+import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice,
+         signUrl, enrich, resolveAnyToken } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
@@ -480,28 +481,51 @@ export async function handle(req, ctx) {
 
       if (readd.length) {
         const now = Date.now();
+        const keyOf = t => t.addr || t.mint;
         const stale = readd.filter(t => {
-          const c = boostMkt.get(t.mint);
+          const c = boostMkt.get(keyOf(t));
           return !c || (now - c.at) > BOOST_MKT_TTL;
         });
-        if (stale.length) {
+
+        /* Solana boosts go through the batched DexScreener pass; a boost on any
+           other chain is resolved individually, because enrich() is told one
+           chain per call and these can be on several at once. There are only
+           ever a handful of paid bubbles, so one request each is cheap. */
+        const evmStale = stale.filter(t => isEvmAddr(keyOf(t)));
+        const solStale = stale.filter(t => !isEvmAddr(keyOf(t)));
+
+        if (solStale.length) {
           try {
-            await enrich(stale);
-            for (const t of stale) {
+            await enrich(solStale);
+            for (const t of solStale) {
               /* enrich fills rawImg when a token has no art; these already
                  carry a signed proxy URL, so the raw one would only travel
                  unused and blocked by the page's own CSP. */
               delete t.rawImg;
-              boostMkt.set(t.mint, { at: now, pc: t.pc, vol: t.vol, price: t.price });
+              boostMkt.set(keyOf(t), { at: now, pc: t.pc, vol: t.vol, price: t.price, mcap: t.mcap });
             }
           } catch { /* leave them null; grey is honest */ }
         }
+
+        for (const t of evmStale) {
+          try {
+            const live = await resolveAnyToken(keyOf(t), ctx.env.IMG_SECRET);
+            if (!live) continue;
+            boostMkt.set(keyOf(t), {
+              at: now, pc: live.pc, vol: live.vol, price: live.price, mcap: live.mcap,
+            });
+          } catch { /* grey is honest */ }
+        }
+
         for (const t of readd) {
-          const c = boostMkt.get(t.mint);
+          const c = boostMkt.get(keyOf(t));
           if (!c) continue;
           if (c.pc) t.pc = c.pc;
           if (Number.isFinite(c.vol)) t.vol = c.vol;
           if (Number.isFinite(c.price)) t.price = c.price;
+          /* A boost record stores the market cap at purchase. Months later that
+             is a stale number wearing a live label. */
+          if (Number.isFinite(c.mcap) && c.mcap > 0) t.mcap = c.mcap;
         }
         tokens.push(...readd);
       }
@@ -590,6 +614,9 @@ export async function handle(req, ctx) {
       if (!ctx.env.SOLANA_RPC) return json({ ok: false, error: 'bidding is temporarily closed — no Solana RPC configured' }, 503);
 
       const body = await req.json().catch(() => ({}));
+      /* Bids stay Solana-only. The board ranks pump.fun tokens and nothing here
+         has been taught to price anything else; widening it would be a money
+         path nobody had asked for. */
       if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
 
       const solAmount = Number(body.sol);
@@ -718,19 +745,21 @@ export async function handle(req, ctx) {
       if (limited) return limited;
 
       const mint = url.searchParams.get('mint') || '';
-      if (!isMint(mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+      if (!isCA(mint)) return json({ ok: false, error: 'that is not a valid contract address' }, 400);
 
       /* prefer a feed we already hold — free, and already image-signed */
       /* check every warm cache, whichever sources happen to be loaded */
+      const want = isEvmAddr(mint) ? mint.toLowerCase() : mint;
       for (const [sid, c] of caches) {
         const mode = sid;
-        const hit = c.data?.tokens.find(t => t.mint === mint);
+        const hit = c.data?.tokens.find(t => (t.addr || t.mint) === want);
         if (hit) return json({ ok: true, token: hit, from: mode });
       }
 
-      const t = await fetchCoin(mint, ctx.env.IMG_SECRET);
-      if (!t) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
-      return json({ ok: true, token: t, from: 'pump.fun' });
+      /* Not in any warm feed: resolve it on whatever chain it lives on. */
+      const t = await resolveAnyToken(mint, ctx.env.IMG_SECRET);
+      if (!t) return json({ ok: false, error: 'no token found with that contract address' }, 404);
+      return json({ ok: true, token: t, from: t.chain || 'pump.fun' });
     }
 
     /* ------------------------------------------------------- /api/card */
@@ -946,16 +975,24 @@ export async function handle(req, ctx) {
         return json({ ok: false, error: 'boosts are temporarily closed — no Solana RPC configured' }, 503);
       }
       const body = await req.json().catch(() => ({}));
-      if (!isMint(body.mint)) return json({ ok: false, error: 'that is not a valid token mint' }, 400);
+      if (!isCA(body.mint)) {
+        return json({ ok: false, error: 'that is not a valid contract address' }, 400);
+      }
+      /* One canonical spelling of the identifier, since EVM addresses arrive
+         checksummed from one source and lowercase from another. */
+      const caId = isEvmAddr(body.mint) ? body.mint.toLowerCase() : body.mint;
 
-      /* A bonding-curve token is just as boostable as a graduated one, so look
-         in whichever feed the buyer was actually looking at. */
-      let snap = await snapshot(ctx, 'pumpfun').catch(() => null);
-      let tok = snap?.tokens.find(t => t.mint === body.mint);
-      if (!tok) {
-        const bond = await snapshot(ctx, 'bonding').catch(() => null);
-        const bondTok = bond?.tokens.find(t => t.mint === body.mint);
-        if (bondTok) { snap = bond; tok = bondTok; }
+      /* Look in whichever feed the token would actually appear on. A
+         bonding-curve token is as boostable as a graduated one, and a Base or
+         Robinhood contract is as boostable as either — the payment is in SOL
+         to a Solana treasury regardless of where the token lives. */
+      const FEEDS = isEvmAddr(caId) ? ['base', 'robinhood'] : ['pumpfun', 'bonding'];
+      let snap = null, tok = null;
+      for (const f of FEEDS) {
+        const cand = await snapshot(ctx, f).catch(() => null);
+        const hit = cand?.tokens.find(t => (t.addr || t.mint) === caId);
+        if (hit) { snap = cand; tok = hit; break; }
+        if (!snap) snap = cand;
       }
       /* Not in either ranked feed — ask pump.fun directly. The feeds carry the
          top 300, so a smaller coin is invisible to them, and that is precisely
@@ -963,13 +1000,21 @@ export async function handle(req, ctx) {
          onto the map (see /api/tokens, which re-adds paid tokens that are not in
          the feed), so this sells something real.
 
-         Still not a free-for-all: the mint has to exist on pump.fun. */
+         Still not a free-for-all: the address has to resolve to a token that
+         actually trades somewhere. */
+      /* A feed hit that cannot name its own chain is resolved rather than
+         guessed: the chain ends up in a payment record and a wrong one there is
+         a wrong number, not a cosmetic label. */
+      if (tok && !tok.chain && isEvmAddr(caId)) {
+        const live = await resolveAnyToken(caId, ctx.env.IMG_SECRET);
+        if (live && live.chain) tok = { ...tok, chain: live.chain };
+      }
       if (!tok) {
-        tok = await fetchCoin(body.mint, ctx.env.IMG_SECRET);
+        tok = await resolveAnyToken(caId, ctx.env.IMG_SECRET);
         if (!tok) {
           return json({
             ok: false,
-            error: 'no pump.fun token found with that contract address',
+            error: 'no token found with that contract address',
           }, 404);
         }
       }
@@ -982,7 +1027,7 @@ export async function handle(req, ctx) {
         const { byMint } = await activeBoosts(ctx.store);
         const onScreen = visibleSet(snap.tokens, byMint);
         const projected = applyBoosts(onScreen.map(t => ({ ...t })), byMint);
-        const target = projected.find(t => t.mint === body.mint);
+        const target = projected.find(t => (t.addr || t.mint) === caId);
         /* Project through the same pooled curve the map will actually use —
            adding the tier's headline multiplier here would over-estimate the
            new gold and refuse sales that are in fact within the cap. */
@@ -1009,8 +1054,12 @@ export async function handle(req, ctx) {
       const order = await createOrder({
         taken: inFlight,
         ref: refCode,
-        mint: body.mint,
-        /* identity is ours, from pump.fun — never whatever the client sent.
+        mint: caId,
+        /* Which chain the advertised token lives on. The payment is SOL to a
+           Solana treasury either way; this only decides how the identifier is
+           validated and how the bubble is later re-added. */
+        chain: tok?.chain || (isEvmAddr(caId) ? '' : 'solana'),
+        /* identity is ours, resolved server-side — never whatever the client sent.
            Carried on the signed order so a token bought from outside the ranked
            feed still renders with its real art and name once it goes gold. */
         sym: tok?.sym || '',

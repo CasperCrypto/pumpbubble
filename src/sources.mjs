@@ -153,7 +153,8 @@ async function robinhoodTokens(store, limit = 220) {
     const pc = p.priceChange || {};
     rows.push({
       id: 'rh:' + addr,
-      mint: '',                        // no Solana mint, so nothing to boost
+      mint: '',                        // no Solana mint; the contract is the id
+      chain: 'robinhood',
       addr,
       sym,
       name: clean((p.baseToken && p.baseToken.name) || sym, 48) || sym,

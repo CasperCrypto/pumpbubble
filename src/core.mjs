@@ -104,6 +104,9 @@ export const clean = (s, max) => String(s == null ? '' : s)
 
 /* A mint must look like a Solana address before we build anything around it. */
 export const isMint = s => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+export const isEvmAddr = s => typeof s === 'string' && /^0x[0-9a-fA-F]{40}$/.test(s);
+/* Anything somebody could paste into the boost box. */
+export const isCA = s => isMint(s) || isEvmAddr(s);
 
 export function normalizeCoin(c) {
   const mcap = num(c.usd_market_cap) || num(c.market_cap_usd);
@@ -181,6 +184,74 @@ export async function fetchCoin(mint, secret) {
     delete t.rawImg;
     return t;
   } catch { return null; }
+}
+
+/* Resolve a pasted contract address on whatever chain it lives on.
+
+   A boost is paid in SOL to a Solana treasury, but nothing about that requires
+   the *token* to be on Solana — the payment rail and the advertised token are
+   independent. So the boost box takes any address, and this is what turns one
+   into a token we can name, price and draw.
+
+   DexScreener's /latest/dex/tokens/<address> is chain-agnostic: it answers for
+   Solana, Base, Ethereum and Robinhood Chain from the same URL and says which
+   chain each pair is on. pump.fun is still tried first for a Solana mint,
+   because it knows things a DEX does not — graduation state, the creator's
+   socials, the original art.
+
+   The deepest pool wins. A token can be quoted in several places and the deep
+   one is the price somebody could actually trade against. */
+export async function resolveAnyToken(addr, secret) {
+  if (isMint(addr)) {
+    const t = await fetchCoin(addr, secret);
+    if (t) return { ...t, chain: 'solana' };
+  }
+  if (!isCA(addr)) return null;
+
+  let pairs;
+  try {
+    const j = await jget(DEXS + '/latest/dex/tokens/' + encodeURIComponent(addr), { ms: 9000 });
+    pairs = (j && j.pairs) || [];
+  } catch { return null; }
+  if (!pairs.length) return null;
+
+  const p = pairs.slice().sort((a, b) =>
+    num(b.liquidity && b.liquidity.usd) - num(a.liquidity && a.liquidity.usd))[0];
+
+  const chain = String(p.chainId || '');
+  const evm = isEvmAddr(addr);
+  const pc = p.priceChange || {};
+  const rawImg = (p.info && typeof p.info.imageUrl === 'string') ? p.info.imageUrl : '';
+
+  const t = {
+    id: (evm ? chain + ':' : '') + (evm ? addr.toLowerCase() : addr),
+    chain,
+    mint: evm ? '' : addr,
+    addr: evm ? addr.toLowerCase() : '',
+    sym: clean(p.baseToken && p.baseToken.symbol, 12) || '?',
+    name: clean((p.baseToken && p.baseToken.name) || (p.baseToken && p.baseToken.symbol), 48) || 'unknown',
+    rawImg,
+    img: '',
+    mcap: num(p.marketCap) || num(p.fdv),
+    ath: 0,
+    vol: num(p.volume && p.volume.h24),
+    liq: num(p.liquidity && p.liquidity.usd),
+    price: num(p.priceUsd),
+    created: num(p.pairCreatedAt),
+    grad: true,
+    pc: { m5: keep(pc.m5), h1: keep(pc.h1), h6: keep(pc.h6), h24: keep(pc.h24),
+          d7: null, d30: null, y1: null },
+    copies: 1, flags: [], solid: true,
+  };
+
+  /* Art goes through the signed proxy like every other image on the page,
+     which is served img-src 'self'. */
+  if (t.rawImg && secret) {
+    try {
+      t.img = '/api/img?u=' + encodeURIComponent(t.rawImg) + '&s=' + await signUrl(t.rawImg, secret);
+    } catch { t.img = ''; }
+  }
+  return t;
 }
 
 export async function fetchSolPrice() {
