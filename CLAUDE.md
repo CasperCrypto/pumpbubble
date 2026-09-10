@@ -315,6 +315,39 @@ request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Ma
 twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
 symbol reports null.
 
+## Trending
+
+`src/trending.mjs`. **"Trending" had to be defined before it could be a tab**, or it becomes
+whatever number happened to be sortable. Everything that publishes a ready-made list is shut to us:
+GeckoTerminal's `/trending_pools` ranks every chain properly and 429s Cloudflare on every request,
+and DexScreener's boost endpoints rank *paid promotion* — an advertising slot wearing the word
+trending.
+
+So it is computed from two numbers the map already measures:
+
+- **turnover** — 24h volume over market cap. How much of the thing actually changed hands. This is
+  what stops the tab being the largest caps again.
+- **movement** — the 24h change. Turnover alone puts stablecoins and wrappers on top: RLUSD turns
+  over 1.0× a day and never moves, and WETH on Robinhood Chain turns over 5× while tracking ETH.
+
+Multiplied, so both must be true. Gates: backed, ≥$100k cap, ≥$50k volume, ≥3% move, and the move
+capped at 300% so one fresh mint cannot own the tab.
+
+It is composed in `snapshot()` rather than fetched, because it ranks the other feeds against each
+other and has no upstream of its own. Spanning pump.fun, Base, Robinhood Chain and the wider market
+on one scale is the part nobody else can copy — and it surfaces the tokenised-stock crossover by
+itself: METAc, AAPLc, NVDAc on Base, SPCX and GME on Robinhood, STONKS and Nasduck on pump.fun.
+
+**The trending tab ranks by heat, not market cap.** Ranking by cap put WBNB and ARB on screen and
+cut the tokens the tab exists for — the signal is turnover against size, so what it finds is small
+by construction and was being dropped before it could be drawn. Size follows heat too unless a size
+mode was picked explicitly, or the hottest bubble is a dot beside a bridged major.
+
+**Fire draws after the bodies and before the labels.** Behind the bodies it was invisible: the map
+packs bubbles to ~80% of the canvas, so each neighbour painted straight over the flames of the one
+before it. Twelve bubbles burn, five tongues each, additive, and it drops with `QUALITY` alongside
+the sheen.
+
 ## Ads and boosts are not Solana-only
 
 **The ad rail and the Boost button are never hidden.** Both used to be gated on the source's

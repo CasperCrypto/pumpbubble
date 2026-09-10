@@ -14,6 +14,7 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
+import { buildTrending, TREND_SOURCES } from './trending.mjs';
 import { adminEnabled, adminPath, authed, adminPage,
          lockedOut, noteFailure, clearFailures } from './admin.mjs';
 import { loadRegistry as rhRegistry, seed as rhSeed } from './rhchain.mjs';
@@ -110,7 +111,7 @@ const caches = new Map();
 /* Which feeds the ranked card is allowed to draw from, and what it calls them.
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
-const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base' };
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const BOARD_TITLE = {
   pumpfun: 'Top movers on pump.fun today',
@@ -118,6 +119,7 @@ const BOARD_TITLE = {
   stocks: 'Biggest movers in stocks today',
   robinhood: 'Top movers on Robinhood Chain today',
   base: 'Top movers on Base today',
+  trending: 'Trending right now across every chain',
 };
 
 /* How long a collapsed build waits before trying again. Short, because it
@@ -205,12 +207,34 @@ async function snapshot(ctx, source, force = false) {
     }
 
     try {
-      const snap = await buildSnapshot({
-        source: src,
-        hist: ctx.hist,
-        secret: ctx.env.IMG_SECRET,
-        store: ctx.store,
-      });
+      /* Trending is composed rather than fetched: it ranks the feeds against
+         each other, so it has no upstream of its own. Built here rather than in
+         a source's fetch() because it needs snapshot(), and each member feed
+         keeps its own cache and its own lifetime. */
+      const snap = src.id === 'trending'
+        ? await (async () => {
+            const feeds = [];
+            for (const id of TREND_SOURCES) {
+              try {
+                const m = await snapshot(ctx, sourceOf(id));
+                feeds.push({ id, tokens: m.tokens || [] });
+              } catch { /* a feed that is down simply does not contribute */ }
+            }
+            const tokens = buildTrending(feeds);
+            return {
+              ts: Date.now(), sol: 0, count: tokens.length,
+              enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
+              sampleArt: '', solid: tokens.length, signed: true,
+              source: 'trending', sourceLabel: 'Trending', boostable: true,
+              tokens,
+            };
+          })()
+        : await buildSnapshot({
+            source: src,
+            hist: ctx.hist,
+            secret: ctx.env.IMG_SECRET,
+            store: ctx.store,
+          });
       /* An empty build is a failure wearing a success's clothes. Every upstream
          here fails by returning nothing rather than by throwing — a 429, a
          timeout, a shape that changed — and buildSnapshot cannot tell the

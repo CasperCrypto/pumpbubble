@@ -34,6 +34,14 @@ function makeStore(env) {
       if (!kv) return;
       const o = {};
       if (opts.ttlSec) o.expirationTtl = Math.max(60, opts.ttlSec);
+      /* TEMPORARY. The ad rail and the boost list have twice been found emptied
+         with nobody having called the two routes that write them, so every write
+         to either says who did it. `wrangler tail` shows this live. */
+      if (key === 'ads' || key === 'boosts') {
+        const n = Array.isArray(value) ? value.length : -1;
+        const st = String(new Error().stack || '').split(String.fromCharCode(10)).slice(1, 5).join(' | ');
+        console.log('KVWRITE ' + key + ' len=' + n + ' stack=' + st);
+      }
       await kv.put(key, JSON.stringify(value), o);
     },
   };

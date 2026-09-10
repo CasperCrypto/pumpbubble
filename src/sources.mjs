@@ -233,6 +233,18 @@ export const SOURCES = {
     boostable: false, quality: 'major',
     fetch: () => nasdaqStocks(300),
   },
+  /* Trending, across every chain at once. Composed from the other feeds in
+     api.mjs rather than fetched — see src/trending.mjs for what "trending"
+     is defined as, and why it had to be defined rather than fetched. */
+  trending: {
+    id: 'trending', label: 'Trending', group: 'Trending',
+    chain: 'mixed', ttl: 60_000, shared: true, enrich: false,
+    boostable: true, quality: 'major',
+    /* Never called: snapshot() composes this one. Present so the source is a
+       normal entry everywhere else — tabs, deep links, the ranked card. */
+    fetch: () => [],
+  },
+
   /* Base. The universe comes from a maintained token list rather than from
      searching, which is what keeps the clone swarms out; see src/basechain.mjs.
      Reads a cache the cron fills, so a build is one KV read. */

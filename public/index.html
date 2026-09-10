@@ -554,6 +554,7 @@ body.embed #brandbadge.on{display:flex}
   <!-- pump.fun is the identity and stays the default. The whole-market view is
        a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
+    <button data-mode="trending">🔥 Trending</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
@@ -846,6 +847,7 @@ async function fetchLive(){
        what made 1W, 1M and 1Y read +0.00% on every bubble regardless of
        what the feed actually sent. */
     addr:t.addr||'',
+    hot:!!t.hot, from:t.from||'', heat:+t.heat||0,
     pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0,
         d7:NN(t.pc.d7),d30:NN(t.pc.d30),y1:NN(t.pc.y1)},
     boost:+t.boost||0,                   // server owns this: it is paid for
@@ -967,8 +969,19 @@ function rebuild(){
      and the card read. */
   const hasTf=t=>t.pc[S.tf]!=null&&Number.isFinite(t.pc[S.tf]);
   if(S.mv!=='all')L=L.filter(t=>hasTf(t)&&(S.mv==='up'?t.pc[S.tf]>=0:t.pc[S.tf]<0));
-  const M=t=>S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1:S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
-  L.sort((a,b)=>M(b)-M(a));
+  /* On the trending tab the ranking is the heat, not the market cap.
+
+     Ranking by cap there put WBNB and ARB on screen and cut the tokens the tab
+     exists for: the whole signal is turnover against size, so the interesting
+     ones are small by construction and were being dropped before they could be
+     drawn. Size follows the same measure unless a size mode was picked
+     explicitly, otherwise the hottest bubble is a dot beside a bridged major. */
+  const byHeat=S.mode==='trending'&&S.sizeBy==='mcap';
+  const M=t=>byHeat?(+t.heat||0)+.01
+    :S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1
+    :S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
+  const RANK=S.mode==='trending'?(t=>+t.heat||0):M;
+  L.sort((a,b)=>RANK(b)-RANK(a));
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
   /* a partner's pinned token stays on screen regardless of ranking */
@@ -1272,6 +1285,57 @@ function draw(){
     /* the hover ring is the one case that genuinely needs a second, larger
        outline — and it exists for exactly one bubble at a time */
     if(hov){ ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.3;ctx.stroke(blobPath(t,1.045)); }
+  }
+
+  /* ---- fire, for the handful of bubbles that are genuinely trending ----
+
+     Drawn after every body and before the labels. Behind the bodies it was
+     invisible: the map packs bubbles to about 80% of the canvas, so each
+     neighbour painted straight over the flames of the one before it. On top of
+     the bodies the tongues lick over the bubbles around them, which is what
+     reads as burning; under the labels, so the ticker stays legible.
+
+     Additive, like the glow pass, so overlapping tongues brighten rather than
+     muddy.
+
+     Cost is the reason only twelve bubbles get this: five tongues each is sixty
+     stroked quadratics a frame, which fits the budget in CLAUDE.md. It also
+     drops out with QUALITY, alongside the sheen. */
+  if(QUALITY>=2){
+    ctx.save();ctx.globalCompositeOperation='lighter';
+    for(const t of v){
+      if(!t.hot||t.r<12)continue;
+      const r=t.r;
+      /* a warm bed under the flames so the bubble looks lit, not outlined */
+      const bed=ctx.createRadialGradient(t.x,t.y,r*.5,t.x,t.y,r*1.5);
+      bed.addColorStop(0,'rgba(255,120,20,.16)');
+      bed.addColorStop(1,'rgba(255,60,0,0)');
+      ctx.fillStyle=bed;ctx.beginPath();ctx.arc(t.x,t.y,r*1.5,0,TAU);ctx.fill();
+
+      const N=5;
+      for(let i=0;i<N;i++){
+        /* fanned across the top, each tongue on its own phase so they never
+           flicker in unison */
+        const a=-Math.PI/2+(i-(N-1)/2)*0.44;
+        const ph=t.ph+i*1.9;
+        const wob=Math.sin(T*5.5+ph)*0.17;
+        const len=r*(0.62+0.46*Math.abs(Math.sin(T*4.1+ph)));
+        const bx=t.x+Math.cos(a+wob)*r*0.86, by=t.y+Math.sin(a+wob)*r*0.86;
+        const tx=t.x+Math.cos(a+wob*2.1)*(r+len), ty=t.y+Math.sin(a+wob*2.1)*(r+len);
+        const g=ctx.createLinearGradient(bx,by,tx,ty);
+        g.addColorStop(0,'rgba(255,226,120,.80)');
+        g.addColorStop(.45,'rgba(255,140,28,.52)');
+        g.addColorStop(1,'rgba(255,58,0,0)');
+        ctx.strokeStyle=g;
+        ctx.lineWidth=Math.max(2,r*.15);
+        ctx.lineCap='round';
+        ctx.beginPath();
+        ctx.moveTo(bx,by);
+        ctx.quadraticCurveTo(t.x+Math.cos(a-wob)*(r+len*.55),t.y+Math.sin(a-wob)*(r+len*.55),tx,ty);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   // ---- contents ----
@@ -1955,7 +2019,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
+  const OK={trending:'trending',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
   if(OK[src])S.mode=OK[src];
   const tf=q.get('tf');
