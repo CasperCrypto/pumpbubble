@@ -330,8 +330,22 @@ So it is computed from two numbers the map already measures:
 - **movement** — the 24h change. Turnover alone puts stablecoins and wrappers on top: RLUSD turns
   over 1.0× a day and never moves, and WETH on Robinhood Chain turns over 5× while tracking ETH.
 
-Multiplied, so both must be true. Gates: backed, ≥$100k cap, ≥$50k volume, ≥3% move, and the move
-capped at 300% so one fresh mint cannot own the tab.
+Multiplied, so both must be true. Gates: backed, ≥$100k cap, ≥$50k volume, 3%–1000% move, ≥$25k
+liquidity **where liquidity is measured**, and none of the `copycat`/`thin`/`new` flags.
+
+The upper move bound is the scam gate. baton reached the top of the tab at **+7340% on a token
+thirteen hours old** — a real figure, and the shape of a mint pumping rather than a market moving.
+The X poster refuses the same thing for the same reason; a tab labelled Trending is making a claim,
+and the claim has to survive somebody clicking through.
+
+The liquidity floor applies only where liquidity is *known*: CoinPaprika publishes none, so a blanket
+rule would delete the whole majors category for missing data rather than bad data. A pump.fun token
+whose liquidity is unknown is already caught by the `thin` flag.
+
+**Unknown age is null, not zero** (`scoreQuality`). `t.created ? … : 0` made a missing creation
+timestamp read as "0 hours old", which flagged the token `new` and declared its 24h figures
+meaningless — METAc, a tokenised Meta with $1.2M of liquidity, was called a fresh mint purely
+because the feed it comes from carries no creation date.
 
 It is composed in `snapshot()` rather than fetched, because it ranks the other feeds against each
 other and has no upstream of its own. Spanning pump.fun, Base, Robinhood Chain and the wider market
@@ -343,10 +357,27 @@ cut the tokens the tab exists for — the signal is turnover against size, so wh
 by construction and was being dropped before it could be drawn. Size follows heat too unless a size
 mode was picked explicitly, or the hottest bubble is a dot beside a bridged major.
 
-**Fire draws after the bodies and before the labels.** Behind the bodies it was invisible: the map
-packs bubbles to ~80% of the canvas, so each neighbour painted straight over the flames of the one
-before it. Twelve bubbles burn, five tongues each, additive, and it drops with `QUALITY` alongside
-the sheen.
+**A trending bubble's outline *is* the flame.** Two attempts failed before that, and both failed the
+same way — treating fire as something drawn *near* a bubble rather than as the bubble's shape:
+
+1. Flame tongues behind the bodies. Invisible: the map packs bubbles to ~80% of the canvas, so
+   every neighbour painted straight over the tongues of the one before it.
+2. Tongues in front, on an orange shell. Still read as "an orange circle with wisps beside it",
+   because the silhouette is what the eye names a shape by, and the silhouette was a circle.
+
+So `blobInto()` deforms the outline for `t.hot`: canvas y grows downward, so `-sin(a)` is 1 at the
+top and 0 at the sides; cubed, the stretch concentrates into a tongue instead of inflating the upper
+half, and the ripples travel round the rim over time. The bottom is untouched — fire sits on
+something. Frequencies stay low because the two smoothing passes eat anything finer, which is the
+warning already in the Liquid bubbles section.
+
+The fill is a **vertical** gradient — white-hot tip, orange body, deep red base. A radial gradient
+makes an evenly lit ball whatever colour it is, which was most of why attempt 2 looked like a
+marble.
+
+Fire follows gold's rule: the shell stops encoding direction, so the percentage carries it in
+dark-green or dark-red, and the turnover that put it there is printed on the face. Paid outranks
+hot — a gold bubble stays gold.
 
 ## Ads and boosts are not Solana-only
 

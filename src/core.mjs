@@ -470,7 +470,12 @@ function scoreMemecoins(tokens, solPrice = 0) {
     if (!t.liq && t.curveSol && solPrice) t.liq = t.curveSol * solPrice;
 
     t.copies = perSymbol.get(t.sym.toUpperCase()) || 1;
-    t.ageH = t.created ? (now - t.created) / 36e5 : 0;
+    /* Unknown age is null, not zero. A missing creation timestamp became "0
+       hours old", which flagged the token `new` and declared its 24h figures
+       meaningless — METAc, a tokenised Meta with $1.2M of liquidity behind it,
+       was marked a fresh mint purely because the feed it came from does not
+       carry a creation date. */
+    t.ageH = t.created ? (now - t.created) / 36e5 : null;
     t.mcLiq = t.liq > 0 ? t.mcap / t.liq : null;
 
     const thin = t.mcLiq === null || t.mcLiq > THIN_RATIO;
@@ -487,7 +492,7 @@ function scoreMemecoins(tokens, solPrice = 0) {
     if (thin) t.flags.push('thin');                    // cap unsupported by the pool
     if (dead) t.flags.push('quiet');                   // barely trading
     if (t.copies > MAX_COPIES) t.flags.push('copycat');// ticker shared across mints
-    if (t.ageH < 24) t.flags.push('new');              // 24h numbers meaningless here
+    if (t.ageH != null && t.ageH < 24) t.flags.push('new'); // 24h numbers meaningless here
 
     /* "is this market cap backed by anything" rather than "is this a scam" —
        intent is unknowable, backing is measurable. `new` is not disqualifying:

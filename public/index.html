@@ -800,6 +800,15 @@ function warnLine(t){
 /* ---------------------------------------------------------------- colours */
 function tone(t){
   if(t.boost>0)return{h:44,s:96,l:56,gold:true};
+  /* Trending burns. Same trade the gold bubble already makes: the shell stops
+     encoding direction so it can encode something else, and the direction moves
+     into the percentage, which is drawn dark-green or dark-red below. Flame
+     tongues alone were too quiet to find on a packed map — twelve small orange
+     wisps among fifty bubbles is not "unmistakable", which is the bar this map
+     sets for any bubble that is claiming to be special.
+
+     Paid still outranks hot: a gold bubble stays gold. */
+  if(t.hot)return{h:22,s:98,l:52,fire:true};
   /* Grey where the window has no figure. Green would read as "flat and fine",
      which is a claim about the token rather than about our data. */
   if(t.noData)return{h:215,s:8,l:26,gold:false};
@@ -1180,6 +1189,24 @@ function blobInto(t,scale,P){
   for(let i=0;i<VERTS;i++){
     const a=i/VERTS*TAU;
     let r=R*(1+.022*Math.sin(a*3+t.ph+T*1.9)+.014*Math.sin(a*5-t.ph*1.6+T*1.35));
+    /* A trending bubble is not a bubble with flames drawn near it — the outline
+       is the flame. Orange circles with wisps beside them read as an orange
+       circle, because the silhouette is what the eye names the shape by.
+
+       Canvas y grows downward, so -sin(a) is 1 at the top and 0 at the sides.
+       Cubed, the stretch is concentrated into a tongue instead of inflating the
+       whole upper half, and the ripples travel round the rim over time so it
+       licks rather than pulses. The bottom is left alone: fire sits on
+       something. Frequencies are deliberately low — the two smoothing passes
+       below eat anything much finer, which is the same warning CLAUDE.md gives
+       about pushing deformation too hard. */
+    if(t.hot){
+      const up=Math.max(0,-Math.sin(a));
+      const k=up*up*up;
+      r*=1+.55*k
+         +.26*k*Math.sin(a*5-T*6.5+t.ph*2)
+         +.15*up*up*Math.sin(a*9+T*9.5-t.ph);
+    }
     let cut=0;
     for(let k=0;k<nn;k++){
       const n=nb[k];
@@ -1221,10 +1248,13 @@ function draw(){
   ctx.save();ctx.globalCompositeOperation='lighter';
   for(const t of v){
     const c=tone(t);
-    const inten=c.gold?1:clamp(Math.abs(t.chg)/45,0,1);
+    const lit=c.gold||c.fire;
+    const inten=lit?1:clamp(Math.abs(t.chg)/45,0,1);
     if(inten<.28||t.r<14)continue;
     const g=ctx.createRadialGradient(t.x,t.y,t.r*.55,t.x,t.y,t.r*1.75);
-    const pl=c.gold?.55+.45*Math.sin(T*2.4+t.ph):1;
+    /* Fire flickers faster than gold pulses — gold is money and money is calm. */
+    const pl=c.gold?.55+.45*Math.sin(T*2.4+t.ph)
+      :c.fire?.6+.4*Math.abs(Math.sin(T*3.9+t.ph)):1;
     g.addColorStop(0,`hsla(${c.h},100%,60%,${.20*inten*pl})`);
     g.addColorStop(1,`hsla(${c.h},100%,60%,0)`);
     ctx.fillStyle=g;ctx.beginPath();ctx.arc(t.x,t.y,t.r*1.75,0,TAU);ctx.fill();
@@ -1238,11 +1268,24 @@ function draw(){
     /* one outline, reused for fill, clip and stroke */
     const P=blobPath(t);
 
-    const g=ctx.createRadialGradient(t.x-r*.34,t.y-r*.42,r*.06,t.x,t.y,r*1.08);
-    g.addColorStop(0,`hsla(${c.h},${c.s}%,${clamp(c.l+32,0,90)}%,.98)`);
-    g.addColorStop(.42,`hsla(${c.h},${c.s}%,${c.l+8}%,.90)`);
-    g.addColorStop(.86,`hsla(${c.h},${c.s}%,${Math.max(c.l-8,8)}%,.70)`);
-    g.addColorStop(1,`hsla(${c.h},${c.s}%,${Math.max(c.l-14,6)}%,.42)`);
+    /* Fire runs top to bottom, not centre outward: white-hot at the tip,
+       orange through the body, deep red at the base. A radial gradient makes an
+       evenly lit ball however it is coloured, which is most of why the first
+       attempt looked like an orange marble. */
+    let g;
+    if(c.fire){
+      g=ctx.createLinearGradient(t.x,t.y-r*1.45,t.x,t.y+r);
+      g.addColorStop(0,'rgba(255,247,214,.98)');
+      g.addColorStop(.26,'rgba(255,206,74,.97)');
+      g.addColorStop(.58,'rgba(255,126,20,.94)');
+      g.addColorStop(1,'rgba(176,28,6,.86)');
+    }else{
+      g=ctx.createRadialGradient(t.x-r*.34,t.y-r*.42,r*.06,t.x,t.y,r*1.08);
+      g.addColorStop(0,`hsla(${c.h},${c.s}%,${clamp(c.l+32,0,90)}%,.98)`);
+      g.addColorStop(.42,`hsla(${c.h},${c.s}%,${c.l+8}%,.90)`);
+      g.addColorStop(.86,`hsla(${c.h},${c.s}%,${Math.max(c.l-8,8)}%,.70)`);
+      g.addColorStop(1,`hsla(${c.h},${c.s}%,${Math.max(c.l-14,6)}%,.42)`);
+    }
     ctx.fillStyle=g;ctx.fill(P);
 
     /* Level of detail. The sheen and bounce-light cost two gradients, a clip
@@ -1287,57 +1330,6 @@ function draw(){
     if(hov){ ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1.3;ctx.stroke(blobPath(t,1.045)); }
   }
 
-  /* ---- fire, for the handful of bubbles that are genuinely trending ----
-
-     Drawn after every body and before the labels. Behind the bodies it was
-     invisible: the map packs bubbles to about 80% of the canvas, so each
-     neighbour painted straight over the flames of the one before it. On top of
-     the bodies the tongues lick over the bubbles around them, which is what
-     reads as burning; under the labels, so the ticker stays legible.
-
-     Additive, like the glow pass, so overlapping tongues brighten rather than
-     muddy.
-
-     Cost is the reason only twelve bubbles get this: five tongues each is sixty
-     stroked quadratics a frame, which fits the budget in CLAUDE.md. It also
-     drops out with QUALITY, alongside the sheen. */
-  if(QUALITY>=2){
-    ctx.save();ctx.globalCompositeOperation='lighter';
-    for(const t of v){
-      if(!t.hot||t.r<12)continue;
-      const r=t.r;
-      /* a warm bed under the flames so the bubble looks lit, not outlined */
-      const bed=ctx.createRadialGradient(t.x,t.y,r*.5,t.x,t.y,r*1.5);
-      bed.addColorStop(0,'rgba(255,120,20,.16)');
-      bed.addColorStop(1,'rgba(255,60,0,0)');
-      ctx.fillStyle=bed;ctx.beginPath();ctx.arc(t.x,t.y,r*1.5,0,TAU);ctx.fill();
-
-      const N=5;
-      for(let i=0;i<N;i++){
-        /* fanned across the top, each tongue on its own phase so they never
-           flicker in unison */
-        const a=-Math.PI/2+(i-(N-1)/2)*0.44;
-        const ph=t.ph+i*1.9;
-        const wob=Math.sin(T*5.5+ph)*0.17;
-        const len=r*(0.62+0.46*Math.abs(Math.sin(T*4.1+ph)));
-        const bx=t.x+Math.cos(a+wob)*r*0.86, by=t.y+Math.sin(a+wob)*r*0.86;
-        const tx=t.x+Math.cos(a+wob*2.1)*(r+len), ty=t.y+Math.sin(a+wob*2.1)*(r+len);
-        const g=ctx.createLinearGradient(bx,by,tx,ty);
-        g.addColorStop(0,'rgba(255,226,120,.80)');
-        g.addColorStop(.45,'rgba(255,140,28,.52)');
-        g.addColorStop(1,'rgba(255,58,0,0)');
-        ctx.strokeStyle=g;
-        ctx.lineWidth=Math.max(2,r*.15);
-        ctx.lineCap='round';
-        ctx.beginPath();
-        ctx.moveTo(bx,by);
-        ctx.quadraticCurveTo(t.x+Math.cos(a-wob)*(r+len*.55),t.y+Math.sin(a-wob)*(r+len*.55),tx,ty);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
-
   // ---- contents ----
   ctx.textAlign='center';ctx.textBaseline='middle';
   for(const t of v){
@@ -1378,7 +1370,10 @@ function draw(){
     }
     if(wPct){
       ctx.font=`800 ${clamp(r*.23,9,22)}px ui-sans-serif,sans-serif`;
-      ctx.fillStyle=c.gold?(t.chg>=0?'#0b3a20':'#4d0d17'):'rgba(255,255,255,.9)';
+      /* On a gold or fire shell the colour no longer says which way the price
+         went, so the number has to. Dark green up, dark red down, legible on a
+         bright bubble. */
+      ctx.fillStyle=(c.gold||c.fire)?(t.chg>=0?'#0b3a20':'#4d0d17'):'rgba(255,255,255,.9)';
       /* A dash, not a number. A grey bubble reading +0.00% still says the
          market was flat; only the colour said otherwise, and colour alone
          is not how anyone reads a percentage. */
@@ -1388,6 +1383,14 @@ function draw(){
       ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle='rgba(60,40,0,.85)';
       ctx.fillText('★ ×'+(1+t.boost).toFixed(1),t.x,t.y-r*.74);
+    }
+    /* Turnover, on the face of the bubble. A burning bubble that does not say
+       what it is measuring is decoration; this is the number that put it here —
+       how many times its own market cap traded in a day. */
+    else if(c.fire&&r>=34&&t.mcap>0){
+      ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
+      ctx.fillStyle='rgba(70,26,0,.9)';
+      ctx.fillText('\u00d7'+(t.vol/t.mcap).toFixed(1)+' vol',t.x,t.y-r*.74);
     }
   }
 

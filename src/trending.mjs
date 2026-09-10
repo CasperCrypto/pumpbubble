@@ -31,14 +31,34 @@
    ========================================================================== */
 
 /* Gates, in the same spirit as the X poster's: these decide what we put our
-   name to, not what the map is allowed to show. */
+   name to, not what the map is allowed to show. Every other tab still shows
+   everything; a tab that says Trending is making a claim, and the claim has to
+   survive somebody clicking through to the token. */
 const MIN_MCAP = 100_000;
 const MIN_VOL = 50_000;
 
-/* Below this a token has not moved; above it the number stops adding
-   information and starts letting one fresh mint own the tab. */
+/* Below this a token has not moved. */
 const MIN_MOVE = 3;
+
+/* Above this it is not trending, it is launching. baton came through at +7340%
+   on a token thirteen hours old: a real figure, and the shape of a mint pumping
+   rather than a market moving. The X poster refuses the same thing for the same
+   reason — posting those teaches people to scroll past us, and putting them on
+   a tab labelled Trending does exactly as much damage. */
+const MAX_MOVE = 1000;
+
+/* Contribution is capped well below the refusal, so a genuine +900% does not
+   flatten everything else on the tab. */
 const MOVE_CAP = 300;
+
+/* A market cap with nothing to sell into is not a market. Below this the pool
+   cannot absorb a real order, whatever the cap says. */
+const MIN_LIQ = 25_000;
+
+/* Flags come from scoreQuality(), which is calibrated against live data rather
+   than guessed at — a copied ticker, a cap the pool does not back, a token too
+   young for a 24h number to mean anything. Any of them disqualifies. */
+const BAD_FLAGS = ['copycat', 'thin', 'new'];
 
 export const TREND_SOURCES = ['pumpfun', 'base', 'robinhood', 'majors'];
 
@@ -59,7 +79,16 @@ export function heat(t) {
   if (raw == null || !Number.isFinite(Number(raw))) return 0;
 
   const move = Math.abs(Number(raw));
-  if (move < MIN_MOVE) return 0;
+  if (move < MIN_MOVE || move > MAX_MOVE) return 0;
+
+  /* Only where liquidity is actually measured. CoinPaprika publishes none, so
+     requiring it would delete the whole majors category for missing data rather
+     than for bad data — the same absent-is-not-zero mistake in reverse. Feeds
+     that do report it (pump.fun, Base, Robinhood) are held to it, and a
+     pump.fun token whose liquidity is unknown is already flagged `thin`. */
+  const liq = Number(t.liq);
+  if (Number.isFinite(liq) && liq > 0 && liq < MIN_LIQ) return 0;
+  if ((t.flags || []).some(f => BAD_FLAGS.includes(f))) return 0;
 
   const turnover = vol / mcap;
   return turnover * (1 + Math.min(move, MOVE_CAP) / 100);
