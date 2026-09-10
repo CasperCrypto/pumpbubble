@@ -18,7 +18,7 @@
      quoting a price it cannot deliver.
    ========================================================================== */
 
-import { normalizeCoin, fetchPumpCoins, fastImage, clean } from './core.mjs';
+import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
 
@@ -166,6 +166,8 @@ async function robinhoodTokens(store, limit = 220) {
       liq: num(p.liquidity && p.liquidity.usd),
       price: num(p.priceUsd),
       created: num(p.pairCreatedAt),
+      txns: txnsOf(p),
+      volH1: num(p.volume && p.volume.h1),
       /* Absent stays absent. DexScreener omits a window entirely when nothing
          traded in it, and a zero there would claim the price held still. */
       pc: {

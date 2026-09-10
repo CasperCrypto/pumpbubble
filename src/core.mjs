@@ -313,6 +313,12 @@ export async function enrich(tokens, chain = 'solana') {
        it. Invisible on pump.fun, where everything trades every minute;
        glaring on a chain full of quiet pairs. */
     t.pc = { m5: keep(pc.m5), h1: keep(pc.h1), h6: keep(pc.h6), h24: keep(pc.h24) };
+    /* Trade counts and the last hour's volume. Both were in every response
+       already and thrown away: counts are what separates a market from a
+       handful of wallets, and an hour against the daily average is what
+       separates "trending" from "traded a lot yesterday". */
+    t.txns = txnsOf(p);
+    t.volH1 = num(p.volume && p.volume.h1);
     t.vol = num(p.volume && p.volume.h24);
     t.liq = num(p.liquidity && p.liquidity.usd);
     t.price = num(p.priceUsd);
@@ -327,12 +333,34 @@ export async function enrich(tokens, chain = 'solana') {
   return hit;
 }
 
+/* Buys and sells over 24h, and what share of them were sells.
+
+   A market has two sides. When almost every trade is a buy, either nobody can
+   sell or the buys are the same few wallets going round — and the holder cannot
+   tell which, because both look like a chart that only goes up. Measured across
+   sixty traded pump.fun tokens the median sell share is 46%; USWS sat at 0.9%,
+   811 buys against 7 sells, on a $97M market cap. */
+export function txnsOf(p) {
+  const h = (p && p.txns && p.txns.h24) || null;
+  if (!h) return null;
+  const buys = num(h.buys), sells = num(h.sells);
+  const n = buys + sells;
+  if (!n) return null;
+  return { buys, sells, n, sellShare: sells / n };
+}
+
 /* ====================================================== change from history
    Fallback for anything DexScreener does not cover (fresh / pre-graduation
    tokens): derive change from our own market-cap snapshots.
 
    Retention is tiered so 24h of history costs ~120 samples per token rather
    than 8640: keep everything under 10min, then thin out with age. */
+/* Calibrated, not guessed: across sixty traded pump.fun tokens the median sell
+   share is 46.4%, and everything under 10% was a honeypot shape (USWS 0.9%,
+   UPONLY 2.9%, SPSN 3.2%). NIKE at 10.5% and LBRETT at 13.1% are left alone. */
+const ONEWAY_SELL_SHARE = 0.10;
+const ONEWAY_MIN_TXNS = 30;
+
 const WINDOWS = { m5: 3e5, h1: 36e5, h6: 216e5, h24: 864e5 };
 const TIERS = [[6e5, 0], [36e5, 12e4], [216e5, 9e5], [864e5, 36e5]];
 
@@ -492,6 +520,13 @@ function scoreMemecoins(tokens, solPrice = 0) {
     if (thin) t.flags.push('thin');                    // cap unsupported by the pool
     if (dead) t.flags.push('quiet');                   // barely trading
     if (t.copies > MAX_COPIES) t.flags.push('copycat');// ticker shared across mints
+    /* One-way market: buys but effectively no sells. Below a tenth of trades
+       being sells is five times under the measured median and is the shape of a
+       token nobody is getting out of. Needs enough trades to be a pattern
+       rather than an accident of three transactions. */
+    if (t.txns && t.txns.n >= ONEWAY_MIN_TXNS && t.txns.sellShare < ONEWAY_SELL_SHARE) {
+      t.flags.push('oneway');
+    }
     if (t.ageH != null && t.ageH < 24) t.flags.push('new'); // 24h numbers meaningless here
 
     /* "is this market cap backed by anything" rather than "is this a scam" —
@@ -507,7 +542,12 @@ function scoreMemecoins(tokens, solPrice = 0) {
     const dust = !t.grad && t.mcap < MIN_BONDING_MCAP;
     if (dust) t.flags.push('dust');
 
-    t.solid = !thin && !dead && !dust && !t.banned && t.copies <= MAX_COPIES;
+    /* A one-way market counts against `solid` like every other measurement
+       here. Setting the flag alone only wrote a warning line onto a bubble that
+       stayed on screen: USWS carried `oneway` and `solid: true` at the same
+       time, so it was still the fourth largest thing on the map. */
+    const oneway = t.flags.includes('oneway');
+    t.solid = !thin && !dead && !dust && !oneway && !t.banned && t.copies <= MAX_COPIES;
   }
   for (const t of tokens) delete t.curveSol;
   return tokens;

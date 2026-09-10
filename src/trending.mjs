@@ -22,6 +22,13 @@
      on Robinhood Chain turns over 5× while tracking ETH to the decimal. A
      token has to have gone somewhere.
 
+     **trades** — how many, because a million dollars of volume across forty
+     transactions is a handful of wallets rather than a market.
+
+     **recency** — the last hour against the day's average hour, which is what
+     separates trending from traded-a-lot-yesterday. DexScreener's own ranking
+     leans on this and it is the piece this was missing.
+
    Multiplied, not added, so both have to be true. Neither number is invented —
    they are the same volume and change the map already draws.
 
@@ -58,7 +65,17 @@ const MIN_LIQ = 25_000;
 /* Flags come from scoreQuality(), which is calibrated against live data rather
    than guessed at — a copied ticker, a cap the pool does not back, a token too
    young for a 24h number to mean anything. Any of them disqualifies. */
-const BAD_FLAGS = ['copycat', 'thin', 'new'];
+const BAD_FLAGS = ['copycat', 'thin', 'new', 'oneway'];
+
+/* A token with thousands of trades is more alive than one with fifty, but the
+   bonus tops out so trade count cannot simply buy the top of the tab. */
+const TRADES_FULL = 5000;
+
+/* The last hour against the day's average hour. 1.0 is steady; 5 means it is
+   five times busier than its own daily pace, which is the difference between
+   "trending" and "traded a lot yesterday". Capped because a token whose first
+   hour of life is its whole history would otherwise dominate outright. */
+const RECENCY_CAP = 6;
 
 export const TREND_SOURCES = ['pumpfun', 'base', 'robinhood', 'majors'];
 
@@ -91,7 +108,20 @@ export function heat(t) {
   if ((t.flags || []).some(f => BAD_FLAGS.includes(f))) return 0;
 
   const turnover = vol / mcap;
-  return turnover * (1 + Math.min(move, MOVE_CAP) / 100);
+
+  /* Both of these are neutral when the feed does not carry them — majors and
+     stocks report neither, and scoring them as zero would delete the categories
+     rather than rank them. */
+  const n = (t.txns && t.txns.n) || 0;
+  const trades = 1 + Math.min(n / TRADES_FULL, 1);
+
+  const perHour = vol / 24;
+  const h1 = Number(t.volH1);
+  const recency = (Number.isFinite(h1) && h1 > 0 && perHour > 0)
+    ? Math.min(h1 / perHour, RECENCY_CAP)
+    : 1;
+
+  return turnover * (1 + Math.min(move, MOVE_CAP) / 100) * trades * recency;
 }
 
 /* Merge several feeds into one ranked list.

@@ -789,6 +789,10 @@ const WARN={
   copycat:t=>`${t.copies} tokens share this ticker`,
   thin:t=>`market cap ${Math.round(t.mcLiq||0)}× the liquidity`,
   quiet:()=>`almost no trading in 24h`,
+  /* States the measurement, never the intent — the same rule the rest of the
+     map follows. What somebody meant by it is unknowable; 811 buys against 7
+     sells is not. */
+  oneway:t=>`${t.txns.buys} buys but only ${t.txns.sells} sells in 24h`,
   new:t=>`${t.ageH<1?'under an hour':Math.round(t.ageH)+'h'} old — 24h figures mean little`
 };
 function warnLine(t){
@@ -856,7 +860,7 @@ async function fetchLive(){
        what made 1W, 1M and 1Y read +0.00% on every bubble regardless of
        what the feed actually sent. */
     addr:t.addr||'', chain:t.chain||'',
-    hot:!!t.hot, from:t.from||'', heat:+t.heat||0,
+    hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
     pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0,
         d7:NN(t.pc.d7),d30:NN(t.pc.d30),y1:NN(t.pc.y1)},
     boost:+t.boost||0,                   // server owns this: it is paid for

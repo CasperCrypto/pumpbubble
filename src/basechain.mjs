@@ -26,6 +26,8 @@
    reads the cache, so it never waits for any of this.
    ========================================================================== */
 
+import { txnsOf } from './core.mjs';
+
 const LIST = 'https://tokens.coingecko.com/base/all.json';
 const DEXS = 'https://api.dexscreener.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -207,6 +209,8 @@ export async function sweep(store) {
       price: num(p.priceUsd),
       created: num(p.pairCreatedAt),
       pc: { m5: pick(pc.m5), h1: pick(pc.h1), h6: pick(pc.h6), h24: pick(pc.h24) },
+      txns: txnsOf(p),
+      volH1: num(p.volume && p.volume.h1),
       at: now,
     };
   }
@@ -248,6 +252,8 @@ export async function baseTokens(store, limit = 220) {
       liq: v.liq,
       price: v.price,
       created: v.created,
+      txns: v.txns || null,
+      volH1: v.volH1 || 0,
       pc: { ...v.pc, d7: null, d30: null, y1: null },
     });
   }
