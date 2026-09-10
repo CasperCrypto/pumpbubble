@@ -1295,8 +1295,40 @@ function fitFont(txt,weight,want,maxW){
   return fs;
 }
 
+/* Names, which is a harder problem than numbers.
+
+   A ticker is four characters; a launchpad is "Meteora Dynamic Bonding", 23 of
+   them, on a bubble 54 pixels across. Shrinking the font until that fits gives
+   something nobody can read *and* it still spilled past the rim onto the
+   neighbours — on a 375px phone the whole tab was overlapping soup with the
+   fourth-biggest launchpad on the map lost inside it.
+
+   So: try the whole name; then its first word, because a launchpad's brand is
+   its first word and "Graphite" beats "Graphi…"; then clip. Splitting is on
+   whitespace only — pump.fun and BONK.fun are one word each and cutting them at
+   the dot would rename them. Returns what to draw, with ctx.font already set. */
+function fitLabel(txt,weight,want,maxW,min=8){
+  const set=fs=>{ctx.font=`${weight} ${fs}px ui-sans-serif,-apple-system,sans-serif`};
+  const str=String(txt||'');
+  const first=str.split(/\s+/)[0];
+  for(const cand of (first&&first!==str)?[str,first]:[str]){
+    set(want);
+    const w=ctx.measureText(cand).width;
+    if(w<=maxW)return cand;
+    const fs=want*maxW/w;
+    if(fs>=min){set(fs);return cand}
+  }
+  set(min);
+  let cut=first||str;
+  while(cut.length>1&&ctx.measureText(cut+'\u2026').width>maxW)cut=cut.slice(0,-1);
+  return cut.length>1?cut+'\u2026':cut;
+}
+
 function flowFace(t,r){
-  const wLogo=r>=34,maxW=r*1.5;
+  /* A bubble of radius r offers close to 2r of width where these lines sit, but
+     the map packs bubbles to ~80% of the canvas and lets them overlap by design,
+     so text is kept well inside the rim rather than run to the chord. */
+  const wLogo=r>=34,maxW=r*1.55;
   if(wLogo){
     const ir=r*.27,iy=t.y-r*.52,im=img(t.img);
     ctx.save();ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);ctx.clip();
@@ -1315,8 +1347,7 @@ function flowFace(t,r){
 
   const top=t.y-(wLogo?r*.04:r*.26);
   ctx.fillStyle='rgba(255,255,255,.92)';
-  fitFont(t.sym,900,clamp(r*.24,9,18),maxW);
-  ctx.fillText(t.sym,t.x,top);
+  ctx.fillText(fitLabel(t.sym,900,clamp(r*.24,9,18),maxW),t.x,top);
 
   /* The measure itself: 24h DEX volume for a chain, 24h fees for a launchpad.
      `mcap` is where the feed puts it, because that is the field that sizes a

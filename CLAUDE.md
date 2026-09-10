@@ -405,6 +405,15 @@ percentage. Every line is measured with `measureText` and shrunk to fit inside
 the rim rather than trusted to a radius ratio, because "$2.97B" and "$412" are
 the same font size and very different widths.
 
+**Names are a harder problem than numbers here.** A ticker is four characters; a
+launchpad is "Meteora Dynamic Bonding", 23 of them, on a bubble 54 pixels across.
+Shrinking the font until that fits is unreadable *and* it still spilled past the
+rim onto the neighbours — on a 375px phone the tab was overlapping soup with the
+fourth-biggest launchpad on the map lost inside it. `fitLabel()` tries the whole
+name, then its first word (a launchpad brand is its first word: "Graphite" beats
+"Graphi…"), then clips. Splitting is on whitespace only — pump.fun and BONK.fun
+are one word each and cutting them at the dot would rename them.
+
 The card is relabelled to match — "24h DEX volume" and "DEX volume share" for a
 chain, "24h fees" and "7d fees" for a launchpad — and its button says **Open**
 rather than Chart, because `chartUrl()` sends these to DefiLlama, which is where
