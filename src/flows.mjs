@@ -68,17 +68,20 @@ async function jget(url, ms = 25000) {
 function chainsFrom(dexs) {
   const vol = new Map();
   const wsum = new Map();
+  const w7sum = new Map();
 
   for (const p of (dexs && dexs.protocols) || []) {
     const bd = p.breakdown24h;
     if (!bd || typeof bd !== 'object') continue;
     const ch = pick(p.change_1d);
+    const ch7 = pick(p.change_7d);
     for (const [chain, byProto] of Object.entries(bd)) {
       let v = 0;
       for (const amt of Object.values(byProto || {})) v += num(amt);
       if (!(v > 0)) continue;
       vol.set(chain, (vol.get(chain) || 0) + v);
       if (ch != null) wsum.set(chain, (wsum.get(chain) || 0) + ch * v);
+      if (ch7 != null) w7sum.set(chain, (w7sum.get(chain) || 0) + ch7 * v);
     }
   }
 
@@ -90,12 +93,20 @@ function chainsFrom(dexs) {
     const name = clean(title(chain), 32);
     if (!name || v <= 0) continue;
     const w = wsum.get(chain);
+    const w7 = w7sum.get(chain);
     out.push({
       id: 'chain:' + name.toLowerCase(),
       sym: name,
       name: name + ' — 24h DEX volume',
       vol: v,
       change: w == null ? null : w / v,
+      change7d: w7 == null ? null : w7 / v,
+      /* No 7d *volume* for a chain: the overview breaks down by chain for 24h
+         and 30d only, and slicing a protocol's global weekly total across the
+         chains it happens to list would be a number we invented rather than one
+         anybody published. The 7d *change* is weighted the same way the 1d is,
+         so it is measured. */
+      vol7d: null,
       /* Keyed by the original slug, not the title-cased label. */
       logo: 'https://icons.llamao.fi/icons/chains/rsz_'
         + encodeURIComponent(String(chain).toLowerCase()) + '?w=48&h=48',
@@ -110,12 +121,28 @@ function chainsFrom(dexs) {
    against the trailing weekly average says the same thing from data that is
    present — and stays null when neither exists rather than reporting a flat
    day nobody measured. */
+/* A floor, because the tail here is not data.
+
+   Fees span $6.75 to $5.2M across the sixty DefiLlama lists — a 774,000× range,
+   with twenty-six of them under a thousand dollars. A contract that took $6.75
+   yesterday is not competing with pump.fun and Pons, and putting it on the same
+   map costs twice: it spends a bubble slot, and it stretches the log domain so
+   the launchpads anyone is actually asking about all come out the same size.
+   Above $1,000 the list is thirty-four venues spanning 3.7 decades, which is
+   the same visual range the chains map has. */
+const MIN_FEES = 1000;
+
+/* "Rainbow Token Launchpad" on a tab called Launchpads is nineteen characters
+   of label to say two of information, and it is what pushes these names past
+   what fits inside a small bubble. */
+const dropSuffix = n => n.replace(/\s+launchpads?$/i, '').trim() || n;
+
 function padsFrom(fees) {
   const out = [];
   for (const p of (fees && fees.protocols) || []) {
     if (!/launchpad/i.test(p.category || '')) continue;
     const v = num(p.total24h);
-    if (!(v > 0)) continue;
+    if (!(v >= MIN_FEES)) continue;
 
     let ch = pick(p.change_1d);
     if (ch == null) {
@@ -123,7 +150,7 @@ function padsFrom(fees) {
       if (wk > 0) ch = ((v - wk) / wk) * 100;
     }
 
-    const name = clean(p.displayName || p.name, 24);
+    const name = dropSuffix(clean(p.displayName || p.name, 24));
     if (!name) continue;
     out.push({
       id: 'pad:' + (p.slug || name.toLowerCase()),
@@ -131,6 +158,8 @@ function padsFrom(fees) {
       name: name + ' — 24h fees',
       vol: v,
       change: ch,
+      change7d: pick(p.change_7d),
+      vol7d: num(p.total7d) || null,
       logo: typeof p.logo === 'string' && /^https:\/\//.test(p.logo) ? p.logo : '',
       slug: p.slug || '',
     });
@@ -193,7 +222,13 @@ function shape(rows, kind) {
     price: 0,
     kind,
     slug: r.slug || '',
-    pc: { m5: null, h1: null, h6: null, h24: pick(r.change), d7: null, d30: null, y1: null },
+    vol7d: r.vol7d || null,
+    pc: {
+      m5: null, h1: null, h6: null,
+      h24: pick(r.change),
+      d7: pick(r.change7d),
+      d30: null, y1: null,
+    },
     copies: 1, flags: [], solid: true,
   }));
 }

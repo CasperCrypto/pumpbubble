@@ -744,12 +744,23 @@ const MC_STEPS=[0,1e3,5e3,1e4,2.5e4,5e4,1e5,2.5e5,5e5,1e6,2.5e6,1e7,5e7];
 
 function fmtUsd(n){
   if(!isFinite(n)||n<=0)return'—';
+  /* A trillion rung, because the stocks tab has six of them and NVDA read
+     "$5390.45B" — technically correct and not how anybody says it. The share
+     card has had this rung since it was written; the map never did. */
+  if(n>=1e12)return'$'+(n/1e12).toFixed(2)+'T';
   if(n>=1e9)return'$'+(n/1e9).toFixed(2)+'B';
   if(n>=1e6)return'$'+(n/1e6).toFixed(2)+'M';
   if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';
   return'$'+n.toFixed(0);
 }
-const fmtPct=n=>(n>=0?'+':'')+n.toFixed(n>=100||n<=-100?0:2)+'%';
+/* Null-safe, because `null >= 0` is true in JavaScript: the sign guard passed
+   and `null.toFixed` threw. That killed openCard halfway through — after the
+   market-cap box, before the line that shows the card — so on every source
+   with a window it does not publish, clicking a bubble did nothing at all and
+   logged one uncaught error nobody was watching for. Stocks (no 5m, no 1h)
+   and the two flow tabs (a day and a week, nothing shorter) were both dead. */
+const fmtPct=n=>(n==null||!Number.isFinite(+n))?'—'
+  :((n>=0?'+':'')+(+n).toFixed(n>=100||n<=-100?0:2)+'%');
 function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)%360}
 
 /* Anyone can mint a pump.fun token and name it whatever they like, including
@@ -784,8 +795,12 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
    1H showed sixty grey dashes — honest, and useless. This lived in the tab
    click handler alone, which meant a deep link to ?source=chains skipped it
    entirely and landed exactly where the problem was. */
+/* Keep the timeframe on a window the source actually has, so a tab never opens
+   on sixty grey bubbles. Chains and launchpads publish a day and a week and
+   nothing shorter — DefiLlama has no five-minute candle for a chain. */
 function fixTf(){
-  if((S.mode!=='chains'&&S.mode!=='pads')||S.tf==='h24')return;
+  if(S.mode!=='chains'&&S.mode!=='pads')return;
+  if(S.tf==='h24'||S.tf==='d7')return;
   S.tf='h24';
   document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
 }
@@ -875,7 +890,7 @@ async function fetchLive(){
        what the feed actually sent. */
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
-    kind:t.kind||'', slug:t.slug||'',
+    kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     /* Every window, null-preserving. The short four used ||0, which was left
        alone when the long ones were fixed because pump.fun always reports them.
        Chains and launchpads publish a 24h figure and nothing else, so on the 1H
@@ -1263,6 +1278,65 @@ function blobInto(t,scale,P){
   P.closePath();
 }
 
+/* Ticker, money, change — stacked, with the money as the hero.
+
+   Every line is measured and shrunk to fit inside the bubble rather than
+   trusted to a radius ratio: "$2.97B" and "$412" are the same font size and
+   very different widths, and a label that spills past the rim reads as a
+   rendering fault on a map whose whole job is to look measured. */
+function fitFont(txt,weight,want,maxW){
+  let fs=want;
+  ctx.font=`${weight} ${fs}px ui-sans-serif,-apple-system,sans-serif`;
+  const w=ctx.measureText(txt).width;
+  if(w>maxW&&w>0){
+    fs=Math.max(7,fs*maxW/w);
+    ctx.font=`${weight} ${fs}px ui-sans-serif,-apple-system,sans-serif`;
+  }
+  return fs;
+}
+
+function flowFace(t,r){
+  const wLogo=r>=34,maxW=r*1.5;
+  if(wLogo){
+    const ir=r*.27,iy=t.y-r*.52,im=img(t.img);
+    ctx.save();ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);ctx.clip();
+    if(im&&im.complete&&im.naturalWidth) ctx.drawImage(im,t.x-ir,iy-ir,ir*2,ir*2);
+    else{
+      const h=hue(t.sym);
+      ctx.fillStyle=`hsl(${h},38%,26%)`;ctx.fillRect(t.x-ir,iy-ir,ir*2,ir*2);
+      ctx.fillStyle=`hsl(${h},72%,76%)`;
+      ctx.font=`900 ${ir*1.1}px ui-sans-serif,sans-serif`;
+      ctx.fillText(t.sym[0]||'?',t.x,iy+1);
+    }
+    ctx.restore();
+    ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);
+    ctx.strokeStyle='rgba(255,255,255,.28)';ctx.lineWidth=Math.max(1,r*.018);ctx.stroke();
+  }
+
+  const top=t.y-(wLogo?r*.04:r*.26);
+  ctx.fillStyle='rgba(255,255,255,.92)';
+  fitFont(t.sym,900,clamp(r*.24,9,18),maxW);
+  ctx.fillText(t.sym,t.x,top);
+
+  /* The measure itself: 24h DEX volume for a chain, 24h fees for a launchpad.
+     `mcap` is where the feed puts it, because that is the field that sizes a
+     bubble everywhere else on the map. */
+  if(t.mcap>0&&r>=16){
+    const money=fmtUsd(t.mcap);
+    const fs=fitFont(money,900,clamp(r*.30,10,26),maxW);
+    ctx.fillStyle='#fff';
+    if(fs>=13){ctx.shadowColor='rgba(0,0,0,.45)';ctx.shadowBlur=4}
+    ctx.fillText(money,t.x,top+r*.34);
+    ctx.shadowBlur=0;
+  }
+
+  if(r>=26){
+    fitFont('+00.00%',800,clamp(r*.19,8,15),maxW);
+    ctx.fillStyle='rgba(255,255,255,.78)';
+    ctx.fillText(t.noData?'—':fmtPct(t.chg),t.x,top+r*.66);
+  }
+}
+
 function draw(){
   T+=1/60;
   ctx.clearRect(0,0,W,H);
@@ -1359,6 +1433,13 @@ function draw(){
   for(const t of v){
     const r=t.r,c=tone(t);
     if(r<11)continue;
+    /* A chain and a launchpad are not tokens and do not get the token face.
+       That layout spends the top of the bubble on a logo and leaves r*.31
+       between the ticker and the percentage — nowhere to print a nine-figure
+       number, which is the one thing these two tabs exist to show. Area says
+       which is bigger; it does not say whether that is two billion dollars or
+       two million. */
+    if(t.kind==='chain'||t.kind==='pad'){flowFace(t,r);continue}
     const wLogo=r>=24,wPct=r>=27;
     if(wLogo){
       const ir=r*.40,iy=t.y-r*.31,im=img(t.img);
@@ -1535,15 +1616,64 @@ function openCard(t){
      and a boost that cannot identify its token is a payment with nowhere to go. */
   const cb=document.getElementById('cBoost');
   if(cb)cb.style.display=(t.mint||t.addr)?'':'none';
+  /* "Chart" is wrong for a chain: chartUrl sends it to its DefiLlama page,
+     which is where the number came from and what the reader wants next. */
+  const co=e('cOpen');
+  if(co)co.textContent=(t.kind==='chain'||t.kind==='pad')?'Open':'Chart';
   e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
   e('cName').textContent=(t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
   e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
+  /* `fmtPct(null)` throws — `null >= 0` is true, so the guard passes and
+     `null.toFixed` does not exist. Chains and launchpads publish a day and a
+     week and nothing shorter, so these four lines threw on every one of them,
+     halfway through openCard and before the class that shows the card: opening
+     a chain bubble did nothing at all. Null is a dash now, everywhere. */
+  const pct=v=>(v==null||!Number.isFinite(v))
+    ?'<span style="color:var(--dim)">—</span>'
+    :`<span class="${v>=0?'up':'dn'}">${fmtPct(v)}</span>`;
+  const sep='<span style="color:#4a5163">/</span>';
+  /* And a chain has no market cap and no five-minute candle. Printing its 24h
+     volume under a label reading "Market cap", beside two boxes of dashes, is
+     four wrong answers to questions nobody asked about a chain. */
+  const lab=(id,txt)=>{const u=e(id).previousElementSibling;if(u)u.textContent=txt};
+  const flow=t.kind==='chain'||t.kind==='pad',pad=t.kind==='pad';
+
   e('cMc').textContent=fmtUsd(t.mcap);
-  e('cVol').textContent=fmtUsd(t.vol);
-  e('cA').innerHTML=`<span class="${t.pc.m5>=0?'up':'dn'}">${fmtPct(t.pc.m5)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h1>=0?'up':'dn'}">${fmtPct(t.pc.h1)}</span>`;
-  e('cB').innerHTML=`<span class="${t.pc.h6>=0?'up':'dn'}">${fmtPct(t.pc.h6)}</span> <span style="color:#4a5163">/</span> <span class="${t.pc.h24>=0?'up':'dn'}">${fmtPct(t.pc.h24)}</span>`;
+  if(flow){
+    lab('cMc',pad?'24h fees':'24h DEX volume');
+    lab('cVol',pad?'7d fees':'7d volume');
+    lab('cA','24h change');
+    lab('cB','7d change');
+    /* A chain has no 7d volume to show — DefiLlama breaks the weekly total
+       down by protocol, not by chain, and splitting one across the chains it
+       lists would be arithmetic we invented. What it does have, for free, is
+       this chain's share of every dollar traded on the map today, which is a
+       more direct answer to "where is the money flowing" than another
+       absolute figure would be. */
+    if(pad){
+      e('cVol').innerHTML=t.vol7d>0?esc(fmtUsd(t.vol7d))
+        :'<span style="color:var(--dim)">—</span>';
+    }else{
+      let all=0;
+      for(const x of S.tokens)if(x.kind==='chain')all+=+x.mcap||0;
+      lab('cVol','DEX volume share');
+      e('cVol').innerHTML=all>0
+        ?esc((t.mcap/all*100).toFixed(1)+'%')
+        :'<span style="color:var(--dim)">—</span>';
+    }
+    e('cA').innerHTML=pct(t.pc.h24);
+    e('cB').innerHTML=pct(t.pc.d7);
+  }else{
+    lab('cMc','Market cap');
+    lab('cVol','24h volume');
+    lab('cA','5m / 1h');
+    lab('cB','6h / 24h');
+    e('cVol').textContent=fmtUsd(t.vol);
+    e('cA').innerHTML=`${pct(t.pc.m5)} ${sep} ${pct(t.pc.h1)}`;
+    e('cB').innerHTML=`${pct(t.pc.h6)} ${sep} ${pct(t.pc.h24)}`;
+  }
   /* the warning belongs on mobile too — that is where most taps happen */
   e('cWarn').innerHTML=warnLine(t);
   card.classList.add('on');scrim.classList.add('on');
@@ -2081,6 +2211,12 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
   fixTf();
+  /* Light the pills the link actually chose. Setting S.mode alone left the map
+     showing chains under a highlighted "pump.fun" tab — the state was right and
+     the page said otherwise, which is worse than either being wrong on its own,
+     and it is the shared links this site generates for itself that land here. */
+  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===S.mode));
+  document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
 })();
 
 async function initEmbed(){

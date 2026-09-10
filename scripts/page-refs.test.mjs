@@ -61,5 +61,61 @@ const late = [...html.slice(bodyScript).matchAll(/<div\s+id="([A-Za-z0-9_-]+)"/g
 if (late.length) no('no markup below the app script', 'found: ' + late.join(', '));
 else ok('no markup below the app script');
 
+/* The page's own formatters, lifted out of the file and run.
+
+   `fmtPct(null)` threw for as long as any source published a window it does not
+   have, because `null >= 0` is true in JavaScript: the sign guard passed and
+   `null.toFixed` did not exist. It threw inside openCard, between the
+   market-cap box and the line that reveals the card — so the failure looked
+   like a bubble that simply would not open. No visual glitch, no failing
+   route, one uncaught error in a console nobody had open, and every check this
+   project runs stayed green. Stocks (no 5m, no 1h) and the two flow tabs (a
+   day and a week, nothing shorter) were both dead that way.
+
+   So these two are executed here rather than read. They are the only functions
+   on the page that turn an absent number into something a reader sees, and
+   "absent is not zero" is the bug this codebase keeps rediscovering. */
+const lift = name => {
+  const m = html.match(new RegExp('(?:const ' + name + '\\s*=|function ' + name + '\\b)'));
+  if (!m) return null;
+  const from = m.index;
+  let src;
+  if (html.slice(from).startsWith('const')) {
+    src = html.slice(from, html.indexOf(';', from) + 1);
+  } else {
+    const open = html.indexOf('{', from);
+    let d = 0, i = open;
+    for (; i < html.length; i++) {
+      if (html[i] === '{') d++;
+      else if (html[i] === '}' && --d === 0) { i++; break; }
+    }
+    src = html.slice(from, i);
+  }
+  try { return new Function(src + ';return ' + name)(); } catch { return null; }
+};
+
+const DASH = '—';
+const fmtPct = lift('fmtPct'), fmtUsd = lift('fmtUsd');
+const cases = [
+  ['fmtPct', fmtPct, null, DASH],
+  ['fmtPct', fmtPct, undefined, DASH],
+  ['fmtPct', fmtPct, NaN, DASH],
+  ['fmtPct', fmtPct, 0, '+0.00%'],
+  ['fmtPct', fmtPct, -5.78, '-5.78%'],
+  ['fmtPct', fmtPct, 706399, '+706399%'],
+  ['fmtUsd', fmtUsd, null, DASH],
+  ['fmtUsd', fmtUsd, 0, DASH],
+  ['fmtUsd', fmtUsd, 5.39e12, '$5.39T'],
+  ['fmtUsd', fmtUsd, 2.08e9, '$2.08B'],
+];
+for (const [name, fn, input, want] of cases) {
+  if (!fn) { no(name + ' is liftable', 'could not find it in the page'); continue; }
+  let got;
+  try { got = fn(input); }
+  catch (e) { no(name + '(' + String(input) + ')', 'threw: ' + e.message); continue; }
+  if (got === want) ok(name + '(' + String(input) + ')', got);
+  else no(name + '(' + String(input) + ')', 'got ' + got + ', want ' + want);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

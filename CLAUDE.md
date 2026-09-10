@@ -390,10 +390,41 @@ holds nothing, and DefiLlama duly reports pump.fun and Pons at **$0 TVL**. What 
 take fees, and those are published. Pons V2 at $5.2M in 24h against pump.fun's $1.4M is the answer
 to which one is busy; TVL would have said neither exists.
 
-| view | size | colour |
-|---|---|---|
-| Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it |
-| Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average |
+| view | size | colour | 1W |
+|---|---|---|---|
+| Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted `change_7d` |
+| Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7d` |
+
+**These bubbles print the money on their own faces.** Relative area says which is
+bigger; it does not say whether that is two billion dollars or two million, and
+that is the question the two tabs exist to answer. So a chain and a launchpad do
+not get the token face at all — `flowFace()` draws name, dollar figure, change,
+with the money as the hero. The token layout could not have carried it: it spends
+the top of the bubble on a logo and leaves `r*.31` between the ticker and the
+percentage. Every line is measured with `measureText` and shrunk to fit inside
+the rim rather than trusted to a radius ratio, because "$2.97B" and "$412" are
+the same font size and very different widths.
+
+The card is relabelled to match — "24h DEX volume" and "DEX volume share" for a
+chain, "24h fees" and "7d fees" for a launchpad — and its button says **Open**
+rather than Chart, because `chartUrl()` sends these to DefiLlama, which is where
+the number came from. A chain has no market cap and no five-minute candle;
+printing its volume under a label reading "Market cap" beside two boxes of
+dashes was four wrong answers to questions nobody asked about a chain.
+
+A chain gets no 7d *volume*: the overview breaks down by chain for 24h and 30d
+only, and slicing a protocol's global weekly total across the chains it happens
+to list would be arithmetic we invented. Its share of all DEX volume on the map
+is free, measured, and a more direct answer to "where is the money flowing" than
+another absolute figure.
+
+**Launchpad fees are floored at $1,000 a day.** The tail there is not data: fees
+span $6.75 to $5.2M across DefiLlama's sixty, with twenty-six under a thousand
+dollars, and a contract that took $6.75 yesterday costs twice — it spends a
+bubble slot, and it stretches the log domain so every launchpad anyone is asking
+about comes out the same size. Above the floor it is thirty-four venues over 3.7
+decades, the same visual range the chains map has and the one already verified to
+read well. Chains need no floor: fifty-five of sixty are above $1M.
 
 Chain volume comes from each DEX's `breakdown24h`, which is `{chain: {protocol: volume}}` — the
 exact split. Dividing a multi-chain protocol's total by how many chains it lists would credit Solana
@@ -402,6 +433,21 @@ and a testnet equally.
 The two responses are 1.8MB and 4.1MB, so a cron tick aggregates them to a few KB in KV and the map
 reads that. A side that comes back empty never overwrites a side we already had.
 
+**`fmtPct(null)` threw, and the symptom was a bubble that would not open.**
+`null >= 0` is true in JavaScript, so the sign guard passed and `null.toFixed`
+did not exist. It threw inside `openCard`, between the market-cap box and the
+line that reveals the card — no visual glitch, no failing route, one uncaught
+error in a console nobody had open. Every source publishing a window it does not
+have was affected, so **the stocks card was dead too** (no 5m, no 1h), not only
+the two new tabs. `fmtPct` returns a dash for null now, and
+`scripts/page-refs.test.mjs` lifts it and `fmtUsd` out of the page and *runs*
+them, because reading a formatter is not the same as calling it with null.
+
+That test also pins `fmtUsd(5.39e12) === '$5.39T'`. The map had no trillion rung
+while the stocks tab had six of them, so NVDA read `$5390.45B` — technically
+correct and not how anybody says it. The share card has had the rung since it
+was written.
+
 **The short windows were still coercing null to zero.** `pc:{m5:+t.pc.m5||0,…}` in the client mapper
 was left alone when the long windows were fixed, because pump.fun always reports them. Chains and
 launchpads publish a 24h figure and nothing else, so the 1H tab rendered sixty confident green
@@ -409,7 +455,14 @@ launchpads publish a 24h figure and nothing else, so the 1H tab rendered sixty c
 
 `fixTf()` keeps the timeframe on a window the source actually has. It first lived in the tab click
 handler alone, so a deep link to `?source=chains` skipped it and landed on exactly the empty tab it
-existed to prevent — the same shape of bug as `?source=` only working inside `initEmbed()`.
+existed to prevent — the same shape of bug as `?source=` only working inside `initEmbed()`. It
+permits `d7` as well as `h24` now that both are measured.
+
+**A deep link has to light its own pills.** `applyDeepLink()` set `S.mode` and
+stopped, so `?source=chains` drew the chains map under a highlighted "pump.fun"
+tab: the state was right and the page said otherwise, which is worse than either
+being wrong alone — and the links this site generates for itself are what land
+there.
 
 ## Where the Chart button goes
 
