@@ -379,6 +379,29 @@ Fire follows gold's rule: the shell stops encoding direction, so the percentage 
 dark-green or dark-red, and the turnover that put it there is printed on the face. Paid outranks
 hot — a gold bubble stays gold.
 
+## Where the Chart button goes
+
+`chartUrl(t)` routes by the **token**, never by the tab being viewed. Keying off `S.mode` was wrong
+twice over:
+
+- On the Trending tab the mode is `trending`, so *every* token on it fell through to the last
+  branch — Base and Robinhood contracts included, which have perfectly good DexScreener pages.
+- The last branch was a CoinGecko **search**. A search page is not a chart; it is a list of every
+  coin sharing three letters, which for a memecoin ticker is reliably the wrong asset.
+
+| token | destination |
+|---|---|
+| has a Solana mint | `pump.fun/coin/<mint>` |
+| has a contract | `dexscreener.com/<chain>/<address>` |
+| `stock:` id | `finance.yahoo.com/quote/<sym>` |
+| `cg:` id (majors) | `coinpaprika.com/coin/<paprika-id>/` |
+
+Majors go to CoinPaprika because that is the feed they come from, so every one of the 250 has an id
+already — more than `src/cgmap.mjs` covers — and CoinGecko answers 403 to anything that is not a
+browser. DexScreener accepts a **token** address and redirects to its deepest pair; verified in a
+real browser, since it 403s a plain fetch. The remaining fallback is a DexScreener search rather
+than a coin directory: it resolves by contract or ticker.
+
 ## Ads and boosts are not Solana-only
 
 **The ad rail and the Boost button are never hidden.** Both used to be gated on the source's

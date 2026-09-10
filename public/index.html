@@ -855,7 +855,7 @@ async function fetchLive(){
        greys a null and paints a 0 as a flat market. Dropping them here is
        what made 1W, 1M and 1Y read +0.00% on every bubble regardless of
        what the feed actually sent. */
-    addr:t.addr||'',
+    addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0,
     pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0,
         d7:NN(t.pc.d7),d30:NN(t.pc.d30),y1:NN(t.pc.y1)},
@@ -1604,23 +1604,45 @@ function openShare(t){
   };
   sveil.classList.add('on');
 }
+/* Where a bubble's Chart button goes.
+
+   Routed by the **token**, never by the tab being viewed. Keying off S.mode was
+   wrong twice over: on the Trending tab the mode is 'trending', so every token
+   on it — Base contracts and Robinhood contracts included — fell through to the
+   last branch and opened a CoinGecko *search*. And a search page is not a
+   chart: it is a list of every coin sharing three letters, which for a memecoin
+   ticker is exactly the wrong asset.
+
+   A major carries a CoinPaprika id (`cg:btc-bitcoin`) because that is the feed
+   it comes from, so it can open its own page rather than a query. All 250 have
+   one, which is more than the CoinGecko id map covers, and CoinGecko answers
+   403 to anything that is not a browser anyway. */
+function chartUrl(t){
+  if(!t)return '';
+  if(t.mint)return 'https://pump.fun/coin/'+encodeURIComponent(t.mint);
+
+  const id=String(t.id||'');
+  if(t.addr){
+    /* chain is stamped by the feed; the id prefix is the fallback for a token
+       that arrived before that was carried. */
+    const chain=t.chain||(id.startsWith('base:')?'base':id.startsWith('rh:')?'robinhood':'');
+    return chain
+      ? 'https://dexscreener.com/'+chain+'/'+encodeURIComponent(t.addr)
+      : 'https://dexscreener.com/search?q='+encodeURIComponent(t.addr);
+  }
+  if(id.startsWith('stock:'))
+    return 'https://finance.yahoo.com/quote/'+encodeURIComponent(t.sym||'');
+  if(id.startsWith('cg:'))
+    return 'https://coinpaprika.com/coin/'+encodeURIComponent(id.slice(3))+'/';
+
+  /* Last resort is still a search, but a crypto-native one that resolves by
+     contract or ticker rather than a general coin directory. */
+  return 'https://dexscreener.com/search?q='+encodeURIComponent(t.sym||'');
+}
+
 document.getElementById('cOpen').onclick=()=>{
   const t=S.target;if(!t)return;
-  /* Stocks have no mint, so the chart for those is the ticker on a stock site
-     rather than a pump.fun coin page. */
-  /* A stock has no mint, so pump.fun would 404 on its ticker. Route by what
-     the thing actually is rather than assuming everything is a memecoin. */
-  /* Route by what the thing actually is. A Robinhood Chain token has a
-     contract rather than a mint, and sending its ticker to pump.fun or
-     CoinGecko lands on a search page for a different asset with the same
-     three letters. */
-  const url = t.mint
-    ? 'https://pump.fun/coin/' + t.mint
-    : ((S.mode === 'robinhood' || S.mode === 'base') && t.addr
-        ? 'https://dexscreener.com/' + S.mode + '/' + encodeURIComponent(t.addr)
-        : S.mode === 'stocks'
-          ? 'https://finance.yahoo.com/quote/' + encodeURIComponent(t.sym || '')
-          : 'https://www.coingecko.com/en/search?query=' + encodeURIComponent(t.sym || ''));
+  const url=chartUrl(t);
   open(url,'_blank','noopener');
   closeAll();
 };
