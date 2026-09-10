@@ -560,6 +560,8 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="stocks">Stocks</button>
     <button data-mode="robinhood">Robinhood</button>
     <button data-mode="base">Base</button>
+    <button data-mode="chains">Chains</button>
+    <button data-mode="pads">Launchpads</button>
   </div>
   <div class="seg acc" id="tf">
     <button data-tf="h1" class="on">1H</button>
@@ -776,6 +778,18 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
    and the button are always up. What is genuinely per-token is the "boost this
    bubble" button in the card, which needs something to identify the bubble by —
    see openCard(). A stock has no contract, so there it stays hidden. */
+/* Keep the timeframe on a window the current source actually reports.
+
+   Chains and launchpads publish a 24h figure and nothing else, so arriving on
+   1H showed sixty grey dashes — honest, and useless. This lived in the tab
+   click handler alone, which meant a deep link to ?source=chains skipped it
+   entirely and landed exactly where the problem was. */
+function fixTf(){
+  if((S.mode!=='chains'&&S.mode!=='pads')||S.tf==='h24')return;
+  S.tf='h24';
+  document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+}
+
 function applyBoostability(){
   const rail=document.getElementById('rail');
   if(rail)rail.style.display='';
@@ -861,7 +875,13 @@ async function fetchLive(){
        what the feed actually sent. */
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
-    pc:{m5:+t.pc.m5||0,h1:+t.pc.h1||0,h6:+t.pc.h6||0,h24:+t.pc.h24||0,
+    kind:t.kind||'', slug:t.slug||'',
+    /* Every window, null-preserving. The short four used ||0, which was left
+       alone when the long ones were fixed because pump.fun always reports them.
+       Chains and launchpads publish a 24h figure and nothing else, so on the 1H
+       tab sixty bubbles rendered a confident green +0.00% for a number nobody
+       had measured — the exact thing the long windows were fixed for. */
+    pc:{m5:NN(t.pc.m5),h1:NN(t.pc.h1),h6:NN(t.pc.h6),h24:NN(t.pc.h24),
         d7:NN(t.pc.d7),d30:NN(t.pc.d30),y1:NN(t.pc.y1)},
     boost:+t.boost||0,                   // server owns this: it is paid for
     boostUsd:+t.boostUsd||0, boostUntil:t.boostUntil||0,
@@ -1634,6 +1654,12 @@ function chartUrl(t){
       ? 'https://dexscreener.com/'+chain+'/'+encodeURIComponent(t.addr)
       : 'https://dexscreener.com/search?q='+encodeURIComponent(t.addr);
   }
+  /* These bubbles are not tokens, so there is no chart — the honest
+     destination is the page the number came from. */
+  if(id.startsWith('chain:'))
+    return 'https://defillama.com/chain/'+encodeURIComponent(t.sym||'');
+  if(id.startsWith('pad:'))
+    return 'https://defillama.com/protocol/'+encodeURIComponent(t.slug||t.sym||'');
   if(id.startsWith('stock:'))
     return 'https://finance.yahoo.com/quote/'+encodeURIComponent(t.sym||'');
   if(id.startsWith('cg:'))
@@ -1674,6 +1700,7 @@ function wire(id,fn){
 }
 wire('mode',b=>{
   S.mode=b.dataset.mode;
+  fixTf();
   /* Keep the current bubbles on screen while the new feed loads. Clearing them
      left an empty map for as long as the fetch took — and the whole-market feed
      is the slow one, being 250 coins from a cold cache. The old set is replaced
@@ -2048,11 +2075,12 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={trending:'trending',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
+  const OK={trending:'trending',chains:'chains',pads:'pads',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
   if(OK[src])S.mode=OK[src];
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
+  fixTf();
 })();
 
 async function initEmbed(){

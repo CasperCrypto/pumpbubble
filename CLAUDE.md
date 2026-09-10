@@ -379,6 +379,38 @@ Fire follows gold's rule: the shell stops encoding direction, so the percentage 
 dark-green or dark-red, and the turnover that put it there is printed on the face. Paid outranks
 hot — a gold bubble stays gold.
 
+## Chains and launchpads
+
+`src/flows.mjs`. Two views that are not about individual tokens: where trading is happening across
+chains, and which launchpad is actually busy.
+
+**Size is what the thing does, not what it holds.** TVL is the obvious measure and it is the wrong
+one — money parked rather than money moving. For a launchpad it is not merely imperfect: a launchpad
+holds nothing, and DefiLlama duly reports pump.fun and Pons at **$0 TVL**. What a launchpad does is
+take fees, and those are published. Pons V2 at $5.2M in 24h against pump.fun's $1.4M is the answer
+to which one is busy; TVL would have said neither exists.
+
+| view | size | colour |
+|---|---|---|
+| Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it |
+| Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average |
+
+Chain volume comes from each DEX's `breakdown24h`, which is `{chain: {protocol: volume}}` — the
+exact split. Dividing a multi-chain protocol's total by how many chains it lists would credit Solana
+and a testnet equally.
+
+The two responses are 1.8MB and 4.1MB, so a cron tick aggregates them to a few KB in KV and the map
+reads that. A side that comes back empty never overwrites a side we already had.
+
+**The short windows were still coercing null to zero.** `pc:{m5:+t.pc.m5||0,…}` in the client mapper
+was left alone when the long windows were fixed, because pump.fun always reports them. Chains and
+launchpads publish a 24h figure and nothing else, so the 1H tab rendered sixty confident green
+`+0.00%` bubbles for a number nobody had measured. Every window is null-preserving now.
+
+`fixTf()` keeps the timeframe on a window the source actually has. It first lived in the tab click
+handler alone, so a deep link to `?source=chains` skipped it and landed on exactly the empty tab it
+existed to prevent — the same shape of bug as `?source=` only working inside `initEmbed()`.
+
 ## Where the Chart button goes
 
 `chartUrl(t)` routes by the **token**, never by the tab being viewed. Keying off `S.mode` was wrong

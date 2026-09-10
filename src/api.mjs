@@ -14,6 +14,7 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
+import { refreshFlows } from './flows.mjs';
 import { buildTrending, TREND_SOURCES } from './trending.mjs';
 import { adminEnabled, adminPath, authed, adminPage,
          lockedOut, noteFailure, clearFailures } from './admin.mjs';
@@ -1407,6 +1408,17 @@ export async function handle(req, ctx) {
         }
 
         return json({ ok: false, error: 'unknown action' }, 400);
+      }
+    }
+
+    /* Called by cron. Aggregates DefiLlama's DEX and fee overviews down to a
+       few KB; the raw responses are ~6MB together and have no business inside a
+       map build. See src/flows.mjs. */
+    if (path === '/api/flows/refresh') {
+      try {
+        return json({ ok: true, ...(await refreshFlows(ctx.store)) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
       }
     }
 

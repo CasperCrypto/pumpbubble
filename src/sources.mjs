@@ -21,6 +21,7 @@
 import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
+import { chainTokens, padTokens } from './flows.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -235,6 +236,26 @@ export const SOURCES = {
     boostable: false, quality: 'major',
     fetch: () => nasdaqStocks(300),
   },
+  /* Where trading is happening, by chain. Sized by 24h DEX volume rather than
+     TVL: TVL is money parked, volume is money moving, and the question is where
+     it is flowing. See src/flows.mjs. */
+  chains: {
+    id: 'chains', label: 'Chains', group: 'Flows',
+    chain: 'mixed', ttl: 300_000, shared: true, enrich: false,
+    boostable: false, quality: 'major',
+    fetch: store => chainTokens(store),
+  },
+
+  /* Which launchpad is actually busy, by 24h fees. A launchpad holds nothing,
+     so DefiLlama reports pump.fun and Pons at $0 TVL; what it does is take
+     fees, and those are published. */
+  pads: {
+    id: 'pads', label: 'Launchpads', group: 'Flows',
+    chain: 'mixed', ttl: 300_000, shared: true, enrich: false,
+    boostable: false, quality: 'major',
+    fetch: store => padTokens(store),
+  },
+
   /* Trending, across every chain at once. Composed from the other feeds in
      api.mjs rather than fetched — see src/trending.mjs for what "trending"
      is defined as, and why it had to be defined rather than fetched. */

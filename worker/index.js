@@ -255,6 +255,8 @@ export default {
         await handle(new Request('https://pumpbubble.fun/api/robinhood/discover'), ctx);
         /* One slice of Base pricing, and the token list once a day. */
         await handle(new Request('https://pumpbubble.fun/api/base/sweep'), ctx);
+        /* Chain and launchpad flows, rebuilt every twenty minutes. */
+        await handle(new Request('https://pumpbubble.fun/api/flows/refresh'), ctx);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {
