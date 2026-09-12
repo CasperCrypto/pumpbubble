@@ -194,6 +194,18 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
     <div id="xbot"></div>
   </div>
 
+  <div class="card">
+    <h2>Telegram bot</h2>
+    <div id="tg"></div>
+    <div class="row" style="margin-top:10px">
+      <select id="bAud"><option value="index">Bubble Index subscribers</option><option value="trend">Trending subscribers</option></select>
+      <button class="go" id="bCount">Count recipients</button>
+      <button class="go" id="bSend" disabled>Send</button>
+    </div>
+    <textarea id="bText" rows="4" placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;. Goes only to people who opted in." style="width:100%;margin-top:8px;background:#0d1117;color:inherit;border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;font-size:13px"></textarea>
+    <div class="dim" id="bOut" style="margin-top:6px"></div>
+  </div>
+
   <div id="msg"></div>
 </div>
 
@@ -213,6 +225,30 @@ async function api(action,body){
   if(!j.ok)throw new Error(j.error||'failed');
   return j;
 }
+let bReady=null;
+$('bCount').onclick=async()=>{
+  try{
+    const r=await api('tg.broadcast',{audience:$('bAud').value,text:$('bText').value||'x',dry:true});
+    let eligible=r.eligible,after=r.after;
+    while(!r.done&&after<r.total){const n=await api('tg.broadcast',{audience:$('bAud').value,text:'x',dry:true,after});eligible+=n.eligible;after=n.after;if(n.done)break}
+    bReady={audience:$('bAud').value,eligible};
+    $('bOut').textContent=eligible+' would receive this';
+    $('bSend').disabled=!(eligible>0&&$('bText').value.trim());
+  }catch(e){say(e.message,true)}
+};
+$('bText').oninput=()=>{$('bSend').disabled=true;bReady=null;$('bOut').textContent=''};
+$('bAud').onchange=()=>{$('bSend').disabled=true;bReady=null;$('bOut').textContent=''};
+$('bSend').onclick=async()=>{
+  if(!bReady||!confirm('Send to '+bReady.eligible+' subscribers?'))return;
+  $('bSend').disabled=true;
+  try{
+    let after=0,sent=0,gone=0;
+    for(;;){const r=await api('tg.broadcast',{audience:bReady.audience,text:$('bText').value,dry:false,after});sent+=r.sent;gone+=r.gone;after=r.after;if(r.done)break}
+    $('bOut').textContent='sent '+sent+(gone?' · '+gone+' had blocked the bot and were removed':'');
+    bReady=null;
+  }catch(e){say(e.message,true)}
+};
+
 function say(t,bad){const m=$('msg');m.textContent=t;m.style.color=bad?'#ff9aa4':'#8b98a8';
   if(t)setTimeout(()=>{if(m.textContent===t)m.textContent=''},4000)}
 
@@ -253,6 +289,12 @@ async function load(){
     (list.length?list.map(a=>'<code>'+esc(a.slice(0,10))+'…</code> <button class="bad" data-del-seed="'+esc(chain)+'|'+esc(a)+'">x</button>').join(' '):'<span class="dim">none</span>')+
     '</div>').join('');
 
+  const t=d.tg||{};
+  $('tg').innerHTML=!t.enabled
+    ?'<div class="dim">not configured — set <code>TG_BOT_TOKEN</code> and the next cron tick registers the webhook</div>'
+    :stat('Groups',t.groups||0)+stat('Subscribers',t.subscribers||0)+stat('Tokens watched',t.mints||0)+
+     '<div class="dim" style="margin-top:8px">telegram webhook: '+(t.telegram&&t.telegram.url?'set'+(t.telegram.lastError?' · last error: '+esc(t.telegram.lastError):''):'not set')+
+     ' · helius: '+(t.helius&&t.helius.exists?(t.helius.addresses+' addresses'):(t.helius&&t.helius.configured?'no webhook yet (created on first /setup)':'no key'))+'</div>';
   $('xbot').innerHTML='<div class="dim">'+(d.xbot.configured?'configured':'not configured — no credentials set')+
     ' · posted today '+d.xbot.postedToday+'</div>'+
     (d.xbot.would?'<pre style="white-space:pre-wrap;background:#0d1117;border:1px solid var(--line);border-radius:9px;padding:10px;margin-top:8px;font-size:12px">'+esc(d.xbot.would.text)+'</pre>':'');

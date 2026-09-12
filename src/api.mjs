@@ -12,6 +12,11 @@ import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, sharePage, page } from './share.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
+import {
+  enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
+  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast,
+} from './tgbot.mjs';
+import { deliveryAuth as heliusAuth } from './helius.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
 import { refreshFlows } from './flows.mjs';
@@ -1289,6 +1294,7 @@ export async function handle(req, ctx) {
           try { seeds.base = (await baseCache(ctx.store)).seeds || []; } catch {}
           try { seeds.robinhood = (await rhRegistry(ctx.store)).seeds || []; } catch {}
 
+          const tg = await tgStatus(ctx.env, ctx.store).catch(e => ({ enabled: tgEnabled(ctx.env), error: String(e.message) }));
           let xbot = { configured: !!xCreds(ctx.env), postedToday: 0, would: null };
           try {
             const st = (await ctx.store.get(XBOT_KEY)) || {};
@@ -1306,7 +1312,7 @@ export async function handle(req, ctx) {
             traffic, feeds,
             ads: await readAds(),
             boosts: all.slice(-40).reverse(),
-            seeds, xbot,
+            seeds, xbot, tg,
           });
         }
 
@@ -1407,6 +1413,23 @@ export async function handle(req, ctx) {
           return json({ ok: true });
         }
 
+        /* The bot, from the console: full status, and a broadcast that goes
+           only to people who opted in. `dry` counts recipients without sending,
+           which is the button to press first. */
+        if (action === 'tg.status') {
+          return json({ ok: true, tg: await tgStatus(ctx.env, ctx.store) });
+        }
+        if (action === 'tg.broadcast') {
+          if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);
+          const r = await tgBroadcast(ctx.env, ctx.store, {
+            audience: String(body.audience || ''),
+            text: String(body.text || '').slice(0, 3500),
+            after: Math.max(0, Number(body.after) || 0),
+            dry: body.dry !== false,
+          });
+          return json(r, r.ok ? 200 : 400);
+        }
+
         return json({ ok: false, error: 'unknown action' }, 400);
       }
     }
@@ -1476,6 +1499,51 @@ export async function handle(req, ctx) {
         would: { kind: post.kind, text: post.text, chars: post.text.length,
                  card: url.origin + post.share },
       });
+    }
+
+    /* ------------------------------------------------------- Telegram buybot
+       Both webhooks answer 200 quickly and do the work inside waitUntil where
+       one exists: Telegram retries a slow webhook and Helius counts one, and a
+       retried buy is a duplicate alert. Neither route exists at all without the
+       bot token, so an unconfigured deployment 404s here like any unknown path. */
+    if (path === '/tg/webhook' || path === '/tg/trade') {
+      if (!tgEnabled(ctx.env)) return null;
+      if (req.method !== 'POST') return json({ ok: false }, 405);
+
+      if (path === '/tg/webhook') {
+        const given = req.headers.get('x-telegram-bot-api-secret-token') || '';
+        if (given !== await tgWebhookSecret(ctx.env)) return json({ ok: false }, 401);
+        let update = null;
+        try { update = await req.json(); } catch { return json({ ok: true }); }
+        ctx.solUsd = await solPriceNow(ctx).catch(() => 0);
+        const work = tgUpdate(ctx, update).catch(() => {});
+        if (ctx.waitUntil) ctx.waitUntil(work); else await work;
+        return json({ ok: true });
+      }
+
+      /* Helius sends the auth header we registered; a delivery without it is
+         somebody else's POST. */
+      const auth = req.headers.get('authorization') || '';
+      if (!auth || auth !== await heliusAuth(ctx.env)) return json({ ok: false }, 401);
+      let payload = null;
+      try { payload = await req.json(); } catch { return json({ ok: true }); }
+      const solUsd = await solPriceNow(ctx).catch(() => 0);
+      const work = tgTrade(ctx, payload, solUsd).catch(() => {});
+      if (ctx.waitUntil) ctx.waitUntil(work); else await work;
+      return json({ ok: true });
+    }
+
+    /* Called from cron: registers the Telegram webhook once the token is set,
+       so turning the bot on is one secret and nothing else. */
+    if (path === '/api/tg/ensure') {
+      try { return json({ ok: true, ...(await tgEnsure(ctx.env, ctx.store)) }); }
+      catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 502); }
+    }
+
+    if (path === '/api/tg/status') {
+      const st = await tgStatus(ctx.env, ctx.store).catch(e => ({ enabled: tgEnabled(ctx.env), error: String(e.message) }));
+      /* Public: counts and whether it is on, never ids, never tokens. */
+      return json({ ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0 });
     }
 
     if (path === '/api/xbot/status') {

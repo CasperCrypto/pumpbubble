@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env server/dev.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node scripts/imports.test.mjs && node scripts/payment-abuse.test.mjs && node scripts/boost-math.test.mjs && node scripts/affiliate.test.mjs && node scripts/bids.test.mjs && node scripts/page-refs.test.mjs && node scripts/xbot.test.mjs",
+    "test": "node scripts/imports.test.mjs && node scripts/payment-abuse.test.mjs && node scripts/boost-math.test.mjs && node scripts/affiliate.test.mjs && node scripts/bids.test.mjs && node scripts/page-refs.test.mjs && node scripts/xbot.test.mjs && node scripts/tgbot.test.mjs",
     "test:api": "node scripts/api-abuse.test.mjs",
     "setup": "node scripts/setup-cloudflare.mjs",
     "check:config": "npx wrangler deploy --dry-run --outdir .wrangler/dryrun",

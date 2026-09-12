@@ -194,7 +194,8 @@ ResizeObserver callbacks are only delivered with a rendering frame.
 2. Daily boost leaderboard + "boost war" view — the shareable screenshot, i.e. free marketing
 3. PumpPortal WebSocket for per-trade bubble flashes — nobody does this well, and the ingest
    already lives server-side where the socket belongs
-4. Helius webhook instead of polling `/api/boost/status`, so boosts activate without a poll
+4. Helius webhook instead of polling `/api/boost/status`, so boosts activate without a poll —
+   the webhook plumbing now exists in `src/helius.mjs` for the buybot and can carry this too
 5. Pre-graduation "bonding" mode via Bitquery (bonding-curve market cap), as a separate toggle
 
 ## Data quality — why bubbles get hidden
@@ -713,6 +714,80 @@ return; using it would have been a fabricated number wearing the right label.
 honest denominator, and it correctly rejects a token claiming $141M against an empty curve — but
 what survived filtering was still mostly $5–12k tokens. Deep links to `?source=bonding` still
 resolve so nothing already shared breaks.
+
+## The Telegram buybot
+
+`src/tgbot.mjs`, `src/solbuy.mjs`, `src/helius.mjs`. A token community adds the bot to its
+group, an admin runs `/setup <contract address>`, and every buy is posted into the group in the
+format the communities already know from Bobby, Cherry and Major — with the group's own picture
+on it, and four buttons: Chart · Bubble · Buy · **Boost**. The bot is distribution: every alert is
+seen by every member, carries the site's name, and puts the Boost button one tap from the people
+who buy boosts. `?boost=<address>` on the map opens the boost box with the address resolved, so a
+group tapping the button is not asked to paste what it already has.
+
+**Off until `TG_BOT_TOKEN` is set, and then on with nothing else.** Without the token the two
+webhook routes do not exist (404, like the console). With it, the next cron tick registers the
+Telegram webhook itself. The Helius key is read out of `SOLANA_RPC` when that is a Helius URL, so
+turning the bot on adds one secret, not two — and rotating the RPC key rotates this as well.
+
+**Nobody is messaged who did not ask.** This is the rule, and it is the product, not a nicety:
+
+- A **group** is stored only after one of *its admins* ran `/setup`. Admin status is checked
+  against `getChatMember`, cached five minutes.
+- A **user** is stored only after they pressed /start *and* picked something on the opt-in
+  keyboard. There is no list of "everyone the bot has seen". A captcha flow that harvests every
+  verified member into a DM list was proposed and refused, because Telegram tracks a bot's block
+  rate: blast 50k people who signed up to pass a captcha, 20–40% block it in the first hour, the
+  bot is restricted, and the buy feed dies in every group at once. The opt-in list is smaller and
+  it survives. The console's broadcast tool sends to that list only, counts recipients before it
+  will enable Send, and forgets anyone who has blocked the bot.
+
+**A buy is read off balances, not off a parser's label.** `parseBuys()` takes the raw
+transaction — Helius `webhookType: raw`, which is `getTransaction`'s shape — and finds the
+**signer whose token balance rose while their SOL balance fell.** That one definition covers the
+pump.fun curve, PumpSwap, Raydium, Meteora and Jupiter routes without decoding any of them. The
+three things it must *not* call a buy, each with a test:
+
+- a **transfer** — tokens moved, only the fee left the receiver;
+- an **airdrop** — tokens arrived, the receiver paid nothing;
+- the pool side of a **sell** — tokens up, SOL down, *exactly* a buyer's balance signature,
+  because the pool did buy them from the seller. The first version reported it. **A pool never
+  signs**; requiring the buyer to be a signer is what tells a buy from the other side of a sell.
+
+`newHolder` is read from the pre-balance, not from whether we had seen the wallet before. SOL
+spent is net of the network fee when the buyer paid it — the fee is the chain's, not the token's.
+Buys under 0.0005 SOL are rent and wrap round-trips, not purchases.
+
+**Zero KV writes per buy.** The free tier allows a thousand writes a day; a busy token does that
+many buys before lunch. Config is written at setup, read through a 60s memory cache at alert
+time, and a buy touches nothing. Market cap at alert time comes from `resolveAnyToken()` cached
+20s per mint. Per group, alerts are capped at 18 a minute (Telegram allows ~20) and the overflow is
+**dropped, not queued** — an alert about a buy from three minutes ago is noise, and a queue that
+never drains is a memory leak with a delay. Helius retries deliveries it thinks failed, so a
+signature is posted once per isolate.
+
+**One Helius webhook, many addresses.** Every tracked token adds its mint *and its deepest pool*
+to a single address list, rewritten on each `/setup` and `/stop`. The pool matters: some routers
+list only the pool in a swap's accounts, so watching the mint alone misses them. A bonding-curve
+token has no pool yet and its mint is in every one of its trades. The webhook id is kept in KV so a
+redeploy updates it rather than creating a second one, and an empty list deletes it — Helius
+rejects a webhook watching nothing.
+
+**Every string a token controls is escaped before it reaches a caption** — ticker, name, the
+group's chosen emoji, every social link. The caption is HTML and it is posted into somebody
+else's group. `clean()` strips the brackets server-side and `tgEsc()` escapes what is left; links
+are kept only when they are `http(s)`, because a minter's "website" field has been `javascript:`.
+`scripts/tgbot.test.mjs` covers all of it, and runs the caption end to end so the shape can be
+read in the test output.
+
+**Standard format first; bubble posts later.** The buy alert is deliberately the format the
+communities compare against, because that is what they judge a buybot by. What is *ours* — rank
+changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate
+posts so the buy feed stays clean and the bubble posts read as events. Not built yet.
+
+Solana only. The address box accepts any chain (`isCA`) and says so plainly when it is not Solana;
+Base and Robinhood Chain need an EVM event source, which is either a provider's webhook or a
+Durable Object holding a websocket.
 
 ## Modes
 

@@ -1033,7 +1033,7 @@ function rebuild(){
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
   /* a partner's pinned token stays on screen regardless of ranking */
-  if(S.pin)S.tokens.forEach(t=>{if(t.mint===S.pin&&!P.includes(t))P.unshift(t)});
+  if(S.pin)S.tokens.forEach(t=>{if((t.mint||t.addr)===S.pin&&!P.includes(t))P.unshift(t)});
   P.forEach(t=>{t.noData=!hasTf(t);t.chg=t.noData?0:t.pc[S.tf];t.base=M(t);if(t.ph==null)t.ph=Math.random()*TAU});
   S.view=P;
   sizes();
@@ -2242,12 +2242,30 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
   fixTf();
+  /* ?pin= keeps one token on screen whatever the ranking says, and ?boost=
+     opens the boost box with that address already resolved. Both exist for
+     the Telegram bot's buttons: a group tapping "Boost" under a buy alert has
+     the contract in hand and should not be asked to paste it again. */
+  const CA=/^[1-9A-HJ-NP-Za-km-z]{32,44}$|^0x[0-9a-fA-F]{40}$/;
+  const pin=q.get('pin');
+  if(pin&&CA.test(pin))S.pin=pin;
+  const bo=q.get('boost');
+  if(bo&&CA.test(bo))S.boostOnLoad=bo;
   /* Light the pills the link actually chose. Setting S.mode alone left the map
      showing chains under a highlighted "pump.fun" tab — the state was right and
      the page said otherwise, which is worse than either being wrong on its own,
      and it is the shared links this site generates for itself that land here. */
   document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===S.mode));
   document.querySelectorAll('[data-tf]').forEach(b=>b.classList.toggle('on',b.dataset.tf===S.tf));
+  /* Runs here, after the flag is set — the first version opened the box from
+     the boostTop handler's neighbourhood, which executes earlier in the file
+     than this IIFE, so it checked the flag before anything had set it. */
+  if(S.boostOnLoad){
+    const ca=S.boostOnLoad;S.boostOnLoad='';
+    openBoost(null);
+    const inp=document.getElementById('mca');
+    if(inp){inp.value=ca;lookupCA(ca)}
+  }
 })();
 
 async function initEmbed(){

@@ -257,6 +257,9 @@ export default {
         await handle(new Request('https://pumpbubble.fun/api/base/sweep'), ctx);
         /* Chain and launchpad flows, rebuilt every twenty minutes. */
         await handle(new Request('https://pumpbubble.fun/api/flows/refresh'), ctx);
+        /* Telegram buybot: registers its webhook once TG_BOT_TOKEN exists. A
+           no-op without the token and a one-call check with it. */
+        await handle(new Request('https://pumpbubble.fun/api/tg/ensure'), ctx);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {
