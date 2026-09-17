@@ -562,6 +562,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="base">Base</button>
     <button data-mode="chains">Chains</button>
     <button data-mode="pads">Launchpads</button>
+    <button data-mode="bets">Bets</button>
   </div>
   <div class="seg acc" id="tf">
     <button data-tf="h1" class="on">1H</button>
@@ -798,8 +799,9 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
 /* Keep the timeframe on a window the source actually has, so a tab never opens
    on sixty grey bubbles. Chains and launchpads publish a day and a week and
    nothing shorter — DefiLlama has no five-minute candle for a chain. */
+const FLOW_MODES=new Set(['chains','pads','bets']);
 function fixTf(){
-  if(S.mode!=='chains'&&S.mode!=='pads')return;
+  if(!FLOW_MODES.has(S.mode))return;
   if(S.tf==='h24'||S.tf==='d7')return;
   S.tf='h24';
   document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
@@ -891,6 +893,7 @@ async function fetchLive(){
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
+    fees24h:NN(t.fees24h), cat:t.cat||'', chains:Array.isArray(t.chains)?t.chains:[],
     /* Every window, null-preserving. The short four used ||0, which was left
        alone when the long ones were fixed because pump.fun always reports them.
        Chains and launchpads publish a 24h figure and nothing else, so on the 1H
@@ -1470,7 +1473,7 @@ function draw(){
        number, which is the one thing these two tabs exist to show. Area says
        which is bigger; it does not say whether that is two billion dollars or
        two million. */
-    if(t.kind==='chain'||t.kind==='pad'){flowFace(t,r);continue}
+    if(t.kind==='chain'||t.kind==='pad'||t.kind==='bet'){flowFace(t,r);continue}
     const wLogo=r>=24,wPct=r>=27;
     if(wLogo){
       const ir=r*.40,iy=t.y-r*.31,im=img(t.img);
@@ -1650,9 +1653,11 @@ function openCard(t){
   /* "Chart" is wrong for a chain: chartUrl sends it to its DefiLlama page,
      which is where the number came from and what the reader wants next. */
   const co=e('cOpen');
-  if(co)co.textContent=(t.kind==='chain'||t.kind==='pad')?'Open':'Chart';
+  if(co)co.textContent=(t.kind==='chain'||t.kind==='pad'||t.kind==='bet')?'Open':'Chart';
   e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
-  e('cName').textContent=(t.name||'').slice(0,32);
+  e('cName').textContent=t.kind==='bet'
+    ? ((t.cat==='casino'?'on-chain casino':'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
+    : (t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
   e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
@@ -1669,10 +1674,24 @@ function openCard(t){
      volume under a label reading "Market cap", beside two boxes of dashes, is
      four wrong answers to questions nobody asked about a chain. */
   const lab=(id,txt)=>{const u=e(id).previousElementSibling;if(u)u.textContent=txt};
-  const flow=t.kind==='chain'||t.kind==='pad',pad=t.kind==='pad';
+  const flow=t.kind==='chain'||t.kind==='pad'||t.kind==='bet',pad=t.kind==='pad',bet=t.kind==='bet';
 
   e('cMc').textContent=fmtUsd(t.mcap);
-  if(flow){
+  if(bet){
+    /* A betting venue: what was wagered, its share of all wagering on the map,
+       the move, and the house take — which is the one number a punter never
+       sees on the venue itself. */
+    let all=0;
+    for(const x of S.tokens)if(x.kind==='bet')all+=+x.mcap||0;
+    lab('cMc','24h volume');
+    lab('cVol','Share of all bets');
+    lab('cA','24h change');
+    lab('cB','House take 24h');
+    e('cMc').textContent=fmtUsd(t.mcap);
+    e('cVol').innerHTML=all>0?esc((t.mcap/all*100).toFixed(1)+'%'):'<span style="color:var(--dim)">—</span>';
+    e('cA').innerHTML=pct(t.pc.h24);
+    e('cB').innerHTML=t.fees24h>0?esc(fmtUsd(t.fees24h)):'<span style="color:var(--dim)">—</span>';
+  }else if(flow){
     lab('cMc',pad?'24h fees':'24h DEX volume');
     lab('cVol',pad?'7d fees':'7d volume');
     lab('cA','24h change');
@@ -1819,7 +1838,7 @@ function chartUrl(t){
      destination is the page the number came from. */
   if(id.startsWith('chain:'))
     return 'https://defillama.com/chain/'+encodeURIComponent(t.sym||'');
-  if(id.startsWith('pad:'))
+  if(id.startsWith('pad:')||id.startsWith('bet:'))
     return 'https://defillama.com/protocol/'+encodeURIComponent(t.slug||t.sym||'');
   if(id.startsWith('stock:'))
     return 'https://finance.yahoo.com/quote/'+encodeURIComponent(t.sym||'');
@@ -2236,7 +2255,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={trending:'trending',chains:'chains',pads:'pads',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
+  const OK={trending:'trending',chains:'chains',pads:'pads',bets:'bets',gamble:'bets',casinos:'bets',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
   if(OK[src])S.mode=OK[src];
   const tf=q.get('tf');

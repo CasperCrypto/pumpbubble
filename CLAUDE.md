@@ -395,6 +395,7 @@ to which one is busy; TVL would have said neither exists.
 |---|---|---|---|
 | Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted `change_7d` |
 | Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7d` |
+| Bets | 24h volume wagered | `change_1d` | `change_7d` |
 
 **These bubbles print the money on their own faces.** Relative area says which is
 bigger; it does not say whether that is two billion dollars or two million, and
@@ -435,6 +436,19 @@ bubble slot, and it stretches the log domain so every launchpad anyone is asking
 about comes out the same size. Above the floor it is thirty-four venues over 3.7
 decades, the same visual range the chains map has and the one already verified to
 read well. Chains need no floor: fifty-five of sixty are above $1M.
+
+**Bets** is the third flow view: prediction markets and on-chain casinos, sized by 24h volume
+wagered, from the same two responses. It was asked for as *"casinos — Stake, Shuffle, BC.Game"*,
+and **none of those can be on it**: they are off-chain companies that accept crypto and publish
+nothing. Not in DefiLlama under any name (the one "Stake" hit is Binance's staked ETH), no
+volume, no fees; the only proxies are paid (labelled hot-wallet flows, web traffic), and a map of
+casino *tokens* would omit Stake, which has none and is the largest. A map missing its biggest
+player by construction is lying by omission, so that version was not built. What is published is
+where the betting money actually is — Kalshi ~$420M/day and Polymarket ~$150M against $80K for the
+biggest on-chain casino — and that is the tab. Sized by **volume** because that is how a venue's
+size is stated anywhere (handle, not revenue); the house take rides along in the card, joined from
+the fees overview by slug, and is a dash where DefiLlama has no adapter. Same $1,000 floor as
+launchpads. `?source=gamble` and `?source=casinos` resolve to it.
 
 Chain volume comes from each DEX's `breakdown24h`, which is `{chain: {protocol: volume}}` — the
 exact split. Dividing a multi-chain protocol's total by how many chains it lists would credit Solana

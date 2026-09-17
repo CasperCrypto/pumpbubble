@@ -167,6 +167,66 @@ function padsFrom(fees) {
   return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
 }
 
+/* Betting venues — prediction markets and on-chain casinos — by what was
+   wagered in 24h.
+
+   This tab was asked for as "casinos: Stake, Shuffle, BC.Game". None of those
+   can go on it, and the reason is worth keeping: they are off-chain companies
+   that accept crypto, and they publish nothing. Not in DefiLlama under any
+   name (the one "Stake" match is Binance's staked ETH), no volume, no fees.
+   The only proxies are paid — labelled hot-wallet flows or web traffic — and a
+   map built from casino *tokens* would omit Stake, which has none and is the
+   largest. A map missing its biggest player by construction is lying by
+   omission, so it is not built.
+
+   What is published is where the betting money actually is: Kalshi at ~$420M a
+   day and Polymarket at ~$150M against $80K for the biggest on-chain casino.
+   Both come from the same two responses this module already fetches — the
+   `dexs` overview lists prediction markets and "Luck Games" with volume, and
+   the `fees` overview has the house take for the same slugs — so the tab costs
+   no new upstream at all.
+
+   Sized by **volume**, because that is how a betting venue's size is stated
+   anywhere — handle, not revenue. The house take rides along for the card.
+   Same $1,000 floor as launchpads, for the same reason. */
+const BET_CATS = /prediction market|luck games|yield lottery/i;
+const MIN_BET_VOL = 1000;
+
+function betsFrom(dexs, fees) {
+  const take = new Map();
+  for (const p of (fees && fees.protocols) || []) {
+    if (!BET_CATS.test(p.category || '')) continue;
+    const k = p.slug || (p.displayName || p.name || '').toLowerCase();
+    take.set(k, { d1: num(p.total24h), d7: num(p.total7d) });
+  }
+  const out = [];
+  for (const p of (dexs && dexs.protocols) || []) {
+    if (!BET_CATS.test(p.category || '')) continue;
+    const v = num(p.total24h);
+    if (!(v >= MIN_BET_VOL)) continue;
+    const name = clean(p.displayName || p.name, 28);
+    if (!name) continue;
+    const k = p.slug || name.toLowerCase();
+    const t = take.get(k) || null;
+    out.push({
+      id: 'bet:' + k,
+      sym: name,
+      name: name + ' — 24h volume',
+      vol: v,
+      vol7d: num(p.total7d) || null,
+      change: pick(p.change_1d),
+      change7d: pick(p.change_7d),
+      fees24h: t ? t.d1 : null,
+      fees7d: t ? t.d7 : null,
+      cat: /luck|lottery/i.test(p.category) ? 'casino' : 'prediction',
+      chains: (p.chains || []).slice(0, 4).map(c => clean(String(c), 20)).filter(Boolean),
+      logo: typeof p.logo === 'string' && /^https:\/\//.test(p.logo) ? p.logo : '',
+      slug: p.slug || '',
+    });
+  }
+  return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
+}
+
 export async function loadFlows(store) {
   try { return (await store.get(KEY)) || null; } catch { return null; }
 }
@@ -175,13 +235,16 @@ export async function loadFlows(store) {
 export async function refreshFlows(store, force = false) {
   const have = await loadFlows(store);
   if (!force && have && (Date.now() - (have.at || 0)) < FRESH_MS) {
-    return { cached: true, chains: (have.chains || []).length, pads: (have.pads || []).length };
+    return { cached: true, chains: (have.chains || []).length, pads: (have.pads || []).length, bets: (have.bets || []).length };
   }
 
   const [dexs, fees] = await Promise.allSettled([jget(DEXS), jget(FEES)]);
 
   const chains = dexs.status === 'fulfilled' ? chainsFrom(dexs.value) : [];
   const pads = fees.status === 'fulfilled' ? padsFrom(fees.value) : [];
+  /* Bets need the dexs side; the fees side only decorates. */
+  const bets = dexs.status === 'fulfilled'
+    ? betsFrom(dexs.value, fees.status === 'fulfilled' ? fees.value : null) : [];
 
   /* Half an answer must not overwrite a whole one: if a side came back empty
      and we already had it, keep what we had. */
@@ -189,14 +252,15 @@ export async function refreshFlows(store, force = false) {
     at: Date.now(),
     chains: chains.length ? chains : ((have && have.chains) || []),
     pads: pads.length ? pads : ((have && have.pads) || []),
+    bets: bets.length ? bets : ((have && have.bets) || []),
   };
-  if (!next.chains.length && !next.pads.length) {
-    return { chains: 0, pads: 0, error: 'both upstreams empty' };
+  if (!next.chains.length && !next.pads.length && !next.bets.length) {
+    return { chains: 0, pads: 0, bets: 0, error: 'both upstreams empty' };
   }
 
   try { await store.put(KEY, next); } catch { /* next tick retries */ }
   return {
-    chains: next.chains.length, pads: next.pads.length,
+    chains: next.chains.length, pads: next.pads.length, bets: next.bets.length,
     dexs: dexs.status, fees: fees.status,
   };
 }
@@ -223,6 +287,12 @@ function shape(rows, kind) {
     kind,
     slug: r.slug || '',
     vol7d: r.vol7d || null,
+    /* Betting venues only: the house take and what kind of venue it is. Null
+       where the fees overview has no adapter for the slug. */
+    fees24h: r.fees24h == null ? null : r.fees24h,
+    fees7d: r.fees7d == null ? null : r.fees7d,
+    cat: r.cat || '',
+    chains: r.chains || [],
     pc: {
       m5: null, h1: null, h6: null,
       h24: pick(r.change),
@@ -241,4 +311,9 @@ export async function chainTokens(store) {
 export async function padTokens(store) {
   const f = await loadFlows(store);
   return f ? shape(f.pads, 'pad') : [];
+}
+
+export async function betTokens(store) {
+  const f = await loadFlows(store);
+  return f ? shape(f.bets, 'bet') : [];
 }
