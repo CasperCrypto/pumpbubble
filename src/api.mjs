@@ -17,6 +17,7 @@ import {
   onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast,
 } from './tgbot.mjs';
 import { deliveryAuth as heliusAuth } from './helius.mjs';
+import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
 import { refreshFlows } from './flows.mjs';
@@ -1447,6 +1448,38 @@ export async function handle(req, ctx) {
 
     /* Called by cron. Refreshes the Base token list at most once a day and
        prices one slice of it; see src/basechain.mjs. */
+    /* Called by cron. Reads one slice of casino hot wallets and prices it with
+       the majors feed; every wallet is refreshed within ~20 minutes. See
+       src/casinos.mjs and the registry in src/casinowallets.mjs. */
+    if (path === '/api/casinos/sweep') {
+      try {
+        const prices = {};
+        try {
+          const m = await snapshot(ctx, 'majors');
+          for (const t of (m && m.tokens) || []) {
+            if (['ETH', 'SOL', 'TRX', 'BNB', 'POL', 'MATIC'].includes(t.sym) && t.price > 0 && prices[t.sym] == null) prices[t.sym] = t.price;
+          }
+          if (!prices.POL && prices.MATIC) prices.POL = prices.MATIC;
+        } catch { /* a wallet priced at nothing is visible as such */ }
+        const r = await sweepCasinos(ctx.store, ctx.env, prices);
+        return json({ ok: true, ...r, priced: Object.keys(prices) });
+      } catch (e) {
+        return json({ ok: false, error: String(e && e.message || e) }, 502);
+      }
+    }
+
+    /* What the sweep has: per-casino totals, wallet counts, ages. Public, no
+       addresses — the registry is in the repo for anyone who wants them. */
+    if (path === '/api/casinos/hot') {
+      const blob = await loadCasinoHot(ctx.store);
+      if (!blob) return json({ ok: true, at: 0, casinos: [] });
+      const { by, oldest } = casinoTotals(blob);
+      const casinos = Object.entries(by).map(([name, c]) => ({
+        name, usd: Math.round(c.usd), wallets: c.wallets, read: c.read, chains: c.chains,
+      })).sort((a, b) => b.usd - a.usd);
+      return json({ ok: true, at: blob.at || 0, oldestRead: oldest, hist: (blob.hist || []).length, casinos });
+    }
+
     if (path === '/api/base/sweep') {
       try {
         const uni = await refreshUniverse(ctx.store);

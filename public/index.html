@@ -896,6 +896,7 @@ async function fetchLive(){
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
+    via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
     /* Every window, null-preserving. The short four used ||0, which was left
        alone when the long ones were fixed because pump.fun always reports them.
        Chains and launchpads publish a 24h figure and nothing else, so on the 1H
@@ -1660,7 +1661,7 @@ function openCard(t){
   /* A venue's subtitle says what it is and where it runs, so "Off Chain" is
      said out loud on the ones that are not crypto at all. */
   e('cName').textContent=(t.kind==='pm'||t.kind==='casino')
-    ? ((t.kind==='casino'?'on-chain casino':'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
+    ? ((t.kind==='casino'?(t.via==='hot'?'hot wallets':'on-chain casino'):'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
     : (t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
@@ -1696,10 +1697,21 @@ function openCard(t){
     e('cVol').innerHTML=all>0?esc((t.mcap/all*100).toFixed(1)+'%'):dash;
     e('cA').innerHTML=pct(t.pc.h24);
     e('cB').innerHTML=money(t.fees24h);
+  }else if(t.kind==='casino'&&t.via==='hot'){
+    /* An off-chain casino, measured by what sits in the hot wallets we can
+       see. The card says how many wallets that is, because the number is a
+       floor: cold storage and chains we have no address for are not in it. */
+    lab('cMc','Hot wallets, on-chain');
+    lab('cVol','Wallets tracked');
+    lab('cA','24h change');
+    lab('cB','7d change');
+    e('cVol').innerHTML=esc(String(t.wallets))+(t.walletsRead<t.wallets?` <span style="color:var(--dim)">(${t.walletsRead} read)</span>`:'');
+    e('cA').innerHTML=pct(t.pc.h24);
+    e('cB').innerHTML=pct(t.pc.d7);
   }else if(t.kind==='casino'){
-    /* A casino is sized by its bankroll — what the house can pay out — so the
-       card says so, and shows what was wagered and taken where DefiLlama has
-       an adapter for it. Most do not, and a dash is the honest answer. */
+    /* An on-chain casino is sized by its bankroll — what the house can pay
+       out — so the card says so, and shows what was wagered and taken where
+       DefiLlama has an adapter for it. Most do not, and a dash is honest. */
     lab('cMc','Bankroll');
     lab('cVol','Wagered 24h');
     lab('cA','Bankroll 24h');
@@ -1741,7 +1753,9 @@ function openCard(t){
     e('cB').innerHTML=`${pct(t.pc.h6)} ${sep} ${pct(t.pc.h24)}`;
   }
   /* the warning belongs on mobile too — that is where most taps happen */
-  e('cWarn').innerHTML=warnLine(t);
+  e('cWarn').innerHTML=t.via==='hot'
+    ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
+    : warnLine(t);
   card.classList.add('on');scrim.classList.add('on');
 }
 function closeAll(){
@@ -1854,6 +1868,9 @@ function chartUrl(t){
      destination is the page the number came from. */
   if(id.startsWith('chain:'))
     return 'https://defillama.com/chain/'+encodeURIComponent(t.sym||'');
+  /* An off-chain casino has a website, not a DefiLlama page. */
+  if(id.startsWith('casino:hot:'))
+    return t.site||('https://duckduckgo.com/?q='+encodeURIComponent((t.sym||'')+' casino'));
   if(id.startsWith('pad:')||id.startsWith('pm:')||id.startsWith('casino:'))
     return 'https://defillama.com/protocol/'+encodeURIComponent(t.slug||t.sym||'');
   if(id.startsWith('stock:'))

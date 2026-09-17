@@ -257,6 +257,8 @@ export default {
         await handle(new Request('https://pumpbubble.fun/api/base/sweep'), ctx);
         /* Chain and launchpad flows, rebuilt every twenty minutes. */
         await handle(new Request('https://pumpbubble.fun/api/flows/refresh'), ctx);
+        /* One slice of casino hot wallets per tick. */
+        await handle(new Request('https://pumpbubble.fun/api/casinos/sweep'), ctx);
         /* Telegram buybot: registers its webhook once TG_BOT_TOKEN exists. A
            no-op without the token and a one-call check with it. */
         await handle(new Request('https://pumpbubble.fun/api/tg/ensure'), ctx);

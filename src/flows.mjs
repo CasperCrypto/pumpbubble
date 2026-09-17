@@ -27,6 +27,7 @@
    card, and a hand-rolled copy of it here shipped a broken character class
    that took the whole module out of the build. */
 import { clean } from './core.mjs';
+import { hotCasinoRows } from './casinos.mjs';
 
 const DEXS = 'https://api.llama.fi/overview/dexs'
   + '?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
@@ -354,6 +355,12 @@ function shape(rows, kind) {
     fees7d: r.fees7d == null ? null : r.fees7d,
     wagered24h: r.wagered24h == null ? null : r.wagered24h,
     chains: r.chains || [],
+    /* Hot-wallet casinos: how the number was measured, how many wallets, and
+       where the site is for the Open button. */
+    via: r.via || 'llama',
+    wallets: r.wallets || 0,
+    walletsRead: r.walletsRead || 0,
+    site: r.site || '',
     pc: {
       m5: null, h1: null, h6: null,
       h24: pick(r.change),
@@ -379,7 +386,15 @@ export async function predictionTokens(store) {
   return f ? shape(f.prediction, 'pm') : [];
 }
 
+/* The Casinos tab is two lists in one unit — dollars held on-chain.
+
+   The off-chain casinos (Stake, Roobet, Rainbet…) are their hot-wallet
+   balances, read from public RPCs against the registry in casinowallets.mjs.
+   The on-chain casinos (Ape Church, Suigar…) are their contract bankroll from
+   DefiLlama. Both are "what the house holds where we can see it", which is
+   why they share a map; the card says which kind each one is. */
 export async function casinoTokens(store) {
-  const f = await loadFlows(store);
-  return f ? shape(f.casinos, 'casino') : [];
+  const [f, hot] = await Promise.all([loadFlows(store), hotCasinoRows(store).catch(() => [])]);
+  const llama = f ? (f.casinos || []) : [];
+  return shape(hot.concat(llama).sort((a, b) => b.vol - a.vol), 'casino');
 }

@@ -14,3 +14,7 @@ Thumbs.db
 .wrangler/
 .dev.vars
 wrangler.toml.bak
+
+# working files of scripts/casino-wallets.mjs; the result is committed as src/casinowallets.mjs
+scripts/casino-seeds.json
+scripts/casino-registry.json

@@ -396,7 +396,7 @@ to which one is busy; TVL would have said neither exists.
 | Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted `change_7d` |
 | Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7d` |
 | Prediction | 24h volume wagered | `change_1d` | `change_7d` |
-| Casinos | bankroll (TVL) | bankroll `change_1d` | bankroll `change_7d` |
+| Casinos | hot-wallet balance (off-chain casinos) / bankroll TVL (on-chain) | own history / `change_1d` | own history / `change_7d` |
 
 **These bubbles print the money on their own faces.** Relative area says which is
 bigger; it does not say whether that is two billion dollars or two million, and
@@ -449,12 +449,39 @@ adapter. Kalshi is a CFTC-regulated US exchange and not crypto at all; DefiLlama
 same category and the card says *Off Chain* out loud. It stays because leaving it out would hide
 the largest fact on the tab.
 
-*Casinos* was asked for as *"Stake, Shuffle, BC.Game"*, and **none of those can be on it**: they
-are off-chain companies that accept crypto and publish nothing. Not in DefiLlama under any name
-(the one "Stake" hit is Binance's staked ETH), no volume, no fees; the only proxies are paid
-(labelled hot-wallet flows, web traffic), and a map of casino *tokens* would omit Stake, which has
-none and is the largest. A map missing its biggest player by construction is lying by omission,
-so that version was not built.
+*Casinos* was asked for as *"Stake, Shuffle, BC.Game"*. None of those publish anything: not in
+DefiLlama under any name (the one "Stake" hit is Binance's staked ETH), no volume, no fees. A map of
+casino *tokens* would omit Stake, which has none and is the largest, so that version was not built.
+
+**They are on it now — measured from their hot wallets.** `src/casinowallets.mjs` is a registry
+of 31 addresses for 15 off-chain casinos (Stake on Tron, Ethereum, Solana and Polygon; Roobet,
+Rainbet, Shuffle, BC.Game, Duel…), and `src/casinos.mjs` reads their balances from public RPCs
+every cron tick, in slices of eight. The number on the bubble is dollars sitting in the wallets
+that pay withdrawals, priced with the majors feed. Stake reads ~$134M.
+
+How the registry was built, because it is the part worth protecting. Public trackers (circus.fyi,
+fairgambling.com) publish *biggest deposits and withdrawals* lists with full transaction hashes and
+a casino name on each. **A hash is a public fact; the casino's side of that transaction is read
+from the chain** — recipient of a deposit, sender of a withdrawal — so every address in the
+registry came from a transaction, not from anyone's label, and carries the hash that established
+it. 291 seed hashes gave 271 resolved transactions and 31 distinct addresses. Nothing the trackers
+compute is stored or shown; they are a seed source, used offline by `scripts/casino-wallets.mjs`,
+never called at runtime.
+
+Verified before it was written, the cgmap way. An address with code is a contract, not a wallet —
+the **USDC token contract** arrived via a malformed transaction and was rejected on `eth_getCode`.
+Then per-casino sums were compared to circus.fyi's own (larger) wallet sets: Stake 76%, Duel 75%,
+Roobet 72%, Rainbet 52%, 1win 55% — **every one under, none over.** A mislabelled wallet would have
+blown past the reference. The gap is coverage (wallets and chains we have no hash for yet), not
+error, and it closes as more hashes are fed in.
+
+So the card says *hot wallets, on-chain*, prints how many wallets that is, and carries a line saying
+it is a floor — cold storage and chains without a known address are not counted. 24h and 7d change
+come from our own history points and are **null until a point that old exists**; a tab that has
+run for an hour does not get to claim a daily move. One KV write per tick; a wallet that fails to
+read keeps its last value with the error attached, so a bad RPC minute cannot zero a casino.
+
+Both kinds share the map because both are *what the house holds where we can see it*:
 
 What DefiLlama does list is 38 on-chain casinos ("Luck Games"), and **this is the one flow view
 sized by what a venue holds rather than what it does.** Deliberately: a volume adapter exists for
