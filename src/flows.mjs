@@ -190,19 +190,37 @@ function takeBySlug(fees, cats) {
   return take;
 }
 
+/* One brand, one bubble.
+
+   DefiLlama lists Polymarket as three protocols — International (Polygon),
+   US (the CFTC-regulated exchange), Combos — because they are three adapters.
+   Drawn as three bubbles next to one Kalshi, each looked like a fifth of it
+   when the brand is a third: $78M + $67M + $1M against $423M. That is the
+   map misreading its own data. Rows whose name matches a brand here are
+   summed into one, with the split kept for the card. The change is
+   volume-weighted across the parts; the house take and week are summed.
+
+   Kalshi's figure was checked independently before this was written: its
+   public trade tape runs ~8,000 trades a minute, and extrapolating one
+   minute of it gives ≈$428M a day against DefiLlama's $423M. The 2.9× gap
+   to Polymarket is the same over 7d and 30d. It is real. */
+const BRANDS = [
+  { name: 'Polymarket', test: /^Polymarket(\s|$)/i, slug: 'polymarket' },
+];
+
 function predictionFrom(dexs, fees) {
   const CAT = /prediction market/i;
   const take = takeBySlug(fees, CAT);
-  const out = [];
+  const rows = [];
   for (const p of (dexs && dexs.protocols) || []) {
     if (!CAT.test(p.category || '')) continue;
     const v = num(p.total24h);
-    if (!(v >= MIN_BET_VOL)) continue;
+    if (!(v > 0)) continue;
     const name = clean(p.displayName || p.name, 28);
     if (!name) continue;
     const k = p.slug || name.toLowerCase();
     const t = take.get(k) || null;
-    out.push({
+    rows.push({
       id: 'pm:' + k,
       sym: name,
       name: name + ' — 24h volume',
@@ -217,7 +235,41 @@ function predictionFrom(dexs, fees) {
       slug: p.slug || '',
     });
   }
-  return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
+
+  const out = [];
+  for (const b of BRANDS) {
+    const parts = rows.filter(r => b.test.test(r.sym));
+    if (parts.length < 2) continue;
+    const vol = parts.reduce((s, r) => s + r.vol, 0);
+    const w = key => {
+      let num_ = 0, den = 0;
+      for (const r of parts) if (r[key] != null) { num_ += r[key] * r.vol; den += r.vol; }
+      return den > 0 ? num_ / den : null;
+    };
+    const sum = key => parts.some(r => r[key] != null) ? parts.reduce((s, r) => s + (r[key] || 0), 0) : null;
+    out.push({
+      id: 'pm:' + b.slug,
+      sym: b.name,
+      name: b.name + ' — 24h volume',
+      vol,
+      vol7d: sum('vol7d'),
+      change: w('change'),
+      change7d: w('change7d'),
+      fees24h: sum('fees24h'),
+      fees7d: sum('fees7d'),
+      chains: [...new Set(parts.flatMap(r => r.chains))].slice(0, 4),
+      logo: (parts.find(r => r.logo) || {}).logo || '',
+      slug: b.slug,
+      /* the split, largest first, for the card */
+      parts: parts.sort((a, c) => c.vol - a.vol).map(r => ({
+        name: r.sym.replace(b.test, '').trim() || r.sym, vol: r.vol,
+      })),
+    });
+    for (const r of parts) r.merged = true;
+  }
+  for (const r of rows) if (!r.merged) out.push(r);
+
+  return out.filter(r => r.vol >= MIN_BET_VOL).sort((a, b) => b.vol - a.vol).slice(0, 60);
 }
 
 /* On-chain casinos, by bankroll.
@@ -361,6 +413,8 @@ function shape(rows, kind) {
     wallets: r.wallets || 0,
     walletsRead: r.walletsRead || 0,
     site: r.site || '',
+    /* a merged brand's split, for the card */
+    parts: Array.isArray(r.parts) ? r.parts : [],
     pc: {
       m5: null, h1: null, h6: null,
       h24: pick(r.change),

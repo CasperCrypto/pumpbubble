@@ -449,6 +449,20 @@ adapter. Kalshi is a CFTC-regulated US exchange and not crypto at all; DefiLlama
 same category and the card says *Off Chain* out loud. It stays because leaving it out would hide
 the largest fact on the tab.
 
+**Kalshi above Polymarket was challenged as false data, and checked rather than defended.**
+DefiLlama measures both the same way — Kalshi as `price × contracts` from Kalshi's own published
+trade reports, Polymarket as USDC filled on-chain halved for the maker/taker double-count — so the
+unit is the same. Then independently: Kalshi's public trade tape runs ~8,000 trades a minute, and
+extrapolating one minute of it gives ≈$428M a day against DefiLlama's $423M. The 2.9× gap holds
+over 7d (2.75×) and 30d (2.96×); it is not a spike. Polymarket won 2024, Kalshi is winning 2026 on
+volume, and the tab says so.
+
+What *was* wrong was ours: DefiLlama lists Polymarket as three protocols (International on Polygon,
+the CFTC-regulated US exchange, Combos) and the map drew three bubbles, each a fifth of Kalshi
+when the brand is a third. `BRANDS` in `predictionFrom()` sums a brand's listings into one bubble —
+change volume-weighted, take and week summed — and the card shows the split. Merging is a
+judgment, so the list is explicit and short.
+
 *Casinos* was asked for as *"Stake, Shuffle, BC.Game"*. None of those publish anything: not in
 DefiLlama under any name (the one "Stake" hit is Binance's staked ETH), no volume, no fees. A map of
 casino *tokens* would omit Stake, which has none and is the largest, so that version was not built.

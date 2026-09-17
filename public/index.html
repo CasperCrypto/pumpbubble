@@ -897,6 +897,7 @@ async function fetchLive(){
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
     via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
+    parts:Array.isArray(t.parts)?t.parts.filter(p=>p&&p.name).slice(0,6):[],
     /* Every window, null-preserving. The short four used ||0, which was left
        alone when the long ones were fixed because pump.fun always reports them.
        Chains and launchpads publish a 24h figure and nothing else, so on the 1H
@@ -1755,7 +1756,10 @@ function openCard(t){
   /* the warning belongs on mobile too — that is where most taps happen */
   e('cWarn').innerHTML=t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
-    : warnLine(t);
+    : (t.parts&&t.parts.length>1)
+      /* a brand summed from several listings says what went into it */
+      ? '<div class="warn">ⓘ '+t.parts.map(p=>esc(p.name)+' '+esc(fmtUsd(p.vol))).join(' · ')+'</div>'
+      : warnLine(t);
   card.classList.add('on');scrim.classList.add('on');
 }
 function closeAll(){
