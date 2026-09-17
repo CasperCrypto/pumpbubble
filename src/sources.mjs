@@ -21,7 +21,7 @@
 import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
-import { chainTokens, padTokens, betTokens } from './flows.mjs';
+import { chainTokens, padTokens, predictionTokens, casinoTokens } from './flows.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -256,13 +256,22 @@ export const SOURCES = {
     fetch: store => padTokens(store),
   },
 
-  /* Betting venues — prediction markets and on-chain casinos — by 24h volume.
-     Not the off-chain casinos: they publish nothing. See src/flows.mjs. */
-  bets: {
-    id: 'bets', label: 'Bets', group: 'Flows',
+  /* Prediction markets by 24h volume wagered — Kalshi, Polymarket and the
+     rest. See src/flows.mjs. */
+  prediction: {
+    id: 'prediction', label: 'Prediction', group: 'Flows',
     chain: 'mixed', ttl: 300_000, shared: true, enrich: false,
     boostable: false, quality: 'major',
-    fetch: store => betTokens(store),
+    fetch: store => predictionTokens(store),
+  },
+
+  /* On-chain casinos by bankroll. Not Stake, Shuffle or BC.Game — they are
+     off-chain and publish nothing. See src/flows.mjs. */
+  casinos: {
+    id: 'casinos', label: 'Casinos', group: 'Flows',
+    chain: 'mixed', ttl: 300_000, shared: true, enrich: false,
+    boostable: false, quality: 'major',
+    fetch: store => casinoTokens(store),
   },
 
   /* Trending, across every chain at once. Composed from the other feeds in

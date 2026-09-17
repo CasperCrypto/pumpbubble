@@ -395,7 +395,8 @@ to which one is busy; TVL would have said neither exists.
 |---|---|---|---|
 | Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted `change_7d` |
 | Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7d` |
-| Bets | 24h volume wagered | `change_1d` | `change_7d` |
+| Prediction | 24h volume wagered | `change_1d` | `change_7d` |
+| Casinos | bankroll (TVL) | bankroll `change_1d` | bankroll `change_7d` |
 
 **These bubbles print the money on their own faces.** Relative area says which is
 bigger; it does not say whether that is two billion dollars or two million, and
@@ -437,18 +438,34 @@ about comes out the same size. Above the floor it is thirty-four venues over 3.7
 decades, the same visual range the chains map has and the one already verified to
 read well. Chains need no floor: fifty-five of sixty are above $1M.
 
-**Bets** is the third flow view: prediction markets and on-chain casinos, sized by 24h volume
-wagered, from the same two responses. It was asked for as *"casinos — Stake, Shuffle, BC.Game"*,
-and **none of those can be on it**: they are off-chain companies that accept crypto and publish
-nothing. Not in DefiLlama under any name (the one "Stake" hit is Binance's staked ETH), no
-volume, no fees; the only proxies are paid (labelled hot-wallet flows, web traffic), and a map of
-casino *tokens* would omit Stake, which has none and is the largest. A map missing its biggest
-player by construction is lying by omission, so that version was not built. What is published is
-where the betting money actually is — Kalshi ~$420M/day and Polymarket ~$150M against $80K for the
-biggest on-chain casino — and that is the tab. Sized by **volume** because that is how a venue's
-size is stated anywhere (handle, not revenue); the house take rides along in the card, joined from
-the fees overview by slug, and is a dash where DefiLlama has no adapter. Same $1,000 floor as
-launchpads. `?source=gamble` and `?source=casinos` resolve to it.
+**Prediction** and **Casinos** are the third and fourth flow views, and they are separate on
+purpose — they answer different questions and are sized in different units.
+
+*Prediction* is prediction markets by 24h volume wagered: Kalshi ~$420M/day, Polymarket ~$150M,
+27 venues over the $1,000 floor. Volume, because that is how a betting venue's size is stated
+anywhere (handle, not revenue). The house take is joined from the fees overview by slug and shown
+in the card — Polymarket keeps ~2% of what is wagered — and is a dash where DefiLlama has no
+adapter. Kalshi is a CFTC-regulated US exchange and not crypto at all; DefiLlama files it in the
+same category and the card says *Off Chain* out loud. It stays because leaving it out would hide
+the largest fact on the tab.
+
+*Casinos* was asked for as *"Stake, Shuffle, BC.Game"*, and **none of those can be on it**: they
+are off-chain companies that accept crypto and publish nothing. Not in DefiLlama under any name
+(the one "Stake" hit is Binance's staked ETH), no volume, no fees; the only proxies are paid
+(labelled hot-wallet flows, web traffic), and a map of casino *tokens* would omit Stake, which has
+none and is the largest. A map missing its biggest player by construction is lying by omission,
+so that version was not built.
+
+What DefiLlama does list is 38 on-chain casinos ("Luck Games"), and **this is the one flow view
+sized by what a venue holds rather than what it does.** Deliberately: a volume adapter exists for
+five of the 38, so sizing by volume draws five bubbles and calls it a market, while every one of
+them publishes its **bankroll** — and bankroll is how the casino industry itself states size,
+because it is what the house can pay out. Wagered and house take ride along in the card where an
+adapter exists and are a dash where not. Yield lotteries (PoolTogether, Ample) are excluded: a
+no-loss lottery is not a casino and would have taken the top three slots. 17 venues over $1,000;
+the third DefiLlama fetch (`/protocols`, the full list) rides the same twenty-minute tick.
+
+`?source=gamble`, `casino`, `gambling` resolve to Casinos; `bets` resolves to Prediction.
 
 Chain volume comes from each DEX's `breakdown24h`, which is `{chain: {protocol: volume}}` — the
 exact split. Dividing a multi-chain protocol's total by how many chains it lists would credit Solana

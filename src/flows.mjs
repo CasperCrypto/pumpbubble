@@ -32,6 +32,9 @@ const DEXS = 'https://api.llama.fi/overview/dexs'
   + '?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
 const FEES = 'https://api.llama.fi/overview/fees'
   + '?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
+/* The protocol list, for casino bankrolls. Large, so it rides the same
+   twenty-minute cron tick as the other two. */
+const PROTOS = 'https://api.llama.fi/protocols';
 
 export const KEY = 'flows';
 
@@ -167,41 +170,31 @@ function padsFrom(fees) {
   return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
 }
 
-/* Betting venues — prediction markets and on-chain casinos — by what was
-   wagered in 24h.
+/* Prediction markets, by what was wagered in 24h.
 
-   This tab was asked for as "casinos: Stake, Shuffle, BC.Game". None of those
-   can go on it, and the reason is worth keeping: they are off-chain companies
-   that accept crypto, and they publish nothing. Not in DefiLlama under any
-   name (the one "Stake" match is Binance's staked ETH), no volume, no fees.
-   The only proxies are paid — labelled hot-wallet flows or web traffic — and a
-   map built from casino *tokens* would omit Stake, which has none and is the
-   largest. A map missing its biggest player by construction is lying by
-   omission, so it is not built.
-
-   What is published is where the betting money actually is: Kalshi at ~$420M a
-   day and Polymarket at ~$150M against $80K for the biggest on-chain casino.
-   Both come from the same two responses this module already fetches — the
-   `dexs` overview lists prediction markets and "Luck Games" with volume, and
-   the `fees` overview has the house take for the same slugs — so the tab costs
-   no new upstream at all.
-
-   Sized by **volume**, because that is how a betting venue's size is stated
-   anywhere — handle, not revenue. The house take rides along for the card.
-   Same $1,000 floor as launchpads, for the same reason. */
-const BET_CATS = /prediction market|luck games|yield lottery/i;
+   Kalshi at ~$420M a day and Polymarket at ~$150M is where the betting money
+   actually is. Both sit in the `dexs` overview already fetched here; the house
+   take comes from the `fees` overview by slug and rides along for the card.
+   Sized by volume because that is how a betting venue's size is stated
+   anywhere — handle, not revenue. Same $1,000 floor as launchpads. */
 const MIN_BET_VOL = 1000;
 
-function betsFrom(dexs, fees) {
+function takeBySlug(fees, cats) {
   const take = new Map();
   for (const p of (fees && fees.protocols) || []) {
-    if (!BET_CATS.test(p.category || '')) continue;
+    if (!cats.test(p.category || '')) continue;
     const k = p.slug || (p.displayName || p.name || '').toLowerCase();
     take.set(k, { d1: num(p.total24h), d7: num(p.total7d) });
   }
+  return take;
+}
+
+function predictionFrom(dexs, fees) {
+  const CAT = /prediction market/i;
+  const take = takeBySlug(fees, CAT);
   const out = [];
   for (const p of (dexs && dexs.protocols) || []) {
-    if (!BET_CATS.test(p.category || '')) continue;
+    if (!CAT.test(p.category || '')) continue;
     const v = num(p.total24h);
     if (!(v >= MIN_BET_VOL)) continue;
     const name = clean(p.displayName || p.name, 28);
@@ -209,7 +202,7 @@ function betsFrom(dexs, fees) {
     const k = p.slug || name.toLowerCase();
     const t = take.get(k) || null;
     out.push({
-      id: 'bet:' + k,
+      id: 'pm:' + k,
       sym: name,
       name: name + ' — 24h volume',
       vol: v,
@@ -218,7 +211,64 @@ function betsFrom(dexs, fees) {
       change7d: pick(p.change_7d),
       fees24h: t ? t.d1 : null,
       fees7d: t ? t.d7 : null,
-      cat: /luck|lottery/i.test(p.category) ? 'casino' : 'prediction',
+      chains: (p.chains || []).slice(0, 4).map(c => clean(String(c), 20)).filter(Boolean),
+      logo: typeof p.logo === 'string' && /^https:\/\//.test(p.logo) ? p.logo : '',
+      slug: p.slug || '',
+    });
+  }
+  return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
+}
+
+/* On-chain casinos, by bankroll.
+
+   This tab was asked for as "Stake, Shuffle, BC.Game". None of those can go on
+   it, and the reason is worth keeping: they are off-chain companies that
+   accept crypto, and they publish nothing. Not in DefiLlama under any name
+   (the one "Stake" match is Binance's staked ETH), no volume, no fees. The
+   only proxies are paid — labelled hot-wallet flows or web traffic — and a map
+   of casino *tokens* would omit Stake, which has none and is the largest. A
+   map missing its biggest player by construction lies by omission.
+
+   What DefiLlama does list is 38 on-chain casinos ("Luck Games"), and this is
+   the one flow view sized by what a venue *holds* rather than what it does.
+   Deliberately: a volume adapter exists for five of the 38, so sizing by
+   volume draws five bubbles and calls it a market, while every one of them
+   publishes its bankroll — and bankroll is how the casino industry itself
+   states size, because it is what the house can pay out. Volume and the house
+   take ride along in the card where an adapter exists, and are a dash where
+   not. Yield lotteries (PoolTogether, Ample) are excluded: a no-loss lottery
+   is not a casino and would have taken the top three slots.
+
+   Colour is the bankroll's own 1d / 7d change, from the same list. */
+const MIN_BANKROLL = 1000;
+
+function casinosFrom(protos, dexs, fees) {
+  const CAT = /^luck games$/i;
+  const vol = new Map();
+  for (const p of (dexs && dexs.protocols) || []) {
+    if (p.slug) vol.set(p.slug, { d1: num(p.total24h), d7: num(p.total7d) });
+  }
+  const take = takeBySlug(fees, CAT);
+  const out = [];
+  for (const p of Array.isArray(protos) ? protos : []) {
+    if (!CAT.test(p.category || '')) continue;
+    const tvl = num(p.tvl);
+    if (!(tvl >= MIN_BANKROLL)) continue;
+    const name = clean(p.name, 28);
+    if (!name) continue;
+    const k = p.slug || name.toLowerCase();
+    const v = vol.get(k) || null, t = take.get(k) || null;
+    out.push({
+      id: 'casino:' + k,
+      sym: name,
+      name: name + ' — bankroll',
+      vol: tvl,
+      vol7d: null,
+      wagered24h: v ? v.d1 : null,
+      change: pick(p.change_1d),
+      change7d: pick(p.change_7d),
+      fees24h: t ? t.d1 : null,
+      fees7d: t ? t.d7 : null,
       chains: (p.chains || []).slice(0, 4).map(c => clean(String(c), 20)).filter(Boolean),
       logo: typeof p.logo === 'string' && /^https:\/\//.test(p.logo) ? p.logo : '',
       slug: p.slug || '',
@@ -235,33 +285,44 @@ export async function loadFlows(store) {
 export async function refreshFlows(store, force = false) {
   const have = await loadFlows(store);
   if (!force && have && (Date.now() - (have.at || 0)) < FRESH_MS) {
-    return { cached: true, chains: (have.chains || []).length, pads: (have.pads || []).length, bets: (have.bets || []).length };
+    return {
+      cached: true,
+      chains: (have.chains || []).length, pads: (have.pads || []).length,
+      prediction: (have.prediction || []).length, casinos: (have.casinos || []).length,
+    };
   }
 
-  const [dexs, fees] = await Promise.allSettled([jget(DEXS), jget(FEES)]);
+  const [dexs, fees, protos] = await Promise.allSettled([jget(DEXS), jget(FEES), jget(PROTOS, 40000)]);
+  const D = dexs.status === 'fulfilled' ? dexs.value : null;
+  const F = fees.status === 'fulfilled' ? fees.value : null;
+  const P = protos.status === 'fulfilled' ? protos.value : null;
 
-  const chains = dexs.status === 'fulfilled' ? chainsFrom(dexs.value) : [];
-  const pads = fees.status === 'fulfilled' ? padsFrom(fees.value) : [];
-  /* Bets need the dexs side; the fees side only decorates. */
-  const bets = dexs.status === 'fulfilled'
-    ? betsFrom(dexs.value, fees.status === 'fulfilled' ? fees.value : null) : [];
+  const chains = D ? chainsFrom(D) : [];
+  const pads = F ? padsFrom(F) : [];
+  /* Prediction needs the dexs side; casinos need the protocol list. The fees
+     side only decorates either. */
+  const prediction = D ? predictionFrom(D, F) : [];
+  const casinos = P ? casinosFrom(P, D, F) : [];
 
   /* Half an answer must not overwrite a whole one: if a side came back empty
      and we already had it, keep what we had. */
+  const keep = (fresh, name) => fresh.length ? fresh : ((have && have[name]) || []);
   const next = {
     at: Date.now(),
-    chains: chains.length ? chains : ((have && have.chains) || []),
-    pads: pads.length ? pads : ((have && have.pads) || []),
-    bets: bets.length ? bets : ((have && have.bets) || []),
+    chains: keep(chains, 'chains'),
+    pads: keep(pads, 'pads'),
+    prediction: keep(prediction, 'prediction'),
+    casinos: keep(casinos, 'casinos'),
   };
-  if (!next.chains.length && !next.pads.length && !next.bets.length) {
-    return { chains: 0, pads: 0, bets: 0, error: 'both upstreams empty' };
+  if (!next.chains.length && !next.pads.length && !next.prediction.length && !next.casinos.length) {
+    return { chains: 0, pads: 0, prediction: 0, casinos: 0, error: 'every upstream empty' };
   }
 
   try { await store.put(KEY, next); } catch { /* next tick retries */ }
   return {
-    chains: next.chains.length, pads: next.pads.length, bets: next.bets.length,
-    dexs: dexs.status, fees: fees.status,
+    chains: next.chains.length, pads: next.pads.length,
+    prediction: next.prediction.length, casinos: next.casinos.length,
+    dexs: dexs.status, fees: fees.status, protos: protos.status,
   };
 }
 
@@ -291,7 +352,7 @@ function shape(rows, kind) {
        where the fees overview has no adapter for the slug. */
     fees24h: r.fees24h == null ? null : r.fees24h,
     fees7d: r.fees7d == null ? null : r.fees7d,
-    cat: r.cat || '',
+    wagered24h: r.wagered24h == null ? null : r.wagered24h,
     chains: r.chains || [],
     pc: {
       m5: null, h1: null, h6: null,
@@ -313,7 +374,12 @@ export async function padTokens(store) {
   return f ? shape(f.pads, 'pad') : [];
 }
 
-export async function betTokens(store) {
+export async function predictionTokens(store) {
   const f = await loadFlows(store);
-  return f ? shape(f.bets, 'bet') : [];
+  return f ? shape(f.prediction, 'pm') : [];
+}
+
+export async function casinoTokens(store) {
+  const f = await loadFlows(store);
+  return f ? shape(f.casinos, 'casino') : [];
 }
