@@ -1,88 +1,104 @@
 /* ==========================================================================
-   pumpbubble.fun — pump.fun's own trending board
+   pumpbubble.fun — pump.fun's own Trending list
 
-   pump.fun's Explore page ranks what is moving right now across pump.fun,
-   Raydium LaunchLab and Pons on Robinhood Chain, and the endpoint behind it
-   answers without a session:
+   pump.fun's screener has a column called Trending. Its rows come from
 
-     advanced-indexer.pump.fun/boards/movers?limit=150
+     frontend-api-v3.pump.fun/coins/great-coins?topK=50
 
-   That is the list a pump.fun user calls "trending", and it is a better
-   answer to the question than our computed heat was for these chains — theirs
-   is built from the trade stream (transactions in the last five minutes,
-   holders, KOLs, buys against sells) which we do not have, and it is not paid
-   placement. So for pump.fun and Robinhood Chain the Trending tab now shows
-   *their* order, labelled as theirs. Our heat still ranks Base and the wider
-   market, which the board does not cover, and steps in for everything if the
-   board is down.
+   which was found by reading the bundle, not by guessing: the screener's
+   fetcher is `_({offset,limit})` → `GET /coins/great-coins` with
+   `topK = offset + limit`, paged to fifty. Called without `topK` it answers
+   five — the five rows pump.fun badges HOT — and that default sent the first
+   version of this file to the wrong endpoint. `boards/movers` is a different
+   view (🌟 Movers on Explore), and drawing it under the word Trending put
+   OnlyFees and GIGAJEAN where pump.fun showed Backpack and STONK.
 
-   A second endpoint fills the one thing the board leaves out — price change —
-   and gives back far more than that:
+   The list is Solana-first with a few Pons (Robinhood Chain) and BSC rows,
+   and it carries no volume, no price change, no holders. Two more calls
+   fill those:
 
-     swap-api.pump.fun/v1/coins/market-activity/batch   (POST, ≤50 addresses)
+   - `swap-api.pump.fun/v1/coins/market-activity/batch` — per window: volume,
+     buys, sells, **distinct buyers and sellers**, price change. Fifty
+     addresses a call, so the whole list is one request.
+   - `advanced-indexer.pump.fun/boards/movers` — holders, top-ten share,
+     deployer holding, transactions in the last five minutes, KOL count, for
+     whichever trending coins also sit on that board (most of the top do).
+     Best effort; a miss leaves those fields null.
 
-   per window: numBuys, numSells, **numBuyers, numSellers**, numUsers,
-   priceChangePercent. Distinct buyers is the signal that separates a market
-   from nine wallets trading with themselves — the thing this project could
-   not get after pump.fun removed its /trades endpoint. It is on every card
-   now.
-
-   What the board does not carry is liquidity, so none of these rows goes
-   through scoreQuality(): unknown liquidity there means `thin`, which would
-   mark every one of them unbacked for want of a field rather than for a bad
-   value. Flags are computed here from what *is* measured — buys against
-   sells, tickers shared across the board, age, dev holding, top-ten
-   concentration — and a token from the board with a real DexScreener pool in
-   our own pump.fun feed borrows that liquidity.
+   None of these rows goes through scoreQuality(): the list carries no
+   liquidity, and unknown liquidity there means `thin`, which would mark every
+   row unbacked for want of a field rather than for a bad value. Flags are
+   computed here from what *is* measured, and a trending coin that our own
+   pump.fun feed also carries borrows that feed's liquidity and art.
 
    Every figure shown is one of theirs or one derived from theirs by division.
-   Nothing is nudged.
    ========================================================================== */
 
 import { clean, fastImage, signUrl, isMint, isEvmAddr,
          ONEWAY_SELL_SHARE, ONEWAY_MIN_TXNS, MAX_COPIES } from './core.mjs';
 
+export const GREAT = 'https://frontend-api-v3.pump.fun/coins/great-coins?topK=50';
 export const BOARD = 'https://advanced-indexer.pump.fun/boards/movers?tier=web&surface=WEB&platform=WEB&limit=150';
 export const ACTIVITY = 'https://swap-api.pump.fun/v1/coins/market-activity/batch';
 const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 
-/* CAIP-2 chain ids pump.fun uses → the names this map uses. Robinhood Chain
-   is 4663; Pons, its launchpad, is a quarter of the board. */
-const CHAINS = {
-  'solana:mainnet': 'solana',
+/* pump.fun writes the chain two ways — CAIP-2 with a genesis hash on the
+   coin objects, `solana:mainnet` on the board. Both are Solana. */
+const EVM_CHAINS = {
   'eip155:4663': 'robinhood',
   'eip155:8453': 'base',
   'eip155:1': 'ethereum',
   'eip155:56': 'bsc',
   'eip155:999': 'hyperevm',
 };
+export function chainOf(id, addr) {
+  const c = String(id || '');
+  if (c.startsWith('solana:')) return 'solana';
+  if (EVM_CHAINS[c]) return EVM_CHAINS[c];
+  if (!c && isMint(addr)) return 'solana';
+  return '';
+}
 
-/* Below this a bubble is a dot with no room for a label; pump.fun shows
-   tokens down to $3K on a list, which a map cannot. */
-export const MIN_MCAP = 5_000;
-/* Enough of the board to fill a map, few enough that the tail is real. */
-export const KEEP = 100;
-/* Informational flags, from measurements the board carries. */
+/* pump.fun badges its first five HOT; the list itself goes to fifty. */
+export const HOT_RANKS = 5;
+/* Size on this tab comes from rank, not market cap, so a small cap does not
+   shrink a bubble — the floor only keeps out literal dust. */
+export const MIN_MCAP = 1_000;
+/* Informational flags, from measurements the movers board carries. */
 export const DEV_WARN = 10;      // % of supply the deployer still holds
 export const TOP10_WARN = 50;    // % held by the ten largest wallets
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 const pick = v => (v == null || !Number.isFinite(+v)) ? null : +v;
 
-export async function fetchMovers() {
-  const r = await fetch(BOARD, {
+async function jget(url, ms = 12000) {
+  const r = await fetch(url, {
     headers: { accept: 'application/json', 'user-agent': UA },
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(ms),
   });
-  if (!r.ok) throw new Error('movers ' + r.status);
-  const j = await r.json();
-  const e = j && Array.isArray(j.entries) ? j.entries : [];
-  if (!e.length) throw new Error('movers empty');
-  return e;
+  if (!r.ok) throw new Error(url.split('/').slice(2, 3)[0] + ' ' + r.status);
+  return r.json();
 }
 
-/* Fifty addresses a call, calls in parallel. A window the API did not answer
-   for is absent, not zero. */
+export async function fetchGreat() {
+  const j = await jget(GREAT);
+  const arr = Array.isArray(j) ? j : [];
+  if (!arr.length) throw new Error('great-coins empty');
+  return arr;
+}
+
+/* The movers board, keyed by address, as extras only. */
+export async function fetchMoversIndex() {
+  try {
+    const j = await jget(BOARD);
+    const m = new Map();
+    for (const e of (j && j.entries) || []) if (e && e.m) m.set(String(e.m), e);
+    return m;
+  } catch { return new Map(); }
+}
+
+/* Fifty addresses a call. A window the API did not answer for is absent,
+   not zero. */
 export async function fetchActivity(addresses) {
   const out = new Map();
   const chunks = [];
@@ -107,31 +123,26 @@ export async function fetchActivity(addresses) {
   return out;
 }
 
-function chainOf(e) {
-  const c = CHAINS[e.c];
-  if (c) return c;
-  /* Three rows a fetch arrive with no chain at all; a base58 mint is Solana. */
-  if (!e.c && isMint(e.m)) return 'solana';
-  return '';
-}
+/* One great-coins row → one map token.
 
-/* One board row → one map token. `act` is that row's market-activity, or
-   undefined. `copies` is how many board rows share the ticker. */
-export function shapeMover(e, act, rank, copies = 1, now = Date.now()) {
-  const chain = chainOf(e);
-  const addr = String(e.m || '');
+   `c` is pump.fun's coin object, `act` its market activity (or undefined),
+   `x` its movers-board entry (or undefined), `rank` its 1-based position,
+   `copies` how many rows share the ticker. */
+export function shapeCoin(c, act, x, rank, copies = 1, now = Date.now()) {
+  const addr = String(c.mint || '');
+  const chain = chainOf(c.chain_id, addr);
   if (!chain || !(isMint(addr) || isEvmAddr(addr))) return null;
   const evm = isEvmAddr(addr);
-  const mcap = num(e.mc);
+  const mcap = num(c.usd_market_cap) || num(c.market_cap_usd);
   if (mcap < MIN_MCAP) return null;
 
   const a5 = act && act['5m'], a1 = act && act['1h'], a6 = act && act['6h'], a24 = act && act['24h'];
-  const vol = num(a24 && a24.volumeUSD) || num(e.vUsd24h) || num(e.vUsd);
+  const vol = num(a24 && a24.volumeUSD) || (x ? num(x.vUsd24h) || num(x.vUsd) : 0);
 
   /* Buys and sells: the activity endpoint's 24h counts, else the board's
      lifetime counts. Distinct buyers only exist on the former. */
-  const buys = a24 ? num(a24.numBuys) : num(e.bc);
-  const sells = a24 ? num(a24.numSells) : num(e.sc);
+  const buys = a24 ? num(a24.numBuys) : (x ? num(x.bc) : 0);
+  const sells = a24 ? num(a24.numSells) : (x ? num(x.sc) : 0);
   const n = buys + sells;
   const txns = n ? {
     buys, sells, n, sellShare: sells / n,
@@ -141,9 +152,10 @@ export function shapeMover(e, act, rank, copies = 1, now = Date.now()) {
     window: a24 ? '24h' : 'all',
   } : null;
 
-  const ageS = num(e.age);
-  const ageH = ageS > 0 ? ageS / 3600 : null;
-  const top10 = pick(e.t10), dev = pick(e.dh);
+  const created = num(c.created_timestamp);
+  const ageH = created > 0 ? (now - created) / 36e5 : null;
+  const top10 = x ? pick(x.t10) : null;
+  const dev = x ? pick(x.dh) : null;
 
   const flags = [];
   if (txns && txns.n >= ONEWAY_MIN_TXNS && txns.sellShare < ONEWAY_SELL_SHARE) flags.push('oneway');
@@ -151,25 +163,28 @@ export function shapeMover(e, act, rank, copies = 1, now = Date.now()) {
   if (ageH != null && ageH < 24) flags.push('new');
   if (dev != null && dev >= DEV_WARN) flags.push('dev');
   if (top10 != null && top10 >= TOP10_WARN) flags.push('top10');
+  if (c.is_banned) flags.push('banned');
 
   return {
     id: evm ? chain + ':' + addr.toLowerCase() : addr,
     chain,
     mint: evm ? '' : addr,
     addr: evm ? addr.toLowerCase() : '',
-    sym: clean(e.t, 12) || '?',
-    name: clean(e.n || e.t, 48) || 'unknown',
-    rawImg: fastImage(typeof e.i === 'string' ? e.i : ''),
+    sym: clean(c.symbol, 12) || '?',
+    name: clean(c.name || c.symbol, 48) || 'unknown',
+    rawImg: fastImage(typeof c.image_uri === 'string' ? c.image_uri : ''),
     img: '',
     mcap,
     vol,
-    volH1: num(a1 && a1.volumeUSD) || num(e.vUsd1h),
-    ath: num(e.ath),
+    volH1: num(a1 && a1.volumeUSD) || (x ? num(x.vUsd1h) : 0),
+    ath: num(c.ath_market_cap) > 0 && num(c.usd_market_cap) > 0 && num(c.market_cap) > 0
+      /* ath is quoted in SOL like market_cap; scale by the USD/SOL ratio the row itself gives */
+      ? num(c.ath_market_cap) * (num(c.usd_market_cap) / num(c.market_cap)) : 0,
     liq: 0,
     price: 0,
-    created: ageS > 0 ? now - ageS * 1000 : 0,
-    lastTrade: num(e.tx5) > 0 ? now : 0,
-    grad: num(e.p) >= 100,
+    created,
+    lastTrade: num(c.last_trade_timestamp),
+    grad: c.complete !== false,
     ageH,
     pc: {
       m5: a5 ? pick(a5.priceChangePercent) : null,
@@ -179,48 +194,52 @@ export function shapeMover(e, act, rank, copies = 1, now = Date.now()) {
       d7: null, d30: null, y1: null,
     },
     txns,
-    holders: pick(e.nh),
+    holders: x ? pick(x.nh) : null,
     top10,
     dev,
-    kol: pick(e.kol),
-    tx5: pick(e.tx5),
-    bundled: pick(e.bo),
-    program: typeof e.pg === 'string' ? e.pg.slice(0, 24) : '',
+    kol: x ? pick(x.kol) : null,
+    tx5: x ? pick(x.tx5) : null,
+    program: clean(String(c.protocol || c.program || ''), 24),
+    verified: !!c.verified,
+    pumpBoost: !!(c.boost_mode && c.boost_mode !== 'NONE'),
     twitter: '',
+    website: typeof c.website === 'string' && /^https?:\/\//.test(c.website) ? c.website.slice(0, 200) : '',
     copies,
     flags,
     /* One-way is the one measurement that takes a token off this tab. The
        rest are warnings on the card. */
-    solid: !flags.includes('oneway'),
+    solid: !flags.includes('oneway') && !c.is_banned,
     rank,
+    pumpHot: rank <= HOT_RANKS,
     via: 'pump',
-    from: chain === 'robinhood' ? 'robinhood' : 'pumpfun',
+    from: chain === 'solana' ? 'pumpfun' : chain,
     boost: 0,
   };
 }
 
-/* The board as map tokens, in pump.fun's order, with art signed for the
+/* The list as map tokens, in pump.fun's order, with art signed for the
    proxy and liquidity borrowed from our own feeds where we have it.
 
    `known` is a Map keyed by mint/addr → token from the pump.fun and Robinhood
    feeds, used only to fill `liq`, `img` and `twitter`. */
 export async function pumpTrending({ secret, known = new Map() } = {}) {
-  const entries = await fetchMovers();
-  const addrs = entries.map(e => String(e.m || '')).filter(a => isMint(a) || isEvmAddr(a));
-  const act = await fetchActivity(addrs);
+  const coins = await fetchGreat();
+  const addrs = coins.map(c => String(c.mint || '')).filter(a => isMint(a) || isEvmAddr(a));
+  const [act, movers] = await Promise.all([fetchActivity(addrs), fetchMoversIndex()]);
 
   const copies = new Map();
-  for (const e of entries) {
-    const k = String(e.t || '').toUpperCase();
+  for (const c of coins) {
+    const k = String(c.symbol || '').toUpperCase();
     if (k) copies.set(k, (copies.get(k) || 0) + 1);
   }
 
   const out = [];
   const seen = new Set();
   const now = Date.now();
-  for (let i = 0; i < entries.length && out.length < KEEP; i++) {
-    const e = entries[i];
-    const t = shapeMover(e, act.get(String(e.m || '')), i + 1, copies.get(String(e.t || '').toUpperCase()) || 1, now);
+  for (let i = 0; i < coins.length; i++) {
+    const c = coins[i];
+    const a = String(c.mint || '');
+    const t = shapeCoin(c, act.get(a), movers.get(a), i + 1, copies.get(String(c.symbol || '').toUpperCase()) || 1, now);
     if (!t || seen.has(t.id)) continue;
     seen.add(t.id);
 

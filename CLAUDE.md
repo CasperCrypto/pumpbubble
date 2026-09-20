@@ -353,38 +353,43 @@ other and has no upstream of its own. Spanning pump.fun, Base, Robinhood Chain a
 on one scale is the part nobody else can copy — and it surfaces the tokenised-stock crossover by
 itself: METAc, AAPLc, NVDAc on Base, SPCX and GME on Robinhood, STONKS and Nasduck on pump.fun.
 
-**pump.fun's own board leads the tab now.** Its Explore page ranks what is moving across pump.fun,
-Raydium LaunchLab and Pons, and the endpoint behind it answers without a session:
-`advanced-indexer.pump.fun/boards/movers?limit=150`. Found by watching the page's own network
-traffic rather than guessing paths — every guessed path 404'd. It is built from the trade stream
-(transactions in the last five minutes, holders, KOLs, buys against sells), which we do not have,
-and it is not paid placement; for pump.fun and Robinhood Chain it is a better answer than our
-computed heat was, so the tab shows *their* order, labelled as theirs, and our heat ranks Base and
-the wider market below it — or everything, when the board is down. `src/pumptrend.mjs`.
+**pump.fun's own Trending list leads the tab now.** Its screener column called Trending is fed by
+`frontend-api-v3.pump.fun/coins/great-coins?topK=50`. That was read out of the bundle — the
+screener's fetcher is `GET /coins/great-coins` with `topK = offset + limit`, paged to fifty — after
+a wrong turn worth recording: watching the Explore page's network traffic found
+`advanced-indexer.pump.fun/boards/movers`, which *is* a pump.fun ranking but a different one
+(🌟 Movers), and drawing it under the word Trending put OnlyFees and GIGAJEAN where pump.fun's own
+list showed Backpack and STONK. The user caught it against a screenshot. And `great-coins` called
+without `topK` returns **five** — the five rows pump.fun badges HOT — which is why the first look at
+the right endpoint also read as the wrong one. `src/pumptrend.mjs`.
 
-The board carries no price change. `swap-api.pump.fun/v1/coins/market-activity/batch` (POST, ≤50
-addresses, intervals 5m/1h/6h/24h) fills that — and returns **numBuyers and numSellers** per
-window, the distinct-buyer count this project could not get after pump.fun removed `/trades`. It
-is on every trending card: *28,419 buyers / 23,751 sellers 24h*. Both hosts answer from the Worker
-(board + three batch calls ≈ 0.9 s).
+The list is about thirty-five rows, Solana-first with a few Pons and BSC entries, and it carries no
+volume, no price change, no holders. Two more calls fill those. `swap-api.pump.fun/v1/coins/
+market-activity/batch` (POST, ≤50 addresses, windows 5m/1h/6h/24h) gives volume, buys, sells,
+**distinct buyers and sellers** and price change — the distinct-buyer count this project could not
+get after pump.fun removed `/trades`, now on every trending card: *28,419 buyers / 23,751 sellers
+24h*. The movers board is fetched too, as extras only: holders, top-ten share, deployer holding,
+transactions in the last five minutes, KOLs, for whichever trending coins also sit on it (most of
+the top do; a miss leaves those fields null). All three hosts answer from the Worker.
 
-Three rules carried over, and one learned:
+Rules, three carried over and two learned:
 
-- **Nothing from the board goes through `scoreQuality()`.** It carries no liquidity, and unknown
-  liquidity there is `thin`, which would mark all hundred rows unbacked for want of a field.
-  Flags are computed in `shapeMover()` from what *is* measured — buys against sells (the same
-  one-way rule), tickers shared across the board, age, deployer holding ≥10%, top-ten ≥50%. A
-  board token that our own pump.fun feed also carries borrows that feed's liquidity and art.
-- **A window the activity endpoint did not answer is null.** Board volume and lifetime buy/sell
-  counts stand in for the sums; nothing stands in for a percentage.
-- **One-way still takes a token off the tab.** WSOS sat at #6 on pump.fun's own board at $44M
-  market cap with 14 holders, 19 buyers and 2 sells. Their ranking does not look at that; ours
-  does, and the card would have said so. It is the one measurement that removes rather than warns.
-- **Rank-heat has to be divided, not subtracted.** Board rows carry `heat = 1e6 / rank` so the
-  client's heat sort keeps pump.fun's order and its heat sizing means something: `1e6 − rank×1000`
-  was a 10% spread end to end and, log-compressed, drew a hundred identical bubbles. Two decades of
-  spread makes #1 unmistakable and keeps the tail visible. Computed heat never reaches a thousand,
-  so every computed row sits below rank 100. Fire bubbles print `#N pump.fun` instead of turnover.
+- **Nothing from the list goes through `scoreQuality()`.** It carries no liquidity, and unknown
+  liquidity there is `thin`, which would mark every row unbacked for want of a field. Flags are
+  computed in `shapeCoin()` from what *is* measured — buys against sells (the same one-way rule),
+  tickers shared across the list, age, deployer holding ≥10%, top-ten ≥50%, pump.fun's own ban
+  flag. A trending coin that our pump.fun feed also carries borrows that feed's liquidity and art.
+- **A window the activity endpoint did not answer is null.** The board's lifetime buy/sell counts
+  and volume stand in for the sums when the board has the coin; nothing stands in for a percentage.
+- **One-way still takes a token off the tab.** WSOS sat at #6 on the movers board at $44M market
+  cap with 14 holders, 19 buyers and 2 sells. pump.fun's rankings do not look at that; ours does.
+- **Rank-heat is divided, not subtracted.** Rows carry `heat = 1e6 / rank` so the client's heat
+  sort keeps pump.fun's order and its heat sizing means something: `1e6 − rank×1000` was a 10%
+  spread that drew a hundred identical bubbles once log-compressed. Computed heat never reaches a
+  thousand, so every computed row (Base, the wider market) sits below the list. Fire bubbles print
+  `#N pump.fun`; the card says HOT for pump.fun's first five and ✓ for its verified badge.
+- **Size on this tab is rank, so the market-cap floor is only for dust** ($1K). pump.fun's list
+  goes down to $4K rows and they are on the tab where pump.fun puts them.
 
 **The trending tab ranks by heat, not market cap.** Ranking by cap put WBNB and ARB on screen and
 cut the tokens the tab exists for — the signal is turnover against size, so what it finds is small

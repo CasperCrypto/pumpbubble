@@ -11,7 +11,7 @@
    above everything we computed ourselves.
    ========================================================================== */
 
-import { shapeMover, MIN_MCAP } from '../src/pumptrend.mjs';
+import { shapeCoin, chainOf, MIN_MCAP, HOT_RANKS } from '../src/pumptrend.mjs';
 import { mergeMovers, HOT_COUNT } from '../src/trending.mjs';
 
 let pass = 0, fail = 0;
@@ -20,12 +20,16 @@ const no = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? '  — ' + d 
 const is = (n, got, want) => (got === want ? ok(n) : no(n, `got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`));
 
 const NOW = 1_800_000_000_000;
-const row = (o = {}) => ({
-  m: 'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump', c: 'solana:mainnet', n: 'Jean Phil', t: 'JEANPHIL',
-  i: 'https://ipfs.io/ipfs/bafy', mc: 9_290_545, vUsd: 21_256_830, vUsd24h: 21_256_830, vUsd1h: 2_521_656,
-  p: 100, tx5: 2007, age: 83_820, kol: 43, bc: 100_493, sc: 85_343, txc: 185_836, nh: 16_102,
-  t10: 13.37, dh: 1.36, bo: 0.05, pg: 'pump', ath: 12_115_845, ...o,
+/* A great-coins row, as pump.fun returns it. */
+const coin = (o = {}) => ({
+  mint: 'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump', name: 'Jean Phil', symbol: 'JEANPHIL',
+  image_uri: 'https://ipfs.io/ipfs/bafy', created_timestamp: NOW - 83_820_000, complete: true,
+  last_trade_timestamp: NOW - 1000, market_cap: 79_457, usd_market_cap: 8_743_974, ath_market_cap: 110_000,
+  chain_id: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', protocol: 'pump', verified: false, boost_mode: 'COMPLETED',
+  website: 'https://linktr.ee/JeanPhilanthrope', is_banned: false, ...o,
 });
+/* Its movers-board entry, for the extras. */
+const extra = (o = {}) => ({ nh: 16_102, t10: 13.37, dh: 1.36, kol: 43, tx5: 2007, bc: 100_493, sc: 85_343, vUsd24h: 21_256_830, vUsd1h: 2_521_656, ...o });
 const act = (o = {}) => ({
   '5m': { numTxs: 1702, volumeUSD: 108_919, numBuys: 992, numSells: 710, numBuyers: 570, numSellers: 556, numUsers: 996, priceChangePercent: -5.44 },
   '1h': { numTxs: 30_478, volumeUSD: 2_457_953, numBuys: 16_797, numSells: 13_681, numBuyers: 6637, numSellers: 6013, numUsers: 8835, priceChangePercent: -4.05 },
@@ -34,67 +38,78 @@ const act = (o = {}) => ({
   ...o,
 });
 
-console.log('\nshape — a Solana row with activity');
+console.log('\nshape — a Solana row with activity and board extras');
 {
-  const t = shapeMover(row(), act(), 1, 1, NOW);
+  const t = shapeCoin(coin(), act(), extra(), 1, 1, NOW);
   is('is a token', !!t, true);
-  is('chain', t.chain, 'solana');
+  is('chain from a genesis-hash chain id', t.chain, 'solana');
   is('id is the mint', t.id, 'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump');
   is('mint set, addr empty', t.mint.length > 30 && t.addr === '', true);
-  is('market cap from the board', t.mcap, 9_290_545);
-  is('24h volume prefers the activity figure', t.vol, 21_283_770);
+  is('market cap in USD', t.mcap, 8_743_974);
+  is('24h volume from activity', t.vol, 21_283_770);
   is('24h change from activity', t.pc.h24, 280_200);
   is('5m change from activity', t.pc.m5, -5.44);
   is('long windows are null, not zero', t.pc.d7 === null && t.pc.d30 === null && t.pc.y1 === null, true);
   is('buys/sells from activity 24h', t.txns.buys + '/' + t.txns.sells, '100723/85567');
   is('distinct buyers carried', t.txns.buyers, 28_279);
-  is('holders, top10, dev, kol, tx5 carried', [t.holders, t.top10, t.dev, t.kol, t.tx5].join(','), '16102,13.37,1.36,43,2007');
-  is('rank and via', t.rank + ':' + t.via, '1:pump');
+  is('holders, top10, dev, kol, tx5 from the board', [t.holders, t.top10, t.dev, t.kol, t.tx5].join(','), '16102,13.37,1.36,43,2007');
+  is('rank, via, HOT', t.rank + ':' + t.via + ':' + t.pumpHot, '1:pump:true');
   is('from pumpfun for a Solana row', t.from, 'pumpfun');
   is('graduated', t.grad, true);
   is('age in hours', Math.round(t.ageH), 23);
   is('new flag under 24h', t.flags.includes('new'), true);
+  is("ath scaled from SOL to USD by the row's own ratio", Math.round(t.ath), Math.round(110_000 * 8_743_974 / 79_457));
+  is('website kept when https', t.website.startsWith('https://'), true);
   is('solid', t.solid, true);
   is('rawImg is kept for signing', typeof t.rawImg, 'string');
+  is('not HOT past the fifth row', shapeCoin(coin(), act(), extra(), HOT_RANKS + 1, 1, NOW).pumpHot, false);
 }
 
 console.log('\nshape — absent is not zero');
 {
-  const t = shapeMover(row(), undefined, 5, 1, NOW);
-  is('no activity → every window null', [t.pc.m5, t.pc.h1, t.pc.h6, t.pc.h24].every(v => v === null), true);
-  is('no activity → volume from the board', t.vol, 21_256_830);
-  is('no activity → buys/sells from the board lifetime counts', t.txns.buys + '/' + t.txns.sells, '100493/85343');
-  is('no activity → no distinct buyers claimed', t.txns.buyers, null);
-  is('window says which it was', t.txns.window, 'all');
-  const t2 = shapeMover(row(), act({ '24h': undefined }), 5, 1, NOW);
-  is('a missing 24h window is null while 1h is present', t2.pc.h24 === null && t2.pc.h1 === -4.05, true);
+  const t = shapeCoin(coin(), undefined, undefined, 5, 1, NOW);
+  is('no activity, no board → every window null', [t.pc.m5, t.pc.h1, t.pc.h6, t.pc.h24].every(v => v === null), true);
+  is('no activity, no board → volume is 0 and nothing is claimed', t.vol, 0);
+  is('no activity, no board → no txns at all', t.txns, null);
+  is('no board → holders null', t.holders, null);
+  const t2 = shapeCoin(coin(), undefined, extra(), 5, 1, NOW);
+  is('no activity, board present → lifetime buys/sells from the board', t2.txns.buys + '/' + t2.txns.sells, '100493/85343');
+  is('…and no distinct buyers claimed', t2.txns.buyers, null);
+  is('…window says which it was', t2.txns.window, 'all');
+  is('…volume from the board', t2.vol, 21_256_830);
+  const t3 = shapeCoin(coin(), act({ '24h': undefined }), extra(), 5, 1, NOW);
+  is('a missing 24h window is null while 1h is present', t3.pc.h24 === null && t3.pc.h1 === -4.05, true);
 }
 
 console.log('\nshape — what is refused or flagged');
 {
-  /* WSOS, seen live at #6: $44M cap, 14 holders, 19 buyers, 2 sells. */
-  const t = shapeMover(row({ mc: 44_440_000, nh: 14, bc: 30, sc: 2 }),
-    act({ '24h': { numBuys: 33, numSells: 2, numBuyers: 19, numSellers: 2, numUsers: 20, volumeUSD: 90_000, priceChangePercent: 1 } }), 6, 1, NOW);
+  /* WSOS, seen live at #6 on the movers board: $44M cap, 14 holders, 19 buyers, 2 sells. */
+  const t = shapeCoin(coin({ usd_market_cap: 44_440_000 }),
+    act({ '24h': { numBuys: 33, numSells: 2, numBuyers: 19, numSellers: 2, numUsers: 20, volumeUSD: 90_000, priceChangePercent: 1 } }), extra({ nh: 14 }), 6, 1, NOW);
   is('one-way market flagged', t.flags.includes('oneway'), true);
   is('…and not solid', t.solid, false);
-  is('a dust cap is dropped', shapeMover(row({ mc: MIN_MCAP - 1 }), act(), 3, 1, NOW), null);
-  is('an unknown chain is dropped', shapeMover(row({ c: 'eip155:1234567' }), act(), 3, 1, NOW), null);
-  is('a row with no chain and a base58 mint is Solana', shapeMover(row({ c: '' }), act(), 3, 1, NOW).chain, 'solana');
-  is('copycat when the ticker is shared', shapeMover(row(), act(), 3, 3, NOW).flags.includes('copycat'), true);
-  is('dev flag at 10%', shapeMover(row({ dh: 12 }), act(), 3, 1, NOW).flags.includes('dev'), true);
-  is('no dev flag under 10%', shapeMover(row({ dh: 1.4 }), act(), 3, 1, NOW).flags.includes('dev'), false);
-  is('top10 flag at 50%', shapeMover(row({ t10: 57.5 }), act(), 3, 1, NOW).flags.includes('top10'), true);
-  is('hostile ticker is cleaned', shapeMover(row({ t: '<b>x</b>' }), act(), 3, 1, NOW).sym.includes('<'), false);
-  is('bad address is dropped', shapeMover(row({ m: 'not-an-address' }), act(), 3, 1, NOW), null);
+  is('a banned coin is not solid', shapeCoin(coin({ is_banned: true }), act(), extra(), 3, 1, NOW).solid, false);
+  is('dust is dropped', shapeCoin(coin({ usd_market_cap: MIN_MCAP - 1 }), act(), extra(), 3, 1, NOW), null);
+  is('an unknown chain is dropped', shapeCoin(coin({ chain_id: 'eip155:1234567' }), act(), extra(), 3, 1, NOW), null);
+  is('no chain id and a base58 mint is Solana', shapeCoin(coin({ chain_id: undefined }), act(), extra(), 3, 1, NOW).chain, 'solana');
+  is('copycat when the ticker is shared', shapeCoin(coin(), act(), extra(), 3, 3, NOW).flags.includes('copycat'), true);
+  is('dev flag at 10%', shapeCoin(coin(), act(), extra({ dh: 12 }), 3, 1, NOW).flags.includes('dev'), true);
+  is('no dev flag under 10%', shapeCoin(coin(), act(), extra({ dh: 1.4 }), 3, 1, NOW).flags.includes('dev'), false);
+  is('top10 flag at 50%', shapeCoin(coin(), act(), extra({ t10: 57.5 }), 3, 1, NOW).flags.includes('top10'), true);
+  is('hostile ticker is cleaned', shapeCoin(coin({ symbol: '<b>x</b>' }), act(), extra(), 3, 1, NOW).sym.includes('<'), false);
+  is('javascript: website is dropped', shapeCoin(coin({ website: 'javascript:alert(1)' }), act(), extra(), 3, 1, NOW).website, '');
+  is('bad address is dropped', shapeCoin(coin({ mint: 'not-an-address' }), act(), extra(), 3, 1, NOW), null);
 }
 
-console.log('\nshape — Robinhood Chain');
+console.log('\nshape — other chains');
 {
-  const t = shapeMover(row({ m: '0x181f9463B85c8D40CE9eD4eB64B42fdDe7824Ff5', c: 'eip155:4663', pg: 'pons', t: 'PONS' }), act(), 9, 1, NOW);
-  is('chain', t.chain, 'robinhood');
+  const t = shapeCoin(coin({ mint: '0x181f9463B85c8D40CE9eD4eB64B42fdDe7824Ff5', chain_id: 'eip155:4663', protocol: 'pons', symbol: 'FN' }), act(), undefined, 9, 1, NOW);
+  is('Robinhood Chain', t.chain, 'robinhood');
   is('id is chain:lowercase address', t.id, 'robinhood:0x181f9463b85c8d40ce9ed4eb64b42fdde7824ff5');
   is('addr set, mint empty', t.addr.length === 42 && t.mint === '', true);
   is('from robinhood', t.from, 'robinhood');
+  is('BSC', shapeCoin(coin({ mint: '0xD83e689e1637a4B2175a312DCeF1Cd2063457777', chain_id: 'eip155:56' }), act(), undefined, 9, 1, NOW).chain, 'bsc');
+  is("chainOf handles the board's form too", chainOf('solana:mainnet', ''), 'solana');
 }
 
 console.log('\nmerge — pump.fun order first, ours after');
