@@ -21,7 +21,8 @@ import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from '
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
 import { refreshFlows } from './flows.mjs';
-import { buildTrending, TREND_SOURCES } from './trending.mjs';
+import { buildTrending, mergeMovers, TREND_SOURCES } from './trending.mjs';
+import { pumpTrending } from './pumptrend.mjs';
 import { adminEnabled, adminPath, authed, adminPage,
          lockedOut, noteFailure, clearFailures } from './admin.mjs';
 import { loadRegistry as rhRegistry, seed as rhSeed } from './rhchain.mjs';
@@ -227,12 +228,25 @@ async function snapshot(ctx, source, force = false) {
                 feeds.push({ id, tokens: m.tokens || [] });
               } catch { /* a feed that is down simply does not contribute */ }
             }
-            const tokens = buildTrending(feeds);
+            /* pump.fun's own board leads; see src/pumptrend.mjs. Our feeds
+               lend it liquidity and art for tokens they already carry. A
+               board that fails to answer leaves the computed list alone,
+               which is what the tab was before the board existed. */
+            const known = new Map();
+            for (const f of feeds) if (f.id === 'pumpfun' || f.id === 'robinhood') {
+              for (const t of f.tokens) known.set(t.addr || t.mint, t);
+            }
+            let movers = [], moversError = '';
+            const t0 = Date.now();
+            try { movers = await pumpTrending({ secret: ctx.env.IMG_SECRET, known }); }
+            catch (e) { moversError = String(e && e.message || e); }
+            const tokens = mergeMovers(movers, buildTrending(feeds));
             return {
               ts: Date.now(), sol: 0, count: tokens.length,
               enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
               sampleArt: '', solid: tokens.length, signed: true,
               source: 'trending', sourceLabel: 'Trending', boostable: true,
+              movers: { n: movers.length, ms: Date.now() - t0, error: moversError },
               tokens,
             };
           })()
@@ -578,6 +592,8 @@ export async function handle(req, ctx) {
         signed: snap.signed,
         mode: src.id,
         solid: snap.solid,
+        /* Trending only: whether pump.fun's board answered, and how fast. */
+        movers: snap.movers || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,

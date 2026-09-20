@@ -124,6 +124,41 @@ export function heat(t) {
   return turnover * (1 + Math.min(move, MOVE_CAP) / 100) * trades * recency;
 }
 
+/* pump.fun's board first, in pump.fun's order; our computed ranking after.
+
+   The board carries its own heat — 1e6 divided by rank — so that the client,
+   which sorts by heat and sizes by it, keeps pump.fun's order intact and puts
+   every computed row below the lowest board row (computed heat never reaches
+   a thousand; rank 100 is ten thousand). Divided rather than subtracted
+   because size is log-compressed on the map: a thousand-a-rank spread is 10%
+   end to end and drew a hundred identical bubbles, while 1e6/rank is two
+   decades, so #1 is unmistakably the biggest and the tail is still visible.
+   A token on both lists is the board's row: theirs has distinct buyers and
+   the 5-minute count, ours does not.
+
+   `hot` is the top of the merged list, so when the board is up the flames
+   are pump.fun's top twelve; when it is down they are ours, as before. */
+export function mergeMovers(movers, computed, limit = 160) {
+  const seen = new Set();
+  const out = [];
+  for (const t of movers || []) {
+    if (!t || !t.solid) continue;
+    const key = t.addr || t.mint || t.id;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...t, heat: 1e6 / Math.max(1, t.rank || out.length + 1) });
+  }
+  for (const t of computed || []) {
+    const key = t.addr || t.mint || t.id;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  const cut = out.slice(0, limit);
+  for (let i = 0; i < cut.length; i++) cut[i].hot = i < HOT_COUNT;
+  return cut;
+}
+
 /* Merge several feeds into one ranked list.
 
    `feeds` is [{ id, tokens }]. Each token keeps a `from` so the card can say

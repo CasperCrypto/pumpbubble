@@ -353,6 +353,39 @@ other and has no upstream of its own. Spanning pump.fun, Base, Robinhood Chain a
 on one scale is the part nobody else can copy — and it surfaces the tokenised-stock crossover by
 itself: METAc, AAPLc, NVDAc on Base, SPCX and GME on Robinhood, STONKS and Nasduck on pump.fun.
 
+**pump.fun's own board leads the tab now.** Its Explore page ranks what is moving across pump.fun,
+Raydium LaunchLab and Pons, and the endpoint behind it answers without a session:
+`advanced-indexer.pump.fun/boards/movers?limit=150`. Found by watching the page's own network
+traffic rather than guessing paths — every guessed path 404'd. It is built from the trade stream
+(transactions in the last five minutes, holders, KOLs, buys against sells), which we do not have,
+and it is not paid placement; for pump.fun and Robinhood Chain it is a better answer than our
+computed heat was, so the tab shows *their* order, labelled as theirs, and our heat ranks Base and
+the wider market below it — or everything, when the board is down. `src/pumptrend.mjs`.
+
+The board carries no price change. `swap-api.pump.fun/v1/coins/market-activity/batch` (POST, ≤50
+addresses, intervals 5m/1h/6h/24h) fills that — and returns **numBuyers and numSellers** per
+window, the distinct-buyer count this project could not get after pump.fun removed `/trades`. It
+is on every trending card: *28,419 buyers / 23,751 sellers 24h*. Both hosts answer from the Worker
+(board + three batch calls ≈ 0.9 s).
+
+Three rules carried over, and one learned:
+
+- **Nothing from the board goes through `scoreQuality()`.** It carries no liquidity, and unknown
+  liquidity there is `thin`, which would mark all hundred rows unbacked for want of a field.
+  Flags are computed in `shapeMover()` from what *is* measured — buys against sells (the same
+  one-way rule), tickers shared across the board, age, deployer holding ≥10%, top-ten ≥50%. A
+  board token that our own pump.fun feed also carries borrows that feed's liquidity and art.
+- **A window the activity endpoint did not answer is null.** Board volume and lifetime buy/sell
+  counts stand in for the sums; nothing stands in for a percentage.
+- **One-way still takes a token off the tab.** WSOS sat at #6 on pump.fun's own board at $44M
+  market cap with 14 holders, 19 buyers and 2 sells. Their ranking does not look at that; ours
+  does, and the card would have said so. It is the one measurement that removes rather than warns.
+- **Rank-heat has to be divided, not subtracted.** Board rows carry `heat = 1e6 / rank` so the
+  client's heat sort keeps pump.fun's order and its heat sizing means something: `1e6 − rank×1000`
+  was a 10% spread end to end and, log-compressed, drew a hundred identical bubbles. Two decades of
+  spread makes #1 unmistakable and keeps the tail visible. Computed heat never reaches a thousand,
+  so every computed row sits below rank 100. Fire bubbles print `#N pump.fun` instead of turnover.
+
 **The trending tab ranks by heat, not market cap.** Ranking by cap put WBNB and ARB on screen and
 cut the tokens the tab exists for — the signal is turnover against size, so what it finds is small
 by construction and was being dropped before it could be drawn. Size follows heat too unless a size

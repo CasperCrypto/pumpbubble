@@ -358,8 +358,8 @@ export function txnsOf(p) {
 /* Calibrated, not guessed: across sixty traded pump.fun tokens the median sell
    share is 46.4%, and everything under 10% was a honeypot shape (USWS 0.9%,
    UPONLY 2.9%, SPSN 3.2%). NIKE at 10.5% and LBRETT at 13.1% are left alone. */
-const ONEWAY_SELL_SHARE = 0.10;
-const ONEWAY_MIN_TXNS = 30;
+export const ONEWAY_SELL_SHARE = 0.10;
+export const ONEWAY_MIN_TXNS = 30;
 
 const WINDOWS = { m5: 3e5, h1: 36e5, h6: 216e5, h24: 864e5 };
 const TIERS = [[6e5, 0], [36e5, 12e4], [216e5, 9e5], [864e5, 36e5]];
@@ -460,7 +460,7 @@ const THIN_RATIO = 120;     // mcap/liquidity above this is essentially paper
    was $11.5k. */
 const MIN_BONDING_MCAP = 5000;
 const DEAD_VOLUME = 1000;   // USD in 24h, below this nobody is trading it
-const MAX_COPIES = 2;       // same ticker across more mints than this is a swarm
+export const MAX_COPIES = 2; // same ticker across more mints than this is a swarm
 
 /* `kind` selects the rules. 'memecoin' is the full check — an unbacked market
    cap and a copycat ticker swarm are the two ways a launchpad feed lies.

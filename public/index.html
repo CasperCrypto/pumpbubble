@@ -826,7 +826,10 @@ const WARN={
      map follows. What somebody meant by it is unknowable; 811 buys against 7
      sells is not. */
   oneway:t=>`${t.txns.buys} buys but only ${t.txns.sells} sells in 24h`,
-  new:t=>`${t.ageH<1?'under an hour':Math.round(t.ageH)+'h'} old — 24h figures mean little`
+  new:t=>`${t.ageH<1?'under an hour':Math.round(t.ageH)+'h'} old — 24h figures mean little`,
+  /* Both from pump.fun's own indexer. A measurement, stated as one. */
+  dev:t=>`deployer still holds ${(+t.dev).toFixed(1)}% of supply`,
+  top10:t=>`top 10 wallets hold ${Math.round(t.top10)}%`
 };
 function warnLine(t){
   const f=(t.flags||[]).filter(k=>WARN[k]);
@@ -894,6 +897,7 @@ async function fetchLive(){
        what the feed actually sent. */
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
+    ageH:NN(t.ageH), rank:+t.rank||0, via:t.via||'', holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kol:NN(t.kol), tx5:NN(t.tx5),
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
     via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
@@ -1533,7 +1537,9 @@ function draw(){
     else if(c.fire&&r>=34&&t.mcap>0){
       ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle='rgba(70,26,0,.9)';
-      ctx.fillText('\u00d7'+(t.vol/t.mcap).toFixed(1)+' vol',t.x,t.y-r*.74);
+      /* A bubble from pump.fun's board wears its place on it; one our own
+         heat found wears the turnover that put it there. */
+      ctx.fillText(t.via==='pump'&&t.rank>0?'#'+t.rank+' pump.fun':'\u00d7'+(t.vol/t.mcap).toFixed(1)+' vol',t.x,t.y-r*.74);
     }
   }
 
@@ -1754,12 +1760,24 @@ function openCard(t){
     e('cB').innerHTML=`${pct(t.pc.h6)} ${sep} ${pct(t.pc.h24)}`;
   }
   /* the warning belongs on mobile too — that is where most taps happen */
+  /* A token from pump.fun's board says so, and shows the measurements that
+     put it there — distinct buyers against sellers is the one that tells a
+     market from a handful of wallets. Warnings follow on their own line. */
+  const nf=n=>Math.round(n).toLocaleString('en-US');
+  const pumpLine=t.via==='pump'
+    ? '<div class="warn" style="opacity:.9">🔥 #'+esc(String(t.rank))+' on pump.fun trending'
+      +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
+      +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
+      +(t.tx5!=null?' · '+nf(t.tx5)+' trades in 5m':'')
+      +(t.kol!=null&&t.kol>0?' · '+nf(t.kol)+' KOLs':'')
+      +'</div>'
+    : '';
   e('cWarn').innerHTML=t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
       ? '<div class="warn">ⓘ '+t.parts.map(p=>esc(p.name)+' '+esc(fmtUsd(p.vol))).join(' · ')+'</div>'
-      : warnLine(t);
+      : pumpLine+warnLine(t);
   card.classList.add('on');scrim.classList.add('on');
 }
 function closeAll(){
