@@ -185,6 +185,25 @@ button,input{font-family:inherit}
 .slot.gold small{color:var(--gold)}
 
 /* ============ chips ============ */
+/* The official-token strip. Green, not gold: gold is bought, this is ours.
+   Wraps on a phone; the address is abbreviated on screen and whole on copy. */
+#official{
+  position:relative;z-index:18;flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;
+  padding:7px 12px;font-size:12px;line-height:1.3;border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(38,217,133,.12),rgba(38,217,133,.03));
+}
+#official[hidden]{display:none}
+#official .oDot{width:7px;height:7px;border-radius:50%;background:var(--up,#26d985);box-shadow:0 0 8px var(--up,#26d985)}
+#official b{font-weight:800}
+#official .oAddr{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;opacity:.95;letter-spacing:.01em}
+#official .oNote{opacity:.7}
+#official button,#official a{
+  display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 9px;border-radius:999px;
+  background:var(--glass);border:1px solid var(--line);color:inherit;font:inherit;font-size:11px;font-weight:700;
+  cursor:pointer;text-decoration:none;transition:.15s;
+}
+#official button:hover,#official a:hover{border-color:var(--up,#26d985)}
+#official .ok{color:var(--up,#26d985)}
 #chips{
   position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
@@ -429,7 +448,7 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
    The same page, stripped to the thing being embedded. One file rather than a
    second copy: an embed that drifts from the real map stops being a preview of
    the real map, which is the entire reason a site would put it there. */
-body.embed #top,body.embed #rail,body.embed #chips,body.embed #legend{display:none!important}
+body.embed #top,body.embed #rail,body.embed #official,body.embed #chips,body.embed #legend{display:none!important}
 body.embed #stage{border-radius:0}
 body.embed{background:transparent}
 #brandbadge{display:none;position:fixed;right:10px;bottom:10px;z-index:30;
@@ -546,6 +565,9 @@ body.embed #brandbadge.on{display:flex}
 
 <!-- ================= sponsor rail ================= -->
 <div id="rail"></div>
+
+<!-- ================= official token ================= -->
+<div id="official" hidden></div>
 
 <!-- ================= chips ================= -->
 <div id="chips">
@@ -2233,11 +2255,44 @@ async function resumePendingOrder(){
 /* Two kinds of inventory share the rail: boosts (self-serve, on-chain) and
    sold ad slots (from KV, so a slot can be filled without a deploy). Empty
    slots stay visible on purpose — they are the sales pitch. */
-let ADS=[],AD_CONTACT='';
+let ADS=[],AD_CONTACT='',OUR=null;
 async function loadAds(){
-  try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';rail()}
+  try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';
+    OUR=(j.token&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(j.token.mint||'')))?j.token:null;rail();official()}
   catch(e){}
 }
+/* The strip that names the site's own token. It exists because the moment a
+   project announces a launch, lookalike addresses appear under its name, and
+   the page the project controls is the one place a visitor can check. So it
+   prints one address, whole on copy, and says out loud that it is the only
+   one. The bubble itself is already on every tab through its house boost. */
+function official(){
+  const el=document.getElementById('official');
+  if(!OUR){el.hidden=true;el.innerHTML='';return}
+  const m=OUR.mint,short=m.slice(0,6)+'\u2026'+m.slice(-6);
+  el.innerHTML=`<span class="oDot"></span><b>$${esc(OUR.sym||'')}</b><span class="oNote">official contract</span>`+
+    `<span class="oAddr" title="${esc(m)}">${esc(short)}</span>`+
+    `<button type="button" data-copy="1">copy CA</button>`+
+    `<a href="https://pump.fun/coin/${esc(m)}" target="_blank" rel="noopener">pump.fun \u2197</a>`+
+    `<button type="button" data-show="1">show bubble</button>`+
+    `<span class="oNote">the only address that is ours \u2014 anything else with this name is not us</span>`;
+  el.hidden=false;
+}
+document.getElementById('official').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b||!OUR)return;
+  if(b.dataset.copy){
+    let ok=false;
+    try{await navigator.clipboard.writeText(OUR.mint);ok=true}
+    catch(_){const i=document.createElement('input');i.value=OUR.mint;document.body.appendChild(i);i.select();
+      try{ok=document.execCommand('copy')}catch(__){}i.remove()}
+    b.textContent=ok?'copied':'copy failed';b.classList.toggle('ok',ok);
+    setTimeout(()=>{b.textContent='copy CA';b.classList.remove('ok')},1600);
+  }
+  if(b.dataset.show){
+    const t=S.tokens.find(x=>x.mint===OUR.mint);
+    if(t)openCard(t);
+  }
+});
 /* Two products, two places. The golden bubble IS the boost — that is what the
    money bought and where it has to show. The rail is sold ad inventory, a
    separate thing with a separate price, and filling it with boosts we already

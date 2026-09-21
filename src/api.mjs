@@ -4,7 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
-import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice,
+import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
          signUrl, enrich, resolveAnyToken } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
@@ -1329,6 +1329,7 @@ export async function handle(req, ctx) {
             traffic, feeds,
             ads: await readAds(),
             boosts: all.slice(-40).reverse(),
+            token: (await ctx.store.get('ourtoken')) || null,
             seeds, xbot, tg,
           });
         }
@@ -1401,6 +1402,23 @@ export async function handle(req, ctx) {
           });
           await ctx.store.put('boosts', next);
           return json({ ok: true, sym });
+        }
+
+        /* The official token. Identity comes from pump.fun, never from the
+           form, so the strip cannot be made to name a mint as something it is
+           not; and there is exactly one, because a page naming two "official"
+           addresses has said nothing. */
+        if (action === 'token.set') {
+          const mint = String(body.mint || '').trim();
+          if (!isMint(mint)) return json({ ok: false, error: 'not a mint' }, 400);
+          const t = await fetchCoin(mint, ctx.env.IMG_SECRET);
+          if (!t) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
+          await ctx.store.put('ourtoken', { mint, sym: t.sym, name: t.name, at: Date.now() });
+          return json({ ok: true, sym: t.sym });
+        }
+        if (action === 'token.clear') {
+          await ctx.store.put('ourtoken', null);
+          return json({ ok: true });
         }
 
         if (action === 'boost.remove') {
@@ -1685,7 +1703,18 @@ export async function handle(req, ctx) {
         }
         ads.push({ ...a, img });
       }
-      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '' });
+      /* The site's own token rides along: the header strip that names the
+         official contract address reads it here, so the one fetch the rail
+         already makes also carries the one address visitors must not get
+         wrong. Only the fields the strip prints leave the record. */
+      let token = null;
+      try {
+        const o = await ctx.store.get('ourtoken');
+        if (o && isMint(String(o.mint || ''))) {
+          token = { mint: String(o.mint), sym: clean(String(o.sym || ''), 12), name: clean(String(o.name || ''), 48) };
+        }
+      } catch { token = null; }
+      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '', token });
     }
 
     /* ------------------------------------------------------- /api/health */

@@ -178,6 +178,18 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
   </div>
 
   <div class="card">
+    <h2>Our token</h2>
+    <p class="dim" style="font-size:12px;margin:0 0 8px">
+      The one contract address the header strip names as official. Ticker and name are read from pump.fun.</p>
+    <div id="ourtoken"></div>
+    <div class="row">
+      <input id="tMint" placeholder="mint" style="flex:1;min-width:240px">
+      <button class="go" id="tSet">Set</button>
+      <button id="tClear">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Pinned tokens</h2>
     <p class="dim" style="font-size:12px;margin:0 0 8px">
       Forces a token onto a chain map even when discovery has not reached it.</p>
@@ -277,6 +289,9 @@ async function load(){
         '<td><button class="bad" data-del-ad="'+esc(a.title)+'">remove</button></td></tr>').join('')+'</table>'
     : '<div class="dim">no slots filled — the rail shows SLOT OPEN</div>';
 
+  $('ourtoken').innerHTML=d.token&&d.token.mint
+    ? '<div><b>$'+esc(d.token.sym||'')+'</b> <span class="dim">'+esc(d.token.name||'')+'</span><br><code>'+esc(d.token.mint)+'</code></div>'
+    : '<div class="dim">none - the header strip is hidden</div>';
   $('boosts').innerHTML=d.boosts.length
     ? '<table><tr><th>token</th><th>kind</th><th>spent</th><th>until</th><th></th></tr>'+d.boosts.map(b=>
         '<tr><td>'+esc(b.sym||b.mint.slice(0,6))+'</td><td>'+(b.house?'<span class="dim">house</span>':'paid')+
@@ -324,6 +339,15 @@ $('aAdd').onclick=async()=>{
 $('bAdd').onclick=async()=>{
   try{ await api('boost.house',{mint:$('bMint').value,chain:$('bChain').value,usd:+$('bUsd').value||400});
     $('bMint').value=''; say('house boost added'); load(); }
+  catch(e){say(e.message,true)}
+};
+$('tSet').onclick=async()=>{
+  try{ const r=await api('token.set',{mint:$('tMint').value});
+    $('tMint').value=''; say('official token: $'+(r.sym||'')); load(); }
+  catch(e){say(e.message,true)}
+};
+$('tClear').onclick=async()=>{
+  try{ await api('token.clear',{}); say('cleared'); load(); }
   catch(e){say(e.message,true)}
 };
 $('sAdd').onclick=async()=>{
