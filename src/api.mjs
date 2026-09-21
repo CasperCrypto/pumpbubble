@@ -1383,7 +1383,9 @@ export async function handle(req, ctx) {
           } else {
             const t = await fetchCoin(id, ctx.env.IMG_SECRET);
             if (!t) return json({ ok: false, error: 'pump.fun has no token with that address' }, 404);
-            sym = t.sym; name = t.name; img = t.rawImg || ''; mcap = t.mcap;
+            /* fetchCoin signs the art and drops rawImg, so the proxy URL is what is left;
+               the re-add path keeps a URL that already starts with /api/img? as is. */
+            sym = t.sym; name = t.name; img = t.img || t.rawImg || ''; mcap = t.mcap;
           }
 
           const key = evm ? id.toLowerCase() : id;
