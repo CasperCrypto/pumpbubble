@@ -65,6 +65,17 @@ AD_CONTACT = "https://t.me/casper_crypto"
 # The code falls back to the public endpoint if it is missing, which is fine for
 # looking at the map and not fine for taking money.
 
+# Tap wars. One Durable Object holds the arena (see src/taps.mjs for why a
+# counter cannot live in KV). SQLite-backed, which is the kind the free plan
+# allows; the migration below creates it on the first deploy that carries it.
+[[durable_objects.bindings]]
+name = "ARENA"
+class_name = "TapArena"
+
+[[migrations]]
+tag = "v1-taps"
+new_sqlite_classes = ["TapArena"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

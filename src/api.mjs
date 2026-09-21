@@ -23,6 +23,7 @@ import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as bas
 import { refreshFlows } from './flows.mjs';
 import { buildTrending, mergeMovers, TREND_SOURCES } from './trending.mjs';
 import { pumpTrending } from './pumptrend.mjs';
+import { GOLD_USD as TAP_GOLD_USD, AD_SLOTS as TAP_AD_SLOTS } from './taps.mjs';
 import { adminEnabled, adminPath, authed, adminPage,
          lockedOut, noteFailure, clearFailures } from './admin.mjs';
 import { loadRegistry as rhRegistry, seed as rhSeed } from './rhchain.mjs';
@@ -182,6 +183,86 @@ async function findToken(ctx, origin, { mint, sym, srcId }) {
   return null;
 }
 
+/* ------------------------------------------------------------- Tap wars */
+/* The arena is one Durable Object, and every visitor's map poll would be a
+   request to it. Cached per isolate for five seconds instead, and busted by
+   this isolate's own taps so a tapper sees their count land on the next
+   poll. */
+let arenaCache = { at: 0, data: null, inflight: null };
+async function arenaState(ctx) {
+  if (!ctx.arena) return null;
+  const now = Date.now();
+  if (arenaCache.data && now - arenaCache.at < 5000) return arenaCache.data;
+  if (arenaCache.inflight) return arenaCache.inflight;
+  arenaCache.inflight = (async () => {
+    try {
+      const st = await ctx.arena('state');
+      arenaCache = { at: Date.now(), data: st, inflight: null };
+      return st;
+    } catch {
+      arenaCache.inflight = null;
+      return arenaCache.data;
+    }
+  })();
+  return arenaCache.inflight;
+}
+function ipOf(req) {
+  return req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'local';
+}
+const TAP_KEY = /^[1-9A-HJ-NP-Za-km-z]{32,44}$|^0x[0-9a-f]{40}$/;
+function tapUrl(r) {
+  return r.mint ? 'https://pump.fun/coin/' + r.mint
+    : 'https://dexscreener.com/' + encodeURIComponent(r.chain || 'ethereum') + '/' + r.addr;
+}
+const fmtTaps = n => n >= 1000 ? (n / 1000).toFixed(n >= 10_000 ? 0 : 1) + 'k' : String(n);
+
+/* The tab's tokens: the arena's rows, with price change and volume from
+   DexScreener so the colour stays honest — size is taps, colour is still the
+   market. Enrichment is cached a minute per token; the tap counts are not. */
+const tapMkt = new Map();
+async function tapsSnapshot(ctx) {
+  const st = await arenaState(ctx);
+  const rows = (st && st.tokens) || [];
+  const tokens = rows.map(r => ({
+    id: (r.chain && r.chain !== 'solana' ? r.chain + ':' : '') + r.key,
+    chain: r.chain || 'solana', mint: r.mint || '', addr: r.addr || '',
+    sym: r.sym, name: r.name, img: r.img || '',
+    mcap: r.mcap || 0, vol: 0, liq: 0, price: 0,
+    pc: { m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null },
+    grad: true, solid: true, flags: [], copies: 1,
+    taps: r.taps, tapsTotal: r.tapsTotal, tapRank: r.rank, award: r.award || '',
+    goldSince: r.goldSince || 0, adSince: r.adSince || 0, added: r.added || 0,
+    via: 'taps', boost: 0,
+  }));
+  const now = Date.now();
+  const keyOf = t => t.addr || t.mint;
+  const stale = tokens.filter(t => { const c = tapMkt.get(keyOf(t)); return !c || now - c.at > 60_000; });
+  const byChain = new Map();
+  for (const t of stale) { const c = t.chain || 'solana'; if (!byChain.has(c)) byChain.set(c, []); byChain.get(c).push(t); }
+  await Promise.all([...byChain].map(async ([chain, list]) => {
+    try {
+      await enrich(list, chain);
+      for (const t of list) tapMkt.set(keyOf(t), { at: now, pc: t.pc, vol: t.vol, liq: t.liq, price: t.price, mcap: t.dexMcap || 0 });
+    } catch { /* grey is honest */ }
+  }));
+  for (const t of tokens) {
+    const c = tapMkt.get(keyOf(t));
+    delete t.rawImg; delete t.dexMcap;
+    if (!c) continue;
+    if (c.pc) t.pc = { m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null, ...c.pc };
+    t.vol = c.vol || 0; t.liq = c.liq || 0; t.price = c.price || 0;
+    if (c.mcap > 0) t.mcap = c.mcap;
+  }
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length,
+    withArt: tokens.filter(t => t.img).length, sampleArt: '', solid: tokens.length, signed: true,
+    source: 'taps', sourceLabel: 'Tap wars', boostable: true,
+    tokens,
+    events: (st && st.events) || [],
+    arena: { n: rows.length, gold: ((st && st.gold) || []).map(r => r.sym), ad: ((st && st.ad) || []).map(r => r.sym) },
+  };
+}
+
 async function snapshot(ctx, source, force = false) {
   const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
   const cache = cacheFor(src.id);
@@ -250,6 +331,8 @@ async function snapshot(ctx, source, force = false) {
               tokens,
             };
           })()
+        : src.id === 'taps'
+        ? await tapsSnapshot(ctx)
         : await buildSnapshot({
             source: src,
             hist: ctx.hist,
@@ -290,7 +373,9 @@ async function snapshot(ctx, source, force = false) {
       const enrWas = (cache.data && cache.data.enriched) || 0;
       const enrichBroke = src.enrich !== false && enrWas > 0 && enrNow < enrWas * 0.25;
 
-      const empty = got === 0 || (had > 0 && got < had * 0.25) || enrichBroke;
+      /* The arena is allowed to be empty, and allowed to shrink: nobody has
+         added a token yet, or the idle ones were pruned. Neither is an outage. */
+      const empty = src.id !== 'taps' && (got === 0 || (had > 0 && got < had * 0.25) || enrichBroke);
 
       if (empty && had) {
         /* Keep the good data, and come back well before the normal lifetime. */
@@ -453,6 +538,25 @@ export async function handle(req, ctx) {
         }
         for (const v of byMint.values()) v.bonus = bonusFromSpend(v.liveUsd);
       }
+      /* Gold won by taps joins the same pool, as twelve dollars' worth of
+         paid size — so it draws through the same curve, counts toward the
+         same 25% guard, and re-adds through the same path when the token is
+         not in this feed. A token that is also paid for gets the sum. */
+      const arena = await arenaState(ctx);
+      if (arena && arena.gold && arena.gold.length) {
+        for (const r of arena.gold) {
+          const cur = byMint.get(r.key);
+          if (cur) { cur.liveUsd += TAP_GOLD_USD; cur.tap = r.taps; }
+          else {
+            byMint.set(r.key, {
+              mint: r.key, sym: r.sym, name: r.name, img: r.img || '', mcap: r.mcap || 0,
+              ...(r.chain && r.chain !== 'solana' ? { chain: r.chain } : {}),
+              liveUsd: TAP_GOLD_USD, spentUsd: 0, until: Date.now() + 60_000, tap: r.taps, bonus: 0,
+            });
+          }
+        }
+        for (const v of byMint.values()) v.bonus = bonusFromSpend(v.liveUsd);
+      }
       let tokens = applyBoosts(snap.tokens.map(t => ({ ...t })), byMint);
 
       /* Monthly and yearly change for stocks is filled in by cron, one slice at
@@ -575,6 +679,12 @@ export async function handle(req, ctx) {
         tokens.push(...readd);
       }
 
+      /* Say on the token that its gold was tapped for, not paid for. */
+      for (const [k, b] of byMint) if (b.tap) {
+        const t = tokens.find(x => (x.addr || x.mint) === k);
+        if (t) t.tapGold = b.tap;
+      }
+
       return json({
         ok: true,
         ts: snap.ts,
@@ -594,10 +704,56 @@ export async function handle(req, ctx) {
         solid: snap.solid,
         /* Trending only: whether pump.fun's board answered, and how fast. */
         movers: snap.movers || undefined,
+        events: snap.events || undefined,
+        arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
         tokens,
       });
+    }
+
+    /* ----------------------------------------------------------- /api/tap */
+    /* Put a token in the arena. Identity is resolved from the chain, the same
+       way a boost order does it, so the arena cannot be told a mint is a
+       token it is not. */
+    if (path === '/api/tap/add' && req.method === 'POST') {
+      if (!ctx.arena) return json({ ok: false, error: 'the arena is not running' }, 503);
+      const limited = rateLimit(req, 'tapadd', 12, 60_000);
+      if (limited) return limited;
+      const body = await req.json().catch(() => ({}));
+      const ca = String(body.ca || '').trim();
+      if (!isCA(ca)) return json({ ok: false, error: 'that is not a contract address' }, 400);
+      const t = await resolveAnyToken(ca, ctx.env.IMG_SECRET);
+      if (!t) return json({ ok: false, error: 'no market found for that address' }, 404);
+      const tok = {
+        mint: t.mint || '', addr: t.addr || '', chain: t.chain || 'solana',
+        sym: t.sym, name: t.name, img: t.img || '', mcap: t.mcap || 0,
+      };
+      const r = await ctx.arena('add', { tok, ip: ipOf(req) });
+      /* the next poll from this isolate sees the new row, not a 5s-old list */
+      arenaCache.at = 0; cacheFor('taps').at = 0;
+      return json(r, r.ok ? 200 : 400);
+    }
+
+    /* A batch of taps. The page counts locally and sends every second or
+       so; the arena applies its per-address caps and answers with the score
+       as it stands. `sec-fetch-site` is stamped same-origin by a browser
+       fetching from our own page and by nothing else — a cheap first door,
+       not a lock; the caps are the control. */
+    if (path === '/api/tap' && req.method === 'POST') {
+      if (!ctx.arena) return json({ ok: false, error: 'the arena is not running' }, 503);
+      if (req.headers.get('sec-fetch-site') !== 'same-origin') {
+        return json({ ok: false, error: 'taps come from the page' }, 403);
+      }
+      const limited = rateLimit(req, 'tap', 150, 60_000);
+      if (limited) return limited;
+      const body = await req.json().catch(() => ({}));
+      const key = String(body.key || '');
+      const n = Math.floor(+body.n || 0);
+      if (!TAP_KEY.test(key) || n <= 0) return json({ ok: false, error: 'bad tap' }, 400);
+      const r = await ctx.arena('tap', { key, n, ip: ipOf(req) });
+      arenaCache.at = 0; cacheFor('taps').at = 0;
+      return json(r, r.ok ? 200 : 400);
     }
 
     /* --------------------------------------------------------- /api/stats */
@@ -1703,6 +1859,16 @@ export async function handle(req, ctx) {
         }
         ads.push({ ...a, img });
       }
+      /* Slots won by taps fill whatever is not sold. Sold ads always come
+         first: a free slot is what is left over, never what displaces a
+         paying one. */
+      try {
+        const ar = await arenaState(ctx);
+        const open = Math.max(0, Math.min(TAP_AD_SLOTS, 4 - ads.length));
+        for (const r of ((ar && ar.ad) || []).slice(0, open)) {
+          ads.push({ title: r.sym, sub: fmtTaps(r.taps) + ' taps · won free', img: r.img || '', url: tapUrl(r), tap: true });
+        }
+      } catch { /* the rail without them */ }
       /* The site's own token rides along: the header strip that names the
          official contract address reads it here, so the one fetch the rail
          already makes also carries the one address visitors must not get

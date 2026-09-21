@@ -418,6 +418,67 @@ Fire follows gold's rule: the shell stops encoding direction, so the percentage 
 dark-green or dark-red, and the turnover that put it there is printed on the face. Paid outranks
 hot — a gold bubble stays gold.
 
+## Tap wars
+
+`src/taps.mjs`, the `TapArena` Durable Object in `worker/index.js`, the `taps` source, and the bar
+at the bottom of the tab. Asked for as *"a new tab where they can add any bubble token, 1000 taps
+gets a free ad spot, 5k taps a mini golden bubble, if another token outbids them in taps it takes
+their place"*. That is what it is, with the mechanics pinned down:
+
+| what | value | why |
+|---|---|---|
+| size on the tab | taps held | the tab has one measure; colour stays the real price change |
+| rail slot | ≥1,000 taps, next 2 by rank after gold | sold ads always come first; a free slot is what is left |
+| mini gold | ≥5,000 taps, top 3 by rank | `GOLD_USD = 12` of paid size — a Spark and a half, through the same curve and the same 25% gold-share guard as money |
+| decay | halves every 24h | same reason boosts decay: staying on top costs effort now |
+| keep | a won slot holds to 90% of its floor | without it a community at exactly 1,000 lost the slot to decay two minutes later and the event feed stuttered |
+| per address | 100 taps / 10s, 1,500 / day, 5 adds / day | a script cannot tap faster than a thumb, and one address cannot outweigh a crowd |
+| batch | ≤50 taps a request, every ~700ms from the page | a thumb never waits on the network |
+| arena | 150 tokens; idle two days and under 25 taps → pruned when full | slots are for the living |
+
+**Thresholds are floors, ranks decide.** Passing a floor makes a token eligible; whoever holds more
+taps holds the slot. Being out-tapped takes it away at any count, and every flip is an event
+(`gold` / `ad` / `lost`, with who took it from whom) — the bar shows the latest and the buybot will
+post them later.
+
+**Why a Durable Object, the one architectural fact here.** A tap is a counter increment and KV is
+the wrong tool for a counter twice over: writes are last-wins across isolates, so two people tapping
+at once lose taps, and the free tier's thousand writes a day are gone in a minute of a tap war. The
+DO is one process with one memory — every tap lands exactly once — and it persists from an alarm,
+at most one storage write every five seconds while anyone is tapping and none while nobody is.
+**No tap ever touches KV.** The class in `src/taps.mjs` is the whole logic, plain and portable; the
+DO is the box it lives in, and `server/dev.mjs` holds one in memory. Tested at 58 assertions
+without a DO in sight. `new_sqlite_classes` in the migration is deliberate: SQLite-backed is the
+kind the free plan allows.
+
+The Worker reads the arena through a five-second per-isolate cache (`arenaState`), busted by that
+isolate's own taps so a tapper's next poll shows their count. The tab's snapshot is also composed
+in `snapshot()`, like trending, with a 5s TTL, and **the collapse guard does not apply to it** —
+an empty arena is a state, not an outage, and so is a shrink after pruning. The client tolerates an
+empty token list on this tab for the same reason; every other feed empty still means the feed is down.
+
+**Identity comes from the chain, never from the form.** Adding a token goes through
+`resolveAnyToken()` exactly as a boost order does, so the arena cannot be told a mint is a token it
+is not, and it takes any chain the boost box takes. Price change and volume for the tab come from
+DexScreener, cached a minute per token; the tap counts are never cached past five seconds.
+
+**Gold won by taps joins the paid-size pool** in `/api/tokens` the way bids do — as
+`GOLD_USD` of live spend on the token's `byMint` entry — so it draws through `bonusFromSpend`, counts
+toward `goldShare`, and re-adds through the existing path when the token is not in the feed being
+viewed. The token carries `tapGold` so the face prints `👆 ×1.6` rather than `★` and the card says
+*golden by taps, not paid for*. The rail merges the two tap winners after whatever is sold, server
+side, so the client's `rail()` did not change.
+
+`/api/tap` requires `sec-fetch-site: same-origin`, which a browser stamps on a fetch from our own
+page and a script does not. A cheap first door, not a lock; the per-address caps are the control,
+and the honest statement is that a tap game cannot keep a determined botter out — it can only make
+winning by bot cost proxies, which cost money, which is roughly the price of the ad. Verified live:
+one address reached 1,000 in 100 seconds, took the rail slot, and decayed out of it minutes later.
+
+The client: a click on this tab is a tap (`tapHit`), the card is one button away in the bar, taps
+kick the bubble for a few frames (`t.kick`, decayed in `draw()`), and a poll never eats what
+somebody is typing into the add box. `?source=taps|tap|tapwars|arena`.
+
 ## Chains and launchpads
 
 `src/flows.mjs`. Two views that are not about individual tokens: where trading is happening across

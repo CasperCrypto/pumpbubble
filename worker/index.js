@@ -13,6 +13,63 @@ import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
+import { Arena } from '../src/taps.mjs';
+
+/* ------------------------------------------------------------- Tap wars */
+/* One Durable Object holds the whole arena. Taps are counter increments and
+   KV cannot count: writes are last-wins across isolates (two tappers at once
+   lose taps) and the free tier's thousand writes a day are gone in a minute
+   of a tap war. A DO is a single process with a single memory, so every tap
+   lands exactly once, and it is persisted from an alarm rather than per tap —
+   at most one storage write every five seconds while people are tapping,
+   none while they are not. The class in src/taps.mjs is the whole logic;
+   this is only the box it lives in. */
+export class TapArena {
+  constructor(state) { this.state = state; this.arena = null; this.dirty = false; }
+  async load() {
+    if (this.arena) return;
+    const saved = await this.state.storage.get('arena');
+    this.arena = Arena.from(saved || null);
+  }
+  async fetch(req) {
+    await this.load();
+    let body = {};
+    try { body = await req.json(); } catch { body = {}; }
+    const now = Date.now();
+    let out;
+    switch (body.op) {
+      case 'add': out = this.arena.add(body.tok, body.ip, now); break;
+      case 'tap': out = this.arena.tap(body.key, body.n, body.ip, now); break;
+      case 'sweep': this.arena.sweep(now); out = { ok: true }; break;
+      default: out = this.arena.state(now);
+    }
+    /* state() records slot flips, so every op can dirty the arena */
+    this.dirty = true;
+    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(now + 5000);
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async alarm() {
+    if (this.dirty && this.arena) {
+      this.dirty = false;
+      await this.state.storage.put('arena', this.arena.toJSON());
+    }
+  }
+}
+
+/* The API talks to the arena through one async call, the same one the Node
+   dev server answers from memory. Without the binding (a deploy that has not
+   run the migration) the routes say so instead of throwing. */
+function arenaClient(env) {
+  if (!env.ARENA) return null;
+  const stub = env.ARENA.get(env.ARENA.idFromName('arena'));
+  return async (op, body = {}) => {
+    const r = await stub.fetch('https://arena/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, ...body }),
+    });
+    return r.json();
+  };
+}
 
 /* Per-isolate memory. Cloudflare recycles isolates freely, so this is a cache,
    never the source of truth — KV holds anything that must survive. */
@@ -132,6 +189,7 @@ async function makeCtx(env, execCtx) {
     env,
     store: makeStore(env),
     hist: await loadHist(env),
+    arena: arenaClient(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),

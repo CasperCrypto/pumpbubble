@@ -322,6 +322,10 @@ export async function enrich(tokens, chain = 'solana') {
     t.vol = num(p.volume && p.volume.h24);
     t.liq = num(p.liquidity && p.liquidity.usd);
     t.price = num(p.priceUsd);
+    /* DexScreener's own market cap, kept beside the feed's rather than over
+       it: pump.fun's figure stays the one the map draws, and a source with no
+       feed of its own (the tap arena) has this to read. */
+    t.dexMcap = num(p.marketCap) || num(p.fdv);
 
     /* A few pump.fun records carry no image_uri at all — the art lives only in
        their metadata_uri, which would cost an extra fetch per token. Since

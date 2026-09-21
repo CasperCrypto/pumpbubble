@@ -277,6 +277,15 @@ export const SOURCES = {
   /* Trending, across every chain at once. Composed from the other feeds in
      api.mjs rather than fetched — see src/trending.mjs for what "trending"
      is defined as, and why it had to be defined rather than fetched. */
+  /* Tap wars. Composed in api.mjs from the arena (a Durable Object in
+     production, memory in dev) — see src/taps.mjs. A short lifetime because
+     the tab is live by definition: the count on a bubble is what people are
+     doing to it right now. */
+  taps: {
+    id: 'taps', label: 'Tap wars', group: 'Tap wars',
+    chain: 'mixed', ttl: 5_000, enrich: false, boostable: true, quality: 'major',
+    fetch: () => [],
+  },
   trending: {
     id: 'trending', label: 'Trending', group: 'Trending',
     chain: 'mixed', ttl: 60_000, shared: true, enrich: false,

@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handle } from '../src/api.mjs';
+import { memoryArena } from '../src/taps.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -56,6 +57,8 @@ const usingPublicRpc = !real(process.env.SOLANA_RPC);
 const ctx = {
   env, store,
   hist: new Map(),
+  /* The tap arena, in memory — production keeps it in a Durable Object. */
+  arena: memoryArena(),
   /* Lets the shared API render /market in dev the same way the worker does. */
   async readAsset(rel) {
     try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }

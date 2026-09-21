@@ -204,6 +204,41 @@ button,input{font-family:inherit}
 }
 #official button:hover,#official a:hover{border-color:var(--up,#26d985)}
 #official .ok{color:var(--up,#26d985)}
+/* The arena bar: what you are tapping, what it has, what it wins. Sits over
+   the bottom of the map only on the Tap wars tab. Mobile first — one column,
+   the add form wraps under. */
+#tapbar{
+  position:absolute;left:8px;right:8px;bottom:8px;z-index:30;display:none;flex-direction:column;gap:6px;
+  padding:8px 10px;border-radius:14px;background:rgba(10,12,18,.92);border:1px solid var(--line);
+  backdrop-filter:blur(8px);font-size:12px;line-height:1.3;
+}
+#tapbar.on{display:flex}
+#tapbar .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+#tapbar .av{width:22px;height:22px;border-radius:50%;object-fit:cover;background:#222;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px}
+#tapbar b{font-weight:800}
+#tapbar .cnt{font-variant-numeric:tabular-nums;font-weight:900;font-size:15px}
+#tapbar .dim{opacity:.65}
+#tapbar .badge{padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.02em}
+#tapbar .badge.gold{background:var(--gold);color:#2b1c00}
+#tapbar .badge.ad{background:rgba(38,217,133,.18);color:var(--up,#26d985);border:1px solid rgba(38,217,133,.4)}
+#tapbar button,#tapbar a{
+  display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;border-radius:999px;
+  background:var(--glass);border:1px solid var(--line);color:inherit;font:inherit;font-size:11.5px;font-weight:700;
+  cursor:pointer;text-decoration:none;transition:.15s;
+}
+#tapbar button:hover,#tapbar a:hover{border-color:rgba(255,255,255,.35)}
+#tapbar button.go{background:var(--gold);color:#2b1c00;border-color:transparent}
+#tapbar input{
+  flex:1;min-width:160px;height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line);
+  background:rgba(255,255,255,.05);color:inherit;font:inherit;font-size:12px;
+}
+#tapbar input:focus{outline:none;border-color:rgba(255,201,60,.5)}
+#tapbar .rules{opacity:.6;font-size:11px}
+#tapbar .ev{opacity:.85;font-size:11px}
+#tapbar .msg{color:var(--gold);font-weight:700}
+@media(min-width:820px){
+  #tapbar{left:50%;right:auto;transform:translateX(-50%);min-width:560px;max-width:820px;bottom:12px}
+}
 #chips{
   position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
@@ -577,6 +612,7 @@ body.embed #brandbadge.on{display:flex}
        a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
     <button data-mode="trending">🔥 Trending</button>
+    <button data-mode="taps">👆 Tap wars</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
@@ -622,6 +658,7 @@ body.embed #brandbadge.on{display:flex}
 <div id="stage">
   <canvas id="cv"></canvas>
   <div id="tip"></div>
+  <div id="tapbar"></div>
   <!-- The legend is gone. It explained three colours to somebody who had
        already worked them out from a screen full of red and green, and the
        "boosted = paid" line is carried by the gold bubbles themselves — they
@@ -898,8 +935,12 @@ async function fetchLive(){
   let j;
   try{ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),12000) }
   catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),15000) }
-  if(!j||!j.ok||!Array.isArray(j.tokens)||!j.tokens.length)throw new Error('empty');
+  if(!j||!j.ok||!Array.isArray(j.tokens))throw new Error('empty');
+  /* An empty arena is a state, not a failure: nobody has added a token yet,
+     and the bar says so. Every other feed empty means the feed is down. */
+  if(!j.tokens.length&&S.mode!=='taps')throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
+  S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null;
   /* The referral template arrives with the feed rather than per token, so the
      Buy button knows where to send people without 300 copies of one URL. */
   if(j.buy)BUY=j.buy;
@@ -920,6 +961,7 @@ async function fetchLive(){
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
     ageH:NN(t.ageH), rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kol:NN(t.kol), tx5:NN(t.tx5),
+    key:t.addr||t.mint||'', taps:+t.taps||0, tapsTotal:+t.tapsTotal||0, tapRank:+t.tapRank||0, award:t.award||'', tapGold:+t.tapGold||0, goldSince:+t.goldSince||0, adSince:+t.adSince||0,
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
     via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
@@ -971,6 +1013,7 @@ async function refresh(first){
     merge(await fetchLive()); S.live=true;
     const s=Math.round((S.age||0)/1000);
     setLive(true, S.serverStale ? 'live · '+s+'s old' : 'live');
+    tapbar();
   }
   catch(e){
     S.live=false;
@@ -1058,10 +1101,14 @@ function rebuild(){
      drawn. Size follows the same measure unless a size mode was picked
      explicitly, otherwise the hottest bubble is a dot beside a bridged major. */
   const byHeat=S.mode==='trending'&&S.sizeBy==='mcap';
+  /* On the arena, size is taps — that is the whole tab. +1 so a token nobody
+     has tapped yet is still a bubble somebody can tap. */
+  const byTaps=S.mode==='taps'&&S.sizeBy==='mcap';
   const M=t=>byHeat?(+t.heat||0)+.01
+    :byTaps?(+t.taps||0)+1
     :S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1
     :S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
-  const RANK=S.mode==='trending'?(t=>+t.heat||0):M;
+  const RANK=S.mode==='trending'?(t=>+t.heat||0):S.mode==='taps'?(t=>+t.taps||0):M;
   L.sort((a,b)=>RANK(b)-RANK(a));
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
@@ -1428,7 +1475,10 @@ function draw(){
     const c=tone(t),r=t.r,hov=S.hover===t;
     if(r<3)continue;
     /* one outline, reused for fill, clip and stroke */
-    const P=blobPath(t);
+    /* A tapped bubble kicks: a little bigger for a few frames, then back.
+       The kick is the one visual that makes a tap feel like it landed. */
+    if(t.kick>0.01){t.kick*=0.82}else t.kick=0;
+    const P=blobPath(t,t.kick?1+t.kick*0.14:undefined);
 
     /* Fire runs top to bottom, not centre outward: white-hot at the tip,
        orange through the body, deep red at the base. A radial gradient makes an
@@ -1548,10 +1598,17 @@ function draw(){
          is not how anyone reads a percentage. */
       ctx.fillText(t.noData?'—':fmtPct(t.chg),t.x,t.y+r*.55);
     }
-    if(c.gold&&r>=34){
+    /* On the arena the number that sized the bubble is the tap count, on
+       every face, gold or not. */
+    if(S.mode==='taps'&&r>=26){
+      ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
+      ctx.fillStyle=c.gold?'rgba(60,40,0,.85)':'rgba(255,255,255,.85)';
+      ctx.fillText('👆 '+fmtTaps(t.taps),t.x,t.y-r*.74);
+    }
+    else if(c.gold&&r>=34){
       ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle='rgba(60,40,0,.85)';
-      ctx.fillText('★ ×'+(1+t.boost).toFixed(1),t.x,t.y-r*.74);
+      ctx.fillText((t.tapGold?'👆 ':'★ ')+'×'+(1+t.boost).toFixed(1),t.x,t.y-r*.74);
     }
     /* Turnover, on the face of the bubble. A burning bubble that does not say
        what it is measuring is decoration; this is the number that put it here —
@@ -1662,6 +1719,8 @@ addEventListener('pointerup',e=>{
      the only route to a purchase was an undocumented shift-click. The card
      carries both actions: open on pump.fun, or boost this one. */
   if(S.embedLink){open('https://pumpbubble.fun/?utm_source=embed&utm_medium=bubble','_blank','noopener');return}
+  /* On the arena a click is a tap. The card is one button away in the bar. */
+  if(S.mode==='taps'){tapHit(t);return}
   openCard(t);
 });
 
@@ -1786,14 +1845,24 @@ function openCard(t){
      put it there — distinct buyers against sellers is the one that tells a
      market from a handful of wallets. Warnings follow on their own line. */
   const nf=n=>Math.round(n).toLocaleString('en-US');
-  const pumpLine=t.via==='pump'
+  const tapLine=(t.via==='taps'||t.tapGold)
+    ? '<div class="warn" style="opacity:.9">👆 '+(t.via==='taps'
+        ? '<b>'+nf(t.taps)+' taps</b> · #'+esc(String(t.tapRank||0))+' in Tap wars'
+          +(t.award==='gold'?' · <b>golden bubble</b> on every tab'+(t.goldSince?' since '+ago(t.goldSince):''):'')
+          +(t.award==='ad'?' · <b>free ad slot</b> in the rail'+(t.adSince?' since '+ago(t.adSince):''):'')
+          +(!t.award?(t.taps>=5000?' · in line for gold':t.taps>=1000?' · in line for a rail slot':' · '+nf(Math.max(0,1000-t.taps))+' more to a free ad slot'):'')
+          +' · <span style="opacity:.7">'+nf(t.tapsTotal)+' all time</span>'
+        : 'golden by taps — <b>'+nf(t.tapGold)+' taps</b> in Tap wars, not paid for')
+      +'</div>'
+    : '';
+  const pumpLine=(t.via==='pump'
     ? '<div class="warn" style="opacity:.9">🔥 #'+esc(String(t.rank))+' on pump.fun trending'+(t.pumpHot?' · <b>HOT</b>':'')+(t.verified?' · ✓ verified':'')
       +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
       +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
       +(t.tx5!=null?' · '+nf(t.tx5)+' trades in 5m':'')
       +(t.kol!=null&&t.kol>0?' · '+nf(t.kol)+' KOLs':'')
       +'</div>'
-    : '';
+    : '')+tapLine;
   e('cWarn').innerHTML=t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
@@ -1958,6 +2027,7 @@ function wire(id,fn){
 wire('mode',b=>{
   S.mode=b.dataset.mode;
   fixTf();
+  tapbar();
   /* Keep the current bubbles on screen while the new feed loads. Clearing them
      left an empty map for as long as the fetch took — and the whole-market feed
      is the slow one, being 250 coins from a cold cache. The old set is replaced
@@ -2318,6 +2388,103 @@ function rail(){
   }).join('');
 }
 
+/* --------------------------------------------------------------- tap wars */
+/* Taps are counted here first and sent in batches — every ~700ms or 25 taps,
+   whichever comes first — so a thumb never waits on the network. The server
+   answers with the score as it stands after its per-address caps, and that
+   number wins. What a bubble shows between flushes is optimistic by at most
+   one batch. */
+const fmtTaps=n=>n>=1000?(n/1000).toFixed(n>=10000?0:1)+'k':String(Math.round(n||0));
+const ago=ts=>{const m=Math.max(0,Math.round((Date.now()-ts)/60000));return m<1?'just now':m<60?m+'m ago':m<1440?Math.round(m/60)+'h ago':Math.round(m/1440)+'d ago'};
+const TAP={key:'',n:0,timer:0,sel:null,msg:'',msgAt:0,busy:false,left:null,addOpen:false};
+function tapHit(t){
+  if(!t.key)return;
+  if(TAP.key&&TAP.key!==t.key)flushTaps();
+  TAP.key=t.key;TAP.n++;TAP.sel=t;
+  t.taps=(t.taps||0)+1;t.kick=1;
+  if(TAP.n>=25)flushTaps();
+  else if(!TAP.timer)TAP.timer=setTimeout(flushTaps,700);
+  tapbar();
+}
+async function flushTaps(){
+  clearTimeout(TAP.timer);TAP.timer=0;
+  const key=TAP.key,n=TAP.n;
+  if(!key||!n)return;
+  TAP.n=0;
+  try{
+    const r=await fetch('/api/tap',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key,n})});
+    const j=await r.json().catch(()=>({}));
+    const t=S.tokens.find(x=>x.key===key);
+    if(!r.ok||!j.ok){
+      /* taps that did not land are taken back */
+      if(t)t.taps=Math.max(0,(t.taps||0)-n);
+      TAP.msg=j.error||'taps did not land';TAP.msgAt=Date.now();
+    }else{
+      /* the server's count, plus whatever has been tapped since this batch left */
+      if(t){t.taps=j.score+(TAP.key===key?TAP.n:0);t.tapRank=j.rank||t.tapRank;t.award=j.award||''}
+      TAP.left=j.left;
+      if(j.limited){TAP.msg=j.left===0?'that is your 1,500 for today — bring friends':'slow down — ten a second is the cap';TAP.msgAt=Date.now()}
+    }
+  }catch(e){TAP.msg='offline — taps not counted';TAP.msgAt=Date.now()}
+  tapbar();
+}
+addEventListener('pagehide',()=>{if(TAP.key&&TAP.n){try{navigator.sendBeacon&&navigator.sendBeacon('/api/tap',new Blob([JSON.stringify({key:TAP.key,n:TAP.n})],{type:'application/json'}))}catch(_){}}});
+
+function tapbar(){
+  const el=document.getElementById('tapbar');
+  if(S.mode!=='taps'){el.classList.remove('on');return}
+  el.classList.add('on');
+  const was=document.getElementById('tapCa');
+  const typing=was&&(was.value||document.activeElement===was)?{value:was.value,focus:document.activeElement===was,sel:was.selectionStart}:null;
+  const t=TAP.sel&&S.tokens.find(x=>x.key===TAP.sel.key)||null;
+  if(t)TAP.sel=t;
+  const n=S.tokens.length;
+  const ev=(S.events||[])[0];
+  const evLine=ev?`<div class="ev">${ev.kind==='gold'?'🥇':ev.kind==='ad'?'🎟':'↓'} <b>$${esc(ev.sym)}</b> ${ev.kind==='gold'?'took gold':ev.kind==='ad'?'won a rail slot':'lost its slot'}${ev.from?' from <b>$'+esc(ev.from)+'</b>':''} · ${ago(ev.at)}</div>`:'';
+  const msg=TAP.msg&&Date.now()-TAP.msgAt<6000?`<span class="msg">${esc(TAP.msg)}</span>`:'';
+  const av=t?(t.img?`<img class="av" src="${esc(t.img)}" alt="">`:`<span class="av">${esc((t.sym||'?')[0])}</span>`):'';
+  const badge=t?(t.award==='gold'?'<span class="badge gold">GOLD</span>':t.award==='ad'?'<span class="badge ad">FREE AD</span>':''):'';
+  const next=t?(t.award==='gold'?'':t.taps>=5000?'in line for gold':t.taps>=1000?'in line for a rail slot':fmtTaps(1000-t.taps)+' to a free ad'):'';
+  const sel=t
+    ?`<div class="row">${av}<b>$${esc(t.sym)}</b><span class="cnt">👆 ${nf0(t.taps)}</span><span class="dim">#${t.tapRank||'—'}</span>${badge}${next?'<span class="dim">'+esc(next)+'</span>':''}
+        <button type="button" data-card="1">details</button><button type="button" data-boost="1">boost</button>${msg}</div>`
+    :`<div class="row"><b>${n?'Tap a bubble.':'The arena is empty.'}</b><span class="dim">${n?'Every tap counts for that token — 1,000 wins a free ad slot, 5,000 a golden bubble on every tab.':'Add the first token and start tapping.'}</span>${msg}</div>`;
+  const add=(TAP.addOpen||!n)
+    ?`<div class="row"><input id="tapCa" placeholder="paste a contract address — any chain" autocomplete="off" spellcheck="false"><button type="button" class="go" data-add="1" ${TAP.busy?'disabled':''}>${TAP.busy?'adding…':'add to the arena'}</button></div>`
+    :'';
+  el.innerHTML=sel+add+`<div class="row"><button type="button" data-open="1">${TAP.addOpen||!n?'':'+ add a token'}</button><span class="rules">top 3 over 5,000 taps wear gold · next 2 over 1,000 take the rail · taps halve every day · ${S.arena?S.arena.n:n} in the arena</span></div>`+evLine;
+  el.querySelectorAll('[data-open]').forEach(b=>{if(!b.textContent)b.remove()});
+  /* A poll must not eat what somebody is typing into the add box. */
+  if(typing){const i=document.getElementById('tapCa');if(i){i.value=typing.value;if(typing.focus){i.focus();try{i.setSelectionRange(typing.sel,typing.sel)}catch(_){}}}}
+}
+const nf0=n=>Math.round(n||0).toLocaleString('en-US');
+document.getElementById('tapbar').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.card&&TAP.sel){openCard(TAP.sel);return}
+  if(b.dataset.boost&&TAP.sel){openBoost(TAP.sel);return}
+  if(b.dataset.open){TAP.addOpen=true;tapbar();const i=document.getElementById('tapCa');if(i)i.focus();return}
+  if(b.dataset.add){
+    const i=document.getElementById('tapCa');const ca=(i&&i.value||'').trim();
+    if(!ca){i&&i.focus();return}
+    TAP.busy=true;tapbar();
+    try{
+      const r=await fetch('/api/tap/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ca})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||!j.ok){TAP.msg=j.error||'could not add that';TAP.msgAt=Date.now()}
+      else{
+        TAP.msg=j.existed?'already in the arena — tap it':'$'+(j.row&&j.row.sym||'')+' is in the arena — tap it';TAP.msgAt=Date.now();
+        TAP.addOpen=false;
+        await refresh(true);
+        const t=S.tokens.find(x=>x.key===j.key);if(t){TAP.sel=t;S.pin=t.key;rebuild()}
+      }
+    }catch(_){TAP.msg='could not reach the arena';TAP.msgAt=Date.now()}
+    TAP.busy=false;tapbar();
+  }
+});
+document.getElementById('tapbar').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&e.target.id==='tapCa'){const b=document.querySelector('#tapbar [data-add]');b&&b.click()}
+});
+
 /* =================================================================== BOOT */
 if(innerWidth<640)document.querySelectorAll('#cntSeg button')
   .forEach(b=>b.classList.toggle('on',b.dataset.n==='50'));
@@ -2365,7 +2532,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={trending:'trending',chains:'chains',pads:'pads',
+  const OK={trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
             prediction:'prediction',predictions:'prediction',bets:'prediction',
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};
