@@ -469,8 +469,12 @@ viewed. The token carries `tapGold` so the face prints `👆 ×1.6` rather than 
 *golden by taps, not paid for*. The rail merges the two tap winners after whatever is sold, server
 side, so the client's `rail()` did not change.
 
-`/api/tap` requires `sec-fetch-site: same-origin`, which a browser stamps on a fetch from our own
-page and a script does not. A cheap first door, not a lock; the per-address caps are the control,
+`/api/tap` refuses a request whose `sec-fetch-site` says cross-site, and — when that header is
+absent — one whose `Origin` is not ours. **Requiring the header to equal `same-origin` was wrong
+and would have been invisible:** Safari did not send Sec-Fetch-* before 16.4, an iPhone is the most
+likely device at a tap game, and every tap from one would have returned 403 with the page saying
+only "taps did not land". A POST carries `Origin` whether or not Sec-Fetch exists, so that is the
+fallback. A cheap first door, not a lock; the per-address caps are the control,
 and the honest statement is that a tap game cannot keep a determined botter out — it can only make
 winning by bot cost proxies, which cost money, which is roughly the price of the ad. Verified live:
 one address reached 1,000 in 100 seconds, took the rail slot, and decayed out of it minutes later.
@@ -494,6 +498,14 @@ it would have labelled the trending items as ads. Filler comes through `/api/ads
 from the trending snapshot behind a 1.5s race so a cold isolate never holds the rail for a feed;
 a trending item opens its card on the map, switching to the Trending tab and pinning it when the
 current tab does not carry it. The client refetches the rail every minute.
+
+**The belt must not restart when the rail refreshes.** Writing `innerHTML` destroys the animated
+element, so every minute's refresh sent it back to the start — and one lap is longer than a minute,
+so it never finished one. `rail()` rebuilds only when the *set* of items changes and otherwise
+writes the new percentages into the elements already on screen, both copies of them. A rail-set pin
+is also dropped the moment the visitor picks a tab themselves (`S.pinFromRail`), or clicking a
+trending coin drags it onto the stocks map and every map after that; a deep link's pin is the
+partner's and stays.
 
 **The fill must never wait on a build, and the first version did.** It raced `snapshot()` against
 1.5 seconds and lost four times in five — measured live: `fill: 0` at ~1.7s on four of five

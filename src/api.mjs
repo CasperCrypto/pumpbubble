@@ -779,8 +779,22 @@ export async function handle(req, ctx) {
        not a lock; the caps are the control. */
     if (path === '/api/tap' && req.method === 'POST') {
       if (!ctx.arena) return json({ ok: false, error: 'the arena is not running' }, 503);
-      if (req.headers.get('sec-fetch-site') !== 'same-origin') {
+      /* A door, not a lock — the per-address caps are the control. Requiring
+         the header to *equal* same-origin locked out every browser that does
+         not send it, which includes Safari before 16.4: an iPhone is the most
+         likely device at a tap game and it would have got 403 on every tap,
+         silently. So a header that is present and says cross-site is refused,
+         and one that is absent falls through to Origin, which a POST carries
+         whether or not Sec-Fetch does. */
+      const sfs = req.headers.get('sec-fetch-site');
+      if (sfs && sfs !== 'same-origin') {
         return json({ ok: false, error: 'taps come from the page' }, 403);
+      }
+      const origin = req.headers.get('origin');
+      if (origin) {
+        let bad = true;
+        try { bad = new URL(origin).host !== url.host; } catch { bad = true; }
+        if (bad) return json({ ok: false, error: 'taps come from the page' }, 403);
       }
       const limited = rateLimit(req, 'tap', 150, 60_000);
       if (limited) return limited;

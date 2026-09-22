@@ -607,7 +607,12 @@ export async function buildSnapshot({ source, hist, secret, store } = {}) {
     }));
   }
   const sampleArt = tokens.find(t => t.rawImg)?.rawImg || '';
-  for (const t of tokens) delete t.rawImg;
+  /* `dexMcap` is enrichment's working note — DexScreener's own market cap,
+     which only a source with no market cap of its own (the tap arena) reads.
+     It was going out on 293 of 300 tokens to every visitor, and nothing on the
+     page has ever looked at it. Stripped here, beside rawImg, for the same
+     reason: a field the client does not read is payload it still pays for. */
+  for (const t of tokens) { delete t.rawImg; delete t.dexMcap; }
 
   return {
     ts: now, sol, count: tokens.length, enriched, withArt, sampleArt,

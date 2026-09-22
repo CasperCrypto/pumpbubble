@@ -821,7 +821,7 @@ const S={
   target:null, parts:[],
   mode:'pumpfun',        // pumpfun | bonding | majors — separate feeds, never mixed
   boostable:true,        // majors have no Solana mint, so they cannot be boosted
-  pin:'', embedLink:false,
+  pin:'', pinFromRail:false, embedLink:false,
   realOnly:true, hidden:0
 };
 const MC_STEPS=[0,1e3,5e3,1e4,2.5e4,5e4,1e5,2.5e5,5e5,1e6,2.5e6,1e7,5e7];
@@ -2049,6 +2049,7 @@ function wire(id,fn){
 }
 wire('mode',b=>{
   S.mode=b.dataset.mode;
+  if(S.pinFromRail){S.pin='';S.pinFromRail=false}
   fixTf();
   tapbar();
   /* Keep the current bubbles on screen while the new feed loads. Clearing them
@@ -2419,6 +2420,23 @@ function rail(){
   }).join('');
   const el=document.getElementById('rail');
   const moving=fill.length>0&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* Writing innerHTML destroys the animated element, so the belt jumped back
+     to the start on every refresh — and the rail refreshes every minute while
+     one lap takes longer than that, so it never finished a lap. The item set
+     rarely changes; the percentages on it always do. So: rebuild only when the
+     *set* changes, and otherwise write the new numbers into the elements that
+     are already there, both copies of them, leaving the animation alone. */
+  const sig=items.map(t=>t.kind+':'+t.sym+':'+(t.tag||'')).join(',')+'|'+moving;
+  if(el.dataset.sig===sig&&el.querySelector('.slot')){
+    for(const t of items){
+      if(t.kind!=='trend'||t.pc==null)continue;
+      el.querySelectorAll('.slot.trend[data-key="'+CSS.escape(t.key||'')+'"] .chg').forEach(c=>{
+        c.textContent=fmtPct(t.pc);c.className='chg '+(t.pc>=0?'up':'dn');
+      });
+    }
+    return;
+  }
+  el.dataset.sig=sig;
   el.classList.toggle('marquee',moving);
   /* the belt is the items twice; the animation moves it by half its width, so
      the second copy arrives exactly where the first began */
@@ -2447,7 +2465,11 @@ async function railOpen(key){
   if(!key)return;
   let t=S.tokens.find(x=>(x.addr||x.mint||x.id)===key);
   if(t){openCard(t);return}
-  S.pin=key;
+  /* Pinned so the bubble is on screen when the tab arrives. A deep link's
+     pin is the partner's and stays; this one is ours and is dropped as soon
+     as the visitor picks a tab themselves, or it drags a $4k trending coin
+     onto the stocks map and every other map after that. */
+  S.pin=key;S.pinFromRail=true;
   if(S.mode!=='trending'){
     S.mode='trending';
     document.querySelectorAll('#mode button').forEach(b=>b.classList.toggle('on',b.dataset.mode==='trending'));
