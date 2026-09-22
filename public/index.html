@@ -166,7 +166,10 @@ button,input{font-family:inherit}
   -webkit-mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}
 #rail .track{display:flex;align-items:center;gap:8px;width:max-content;padding:0 12px;
   animation:rail 60s linear infinite;will-change:transform}
-#rail.marquee:hover .track,#rail.marquee:focus-within .track{animation-play-state:paused}
+/* Hover is a pointer idea. On a phone there is none, so a press pauses the
+   belt — otherwise a person cannot hold one still to read it. */
+#rail.marquee:hover .track,#rail.marquee:focus-within .track,
+#rail.marquee:active .track,#rail.marquee.hold .track{animation-play-state:paused}
 @keyframes rail{to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){#rail .track{animation:none}}
 .slot .tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:5px;
@@ -2428,6 +2431,15 @@ document.getElementById('rail').addEventListener('click',e=>{
   const d=e.target.closest('[data-key]');if(!d)return;
   railOpen(d.dataset.key);
 });
+/* A touch holds the belt still for as long as the finger is down, and a
+   hidden tab does not animate at all. */
+(function(){
+  const el=document.getElementById('rail');
+  const hold=on=>el.classList.toggle('hold',on);
+  el.addEventListener('touchstart',()=>hold(true),{passive:true});
+  ['touchend','touchcancel'].forEach(ev=>el.addEventListener(ev,()=>setTimeout(()=>hold(false),1200),{passive:true}));
+  document.addEventListener('visibilitychange',()=>hold(document.hidden));
+})();
 document.getElementById('rail').addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ')return;const d=e.target.closest('[data-key]');if(!d)return;e.preventDefault();railOpen(d.dataset.key);
 });

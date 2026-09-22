@@ -495,6 +495,20 @@ from the trending snapshot behind a 1.5s race so a cold isolate never holds the 
 a trending item opens its card on the map, switching to the Trending tab and pinning it when the
 current tab does not carry it. The client refetches the rail every minute.
 
+**The fill must never wait on a build, and the first version did.** It raced `snapshot()` against
+1.5 seconds and lost four times in five — measured live: `fill: 0` at ~1.7s on four of five
+requests, so most visitors got the empty `SLOT OPEN` placeholders the fill exists to replace. Every
+`/api/ads` lands on whatever isolate Cloudflare picks, a cold one has no trending in memory, and
+composing that tab is four feeds plus three pump.fun calls. `railFill()` reads what is already
+warm instead — this isolate's snapshot, else the shared KV copy the cron refreshes — and caches the
+derived rows a minute. 14 of 14 afterwards, at 0.15–0.37s. **Stale by a few minutes is the right
+trade for a strip of logos; empty is not.**
+
+Pausing is a pointer idea, so touch gets its own: a press adds `.hold` (released 1.2s after the
+finger lifts, so a tap-to-open is never fighting the belt), and a hidden tab pauses too. Under
+`prefers-reduced-motion` the rail is not a belt at all — it keeps every item and goes back to being
+scrollable, because the trending fill is information, not decoration.
+
 ## Chains and launchpads
 
 `src/flows.mjs`. Two views that are not about individual tokens: where trading is happening across

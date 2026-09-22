@@ -183,6 +183,43 @@ async function findToken(ctx, origin, { mint, sym, srcId }) {
   return null;
 }
 
+/* ---------------------------------------------------------- the rail fill */
+/* What fills the rail when nothing is sold: the top of the Trending tab.
+   Not ads and never labelled as ads — each row carries its rank and its move
+   and the page tags it "trending".
+
+   **This never builds a snapshot.** The first version raced `snapshot()`
+   against 1.5 seconds, and lost four times in five: every `/api/ads` lands on
+   whatever isolate Cloudflare picks, a cold one has no trending in memory, and
+   composing that tab is four feeds plus three pump.fun calls — far more than a
+   second and a half. So the rail shipped empty placeholders to most visitors,
+   which is exactly the thing it was built to stop. It reads what is already
+   warm instead: this isolate's trending snapshot if it has one, else the
+   shared KV copy the cron refreshes every five minutes, and it keeps the
+   derived rows for a minute so a busy isolate reads KV once. Stale by a few
+   minutes is the right trade for a strip of logos; empty is not. */
+let fillCache = { at: 0, rows: [] };
+async function railFill(ctx) {
+  const now = Date.now();
+  if (fillCache.rows.length && now - fillCache.at < 60_000) return fillCache.rows;
+  let snap = cacheFor('trending').data;
+  if (!snap || !snap.tokens || !snap.tokens.length) {
+    try { snap = await ctx.store.get('snap:trending'); } catch { snap = null; }
+  }
+  const rows = ((snap && snap.tokens) || [])
+    .filter(t => t && t.sym && t.solid !== false)
+    .slice(0, 14)
+    .map(t => ({
+      key: t.addr || t.mint || t.id, mint: t.mint || '', addr: t.addr || '', chain: t.chain || '',
+      sym: t.sym, img: t.img || '',
+      pc: t.pc && Number.isFinite(t.pc.h24) ? t.pc.h24
+        : (t.pc && Number.isFinite(t.pc.h1) ? t.pc.h1 : null),
+      rank: t.via === 'pump' ? (t.rank || 0) : 0,
+    }));
+  if (rows.length) fillCache = { at: now, rows };
+  return rows;
+}
+
 /* ------------------------------------------------------------- Tap wars */
 /* The arena is one Durable Object, and every visitor's map poll would be a
    request to it. Cached per isolate for five seconds instead, and busted by
@@ -1880,26 +1917,7 @@ export async function handle(req, ctx) {
           token = { mint: String(o.mint), sym: clean(String(o.sym || ''), 12), name: clean(String(o.name || ''), 48) };
         }
       } catch { token = null; }
-      /* What fills the rail when nothing is sold: the top of the Trending
-         tab. Not ads and not labelled as ads — each carries its rank and its
-         move, and the page tags them "trending". Read from the trending
-         snapshot, which is shared through KV, so a cold isolate answers from
-         one KV read; if even that is slow the rail goes out without them and
-         the next minute's fetch has them. */
-      let fill = [];
-      try {
-        const snap = await Promise.race([
-          snapshot(ctx, sourceOf('trending')),
-          new Promise(res => setTimeout(() => res(null), 1500)),
-        ]);
-        fill = ((snap && snap.tokens) || []).filter(t => t.solid !== false && t.sym).slice(0, 14).map(t => ({
-          key: t.addr || t.mint || t.id, mint: t.mint || '', addr: t.addr || '', chain: t.chain || '',
-          sym: t.sym, img: t.img || '',
-          pc: t.pc && Number.isFinite(t.pc.h24) ? t.pc.h24 : (t.pc && Number.isFinite(t.pc.h1) ? t.pc.h1 : null),
-          rank: t.via === 'pump' ? (t.rank || 0) : 0,
-        }));
-      } catch { fill = []; }
-      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '', token, fill });
+      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '', token, fill: await railFill(ctx) });
     }
 
     /* ------------------------------------------------------- /api/health */
