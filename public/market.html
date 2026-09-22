@@ -12,7 +12,7 @@
 <meta property="og:image" content="https://pumpbubble.fun/og.png">
 <meta property="og:url" content="https://pumpbubble.fun/market">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/favicon.svg">
+<link rel="icon" href="/favicon.png" type="image/png">
 <!--MARKET_JSONLD-->
 <style>
 :root{--bg:#070910;--ink:#eef2f8;--dim:#8a93a6;--line:rgba(255,255,255,.10);
@@ -23,8 +23,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 a{color:var(--mint2)}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
 header{padding:30px 0 8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.mark{width:26px;height:26px;border-radius:50%;
-  background:radial-gradient(circle at 34% 30%,#7dffc4,#0fae66 60%,#046b3d);
+.mark{width:26px;height:26px;border-radius:50%;display:block;object-fit:cover;background:#000;
   box-shadow:0 0 22px rgba(40,224,140,.45)}
 .wordmark{font-weight:900;font-size:19px;letter-spacing:-.02em;text-decoration:none;color:var(--ink)}
 .wordmark i{font-style:normal;color:var(--dim)}
@@ -58,7 +57,7 @@ footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:v
 <div class="wrap">
 
 <header>
-  <div class="mark"></div>
+  <img class="mark" src="/mark.png" alt="" width="26" height="26">
   <a class="wordmark" href="/">pumpbubble<i>.fun</i></a>
   <nav>
     <a href="/">pump.fun map</a>

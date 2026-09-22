@@ -24,13 +24,14 @@
 <meta property="og:image" content="https://pumpbubble.fun/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A field of coloured bubbles, each one a pump.fun token sized by market cap">
+<meta property="og:image:alt" content="pumpbubble.fun — the green P bubble logo over a field of coloured token bubbles">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="pumpbubble.fun — live pump.fun bubble map">
 <meta name="twitter:description" content="Every pump.fun token as a liquid bubble. Size is market cap, colour is price change, gold means someone paid.">
 <meta name="twitter:image" content="https://pumpbubble.fun/og.png">
 
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.png" type="image/png" sizes="64x64">
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="manifest" href="/site.webmanifest">
 
@@ -96,13 +97,12 @@ button,input{font-family:inherit}
   backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
   border-bottom:1px solid var(--line);
 }
+/* The mark is the logo itself now (public/mark.png, the green P bubble); the
+   round mask trims the crop's black corners and the glow is the only paint. */
 .mark{
-  width:26px;height:26px;border-radius:50%;flex:0 0 auto;position:relative;
-  background:radial-gradient(circle at 32% 26%,#c8ffe6,var(--mint) 42%,#0a8a52 78%,#053a24);
-  box-shadow:0 0 18px rgba(40,224,140,.55),inset 0 -3px 6px rgba(0,0,0,.35);
+  width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:block;object-fit:cover;
+  box-shadow:0 0 18px rgba(40,224,140,.55);background:#000;
 }
-.mark::after{content:"";position:absolute;left:22%;top:16%;width:26%;height:20%;border-radius:50%;
-  background:rgba(255,255,255,.85);filter:blur(1px)}
 .wordmark{font-weight:800;letter-spacing:-.035em;font-size:17px;white-space:nowrap}
 .wordmark span{background:linear-gradient(92deg,var(--mint2),#fff 55%,var(--mint2));
   -webkit-background-clip:text;background-clip:text;color:transparent}
@@ -582,7 +582,7 @@ body.embed #brandbadge.on{display:flex}
 
 <!-- ================= top bar ================= -->
 <div id="top">
-  <div class="mark"></div>
+  <img class="mark" src="/mark.png" alt="" width="26" height="26" decoding="async">
   <div class="wordmark"><span>pumpbubble</span><i>.fun</i></div>
   <!-- Whether these numbers are real is the single most important thing on the
        page. Without this, a failed fetch shows generated market caps with
