@@ -10,7 +10,7 @@
    ========================================================================== */
 
 import { handle } from '../src/api.mjs';
-import { histToJSON, histFromJSON, pruneHistory } from '../src/core.mjs';
+import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
@@ -126,23 +126,36 @@ function imageFetcher(execCtx) {
     const cacheKey = new Request(target, { method: 'GET' });
     const cache = caches.default;
 
+    /* **A cached failure is worse than no cache.** `cacheEverything` caches by
+       status as well as by body, so one 429 from a rate-limited IPFS gateway
+       was stored under the image's URL and served back for the whole week-long
+       TTL — before any fallback could run, because the hit returns first. That
+       is why $JEANPHIL wore a letter avatar on the map for days while its art
+       sat one gateway away and answered in 300ms. Only an actual image is a
+       cache hit. */
     const hit = await cache.match(cacheKey);
-    if (hit) return hit;
+    if (hit && hit.ok && /^image\//i.test(hit.headers.get('content-type') || '')) return hit;
 
-    let upstream;
-    try {
-      upstream = await fetch(target, {
-        headers: { 'user-agent': 'pumpbubble.fun/1.0' },
-        signal: AbortSignal.timeout(8000),
-        cf: { cacheTtl: ttl, cacheEverything: true },
-      });
-    } catch {
-      return new Response('upstream unreachable', { status: 502 });
+    /* A rate-limited IPFS gateway is not a missing image — the same CID is on
+       every other gateway. Without this the proxy passed the 429 straight
+       through and the token wore a letter avatar on the map, which is what
+       $JEANPHIL and $Replicate were doing while their art sat one host away.
+       Tried in order, fastest known first, and only on failure. */
+    let upstream = null;
+    for (const href of [target, ...altGateways(target)]) {
+      try {
+        const r = await fetch(href, {
+          headers: { 'user-agent': 'pumpbubble.fun/1.0' },
+          signal: AbortSignal.timeout(8000),
+          /* by status, so a 429 or a 502 is never what the edge remembers */
+          cf: { cacheTtlByStatus: { '200-299': ttl, '300-399': 0, '400-599': 0 } },
+        });
+        if (r.ok && /^image\//i.test(r.headers.get('content-type') || '')) { upstream = r; break; }
+      } catch { /* try the next one */ }
     }
-    if (!upstream.ok) return new Response('upstream ' + upstream.status, { status: 502 });
+    if (!upstream) return new Response('upstream unreachable', { status: 502 });
 
     const type = upstream.headers.get('content-type') || 'image/png';
-    if (!/^image\//i.test(type)) return new Response('not an image', { status: 415 });
 
     const res = new Response(upstream.body, {
       status: 200,

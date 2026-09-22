@@ -254,6 +254,24 @@ export async function resolveAnyToken(addr, secret) {
   return t;
 }
 
+/* A CID is on every gateway; a gateway is not always answering.
+
+   ipfs.io and dweb.link are one operator behind one rate limiter, so a 429
+   from either is a 429 from both, and w3s.link and nftstorage.link are a
+   second such pair. Measured against three CIDs a live top ten could not
+   load: filebase answered all three in 150-620ms, pinata answered all three
+   in 4-7 seconds, cloudflare-ipfs is dead (as the map already knew), and the
+   two pairs above returned 429 to everything. Fast first, slow second.
+
+   This matters beyond the share cards: the image proxy passed the failure
+   straight through, so those tokens wore a letter avatar on the map itself. */
+const IPFS_RE = /^https?:\/\/[^/]+\/ipfs\/([A-Za-z0-9]+)/;
+const IPFS_ALTS = ['https://ipfs.filebase.io/ipfs/', 'https://gateway.pinata.cloud/ipfs/'];
+export function altGateways(url) {
+  const m = IPFS_RE.exec(String(url || ''));
+  return m ? IPFS_ALTS.map(g => g + m[1]) : [];
+}
+
 export async function fetchSolPrice() {
   try { return num((await jget(PUMP + '/sol-price', { ms: 5000 })).solPrice); }
   catch { return 0; }

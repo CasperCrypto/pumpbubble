@@ -493,6 +493,10 @@ The five-row card answers "who moved". This one answers "what does the site look
 drawn the way the map draws them — packed bubbles, sized by rank, coloured by direction, logo above
 the ticker above the percentage. A post then carries a picture of the product.
 
+The background is the bubbles' own light: three translucent rings behind each one, emitted before
+any body so a neighbour's halo never washes over a bubble already drawn. Free-floating glow blobs
+were tried first and read as wallpaper the bubbles happened to sit on.
+
 **Generative, not random.** `seedFor()` is the tickers plus the *hour*. The same ten in the same
 hour is always the same picture — which is what lets the edge cache it, and what stops one link
 showing two pictures of one fact — and the next hour, or one change in the ten, recomposes the
@@ -512,12 +516,29 @@ Two things had to be solved that the row card never faced:
   `fitSize()` solves the size from Archivo Black's ~0.62em average advance against the chord at the
   height each line sits on. Without it `$SCHRÖDINGER` ran a hundred pixels past its rim and across
   its neighbours at the size that suits `$SOL`.
-- **resvg-wasm 2.6.2 decodes PNG, JPEG and GIF — not WebP or AVIF**, and it fails the way an image
-  library fails inside an SVG: no error, no logo, just the committed space. Measured on a live top
-  ten, **five of the ten served `image/webp`** and every one drew an empty ring. `OK_TYPE` in
-  share.mjs now admits only what the rasteriser reads — **this was a pre-existing bug affecting the
-  single-token and five-row cards too**, not something the new card introduced — and a bubble with
-  no art draws no ring at all, moving its two lines up into the space instead.
+- **Art is harder than it looks, and three separate things were breaking it.** resvg-wasm 2.6.2
+  decodes PNG, JPEG and GIF — not WebP or AVIF — and it fails the way an image library fails inside
+  an SVG: no error, no logo, just the committed space. On a live top ten **five of ten served
+  `image/webp`**. This was never a new-card bug: the single-token and five-row cards had it too.
+
+  The pipeline in `logoDataUri` now answers each cause once. **The bytes are the truth, not the
+  header** (`sniffType`): an IPFS gateway returns `text/plain` on a 429 with a sentence in the body
+  and plenty of real PNGs with no type at all, so sniffing both rescues the mislabelled and refuses
+  the error pages. **Ask nicely first** (`preferReadable`): DexScreener's CMS takes `format=auto`,
+  which means "whatever the caller accepts" and answers WebP to anything modern — `format=png` is
+  the same image, free, no third party. **A CID is on every gateway** (`altGateways`, in core.mjs
+  so the image proxy shares it). **And WebP is rented out**: wsrv.nl re-encodes a public image to
+  PNG, for share cards only, never the map, and a failure is the same outcome as before, no logo.
+  A bubble with no art draws no ring at all, moving its two lines up into the space instead.
+
+- **A cached failure is worse than no cache, and this one lasted a week.** The image proxy fetched
+  with `cf: { cacheEverything: true }`, which caches by status as well as body, so a single 429 from
+  a rate-limited IPFS gateway was stored under that image's URL — and `cache.match` returns before
+  any fallback can run, so every later request served the 429 for the whole `IMG_TTL`. $JEANPHIL and
+  $Replicate wore letter avatars **on the map** for days while their art sat one gateway away
+  answering in 300ms. Now only an actual image counts as a hit, and the outbound fetch uses
+  `cacheTtlByStatus` so an error is never what the edge remembers. Measured after: 12 of 12 tokens'
+  art served, none missing.
 
 A row whose window was never measured is not drawn, the same rule as everywhere else; under three
 measured rows and the route 404s and the page redirects to the map rather than publishing a top ten

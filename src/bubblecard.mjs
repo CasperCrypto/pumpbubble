@@ -164,17 +164,13 @@ export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR
   const rand = rng(seed == null ? seedFor(list) : seed);
   const P = pack(radii(list.length, rand), rand);
 
-  /* Background glow blobs, also from the seed, so the field behind the
-     bubbles moves between cards instead of being a fixed backdrop. */
-  let glow = '';
-  for (let i = 0; i < 5; i++) {
-    const gx = PAD + rand() * (CARD_W - PAD * 2);
-    const gy = TOP + rand() * (BOT - TOP);
-    const gr = 90 + rand() * 170;
-    glow += `<circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="${gr.toFixed(1)}" fill="#2bd46e" opacity="${(0.05 + rand() * 0.05).toFixed(3)}"/>`;
-  }
-
-  let defs = '', body = '';
+  /* The light comes off the bubbles, not from behind them. Free-floating glow
+     blobs read as a wallpaper the bubbles happen to sit on; a halo around each
+     one reads as the bubble glowing, which is what the map does. Three
+     translucent rings approximate a blur at a fraction of a filter's cost, and
+     they are emitted before any body so a neighbour's halo never washes over a
+     bubble that is already drawn. */
+  let halo = '', defs = '', body = '';
   list.forEach((r, i) => {
     const p = P[i];
     const up = Number(r.pct) >= 0;
@@ -194,11 +190,15 @@ export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR
     const label = pctLabel(r.pct);
     /* the chord at the height each line sits on, less a margin, is the width
        it has to fit in */
-    const symSize = fitSize(ticker, R * 1.66, Math.min(R * 0.36, 44));
+    const symSize = fitSize(ticker, R * 1.52, Math.min(R * 0.36, 44));
     const pctSize = fitSize(label, R * 1.50, Math.min(R * 0.30, 34));
 
+    halo += `
+  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R * 1.42).toFixed(1)}" fill="${C.mid}" opacity="0.045"/>
+  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R * 1.24).toFixed(1)}" fill="${C.mid}" opacity="0.07"/>
+  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R * 1.09).toFixed(1)}" fill="${C.mid}" opacity="0.11"/>`;
+
     body += `
-  <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R * 1.05).toFixed(1)}" fill="${C.mid}" opacity="0.13"/>
   <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R.toFixed(1)}" fill="url(#g${id})"/>
   <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(R - 1).toFixed(1)}" fill="none" stroke="${C.hi}" stroke-width="1.5" opacity="0.45"/>
   <ellipse cx="${(x - R * 0.34).toFixed(1)}" cy="${(y - R * 0.46).toFixed(1)}" rx="${(R * 0.30).toFixed(1)}" ry="${(R * 0.20).toFixed(1)}" fill="#ffffff" opacity="0.30"/>`;
@@ -239,13 +239,14 @@ export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">
 <defs>
-  <radialGradient id="bg" cx="18%" cy="14%" r="92%">
-    <stop offset="0" stop-color="#10301d"/><stop offset="1" stop-color="#05070a"/>
+  <radialGradient id="bg" cx="50%" cy="58%" r="78%">
+    <stop offset="0" stop-color="#0c2617"/><stop offset="0.55" stop-color="#07130d"/>
+    <stop offset="1" stop-color="#04060a"/>
   </radialGradient>
   ${defs}
 </defs>
 <rect width="${CARD_W}" height="${CARD_H}" fill="url(#bg)"/>
-${glow}
+${halo}
 <text x="${PAD + 20}" y="64" font-family="Archivo Black" font-size="26" fill="#8b98a8" letter-spacing="4">${esc(tag)}</text>
 <text x="${PAD + 20}" y="124" font-family="Archivo Black" font-size="50" fill="#ffffff">${esc(title)}</text>
 <text x="${CARD_W - PAD - 20}" y="124" text-anchor="end" font-family="Archivo Black" font-size="28"

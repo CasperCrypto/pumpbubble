@@ -11,6 +11,7 @@
 
 import { buildBubbleSvg, pack, radii, rng, seedOf, seedFor, fitSize } from '../src/bubblecard.mjs';
 import { CARD_W, CARD_H } from '../src/card.mjs';
+import { sniffType, preferReadable, altGateways, toReadableUrl } from '../src/share.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
@@ -106,6 +107,41 @@ console.log('\nthe card');
   let threw = '';
   try { buildBubbleSvg({ rows: ten.slice(0, 2), seed: 1 }); } catch (e) { threw = e.message; }
   is('two movers is not a top ten', threw, 'not enough rows');
+}
+
+console.log('\nart the rasteriser can read');
+{
+  const png = new Uint8Array([0x89,0x50,0x4E,0x47,13,10,26,10,0,0,0,13]);
+  const jpg = new Uint8Array([0xFF,0xD8,0xFF,0xE0,0,16,0x4A,0x46,0x49,0x46,0,1]);
+  const gif = new Uint8Array([0x47,0x49,0x46,0x38,0x39,0x61,1,0,1,0,0x80,0]);
+  const webp = new Uint8Array([0x52,0x49,0x46,0x46,36,0,0,0,0x57,0x45,0x42,0x50]);
+  const err = new Uint8Array([...'This IPFS gate'].map(c => c.charCodeAt(0)));
+  is('png by its bytes', sniffType(png), 'image/png');
+  is('jpeg by its bytes', sniffType(jpg), 'image/jpeg');
+  is('gif by its bytes', sniffType(gif), 'image/gif');
+  is('webp by its bytes', sniffType(webp), 'image/webp');
+  /* the 429 body an IPFS gateway sends, which arrives as text/plain and would
+     otherwise be base64'd into the card as if it were a picture */
+  is('a rate-limit page is not an image', sniffType(err), '');
+  is('too short to name', sniffType(new Uint8Array([0x89,0x50])), '');
+  is('nothing is not an image', sniffType(null), '');
+
+  is('format=auto is asked for png instead',
+    preferReadable('https://cdn.dexscreener.com/cms/images/X?width=800&format=auto'),
+    'https://cdn.dexscreener.com/cms/images/X?width=800&format=png');
+  is('a url with no format is untouched',
+    preferReadable('https://ipfs.io/ipfs/bafy'), 'https://ipfs.io/ipfs/bafy');
+
+  is('an ipfs url has fallbacks, fastest first',
+    altGateways('https://ipfs.io/ipfs/bafkreiabc').join(' '),
+    'https://ipfs.filebase.io/ipfs/bafkreiabc https://gateway.pinata.cloud/ipfs/bafkreiabc');
+  is('...whatever gateway it came from',
+    altGateways('https://dweb.link/ipfs/QmXyz')[0], 'https://ipfs.filebase.io/ipfs/QmXyz');
+  is('a non-ipfs url has none', altGateways('https://example.com/a.webp').length, 0);
+
+  const conv = toReadableUrl('https://x.io/a.webp?q=1&b=2');
+  is('conversion asks for png', conv.includes('output=png'), true);
+  is('...and carries the whole url encoded', conv.includes(encodeURIComponent('https://x.io/a.webp?q=1&b=2')), true);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

@@ -1,3 +1,4 @@
+import { altGateways } from './core.mjs';
 /* ==========================================================================
    pumpbubble.fun — share pages and the plumbing behind the card
 
@@ -40,28 +41,94 @@ export function upstreamImg(t) {
 
 /* What the rasteriser can actually decode. resvg-wasm 2.6.2 does not do WebP
    or AVIF, and it fails the way an image library fails inside an SVG: no
-   error, no logo, just the space where one should be. Measured on a live top
-   ten — five of the ten tokens served `image/webp` and every one of them drew
-   an empty ring. Letting those through was worse than having no art at all,
-   because the card had already committed the space to it. */
+   error, no logo, just the space where one should be. */
 const OK_TYPE = /^image\/(png|jpeg|jpg|gif)$/;
+
+/* **The content type is not the truth; the first bytes are.** Every art host
+   this project meets gets it wrong in one direction or the other: an IPFS
+   gateway returns `text/plain` on a 429 with a sentence in the body, and
+   returns plenty of real PNGs with no type at all. Sniffing the magic number
+   both rescues the images that arrive mislabelled and refuses the error pages
+   that arrive labelled as images. */
+export function sniffType(b) {
+  if (!b || b.length < 12) return '';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'image/png';
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image/jpeg';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+   && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  return '';
+}
+
+/* Some hosts will simply hand over a format we can read if asked properly.
+   DexScreener's CMS takes `format=auto`, which means "whatever the caller
+   accepts" and answers WebP to anything modern — `format=png` is the same
+   image in a format resvg reads, for free and with no third party. */
+export function preferReadable(url) {
+  return String(url).replace(/([?&])format=auto\b/i, '$1format=png');
+}
+
+/* One list, in core.mjs, because the image proxy needs the same one. */
+export { altGateways } from './core.mjs';
+
+/* WebP is a third of the art on a live top ten and the rasteriser cannot read
+   a byte of it. Decoding it in the Worker would mean a dependency, and this
+   project has one already and wants no more, so the conversion is rented:
+   wsrv.nl re-encodes a public image to PNG. What is sent is a URL that is
+   already public, the request is for a share card only — never the map — and
+   a failure is the same outcome as today, which is no logo. */
+const WSRV = 'https://wsrv.nl/';
+export function toReadableUrl(url, px = 256) {
+  return WSRV + '?url=' + encodeURIComponent(String(url))
+    + '&output=png&w=' + px + '&h=' + px + '&fit=cover&we';
+}
+
+/* One fetch, with the type decided by the bytes. */
+async function grab(url, ms = 7000) {
+  try {
+    const r = await fetch(url, {
+      headers: { accept: 'image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.5' },
+      signal: AbortSignal.timeout(ms),
+    });
+    if (!r.ok) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (!buf.length || buf.length > MAX_ART) return null;
+    const type = sniffType(buf) || (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    return type ? { type, buf } : null;
+  } catch { return null; }
+}
 
 /* A card is not worth an unbounded decode. Some pump.fun art is many megabytes
    of animated GIF, which would spend the whole CPU budget on one thumbnail. */
 const MAX_ART = 3_000_000;
 
+/* Art for a card, in a format the rasteriser reads — going to some lengths,
+   because a card of ten bubbles with four blanks in it is not the product.
+   Three things go wrong and each has one answer:
+
+     1. the host serves WebP           → re-encode it (see toReadableUrl)
+     2. the IPFS gateway is rate limited → ask a different one
+     3. the type header is wrong        → believe the bytes (see sniffType)
+
+   Any step may fail and the result is simply no logo, exactly as before. */
 export async function logoDataUri(t) {
   const raw = upstreamImg(t);
   if (!/^https?:\/\//i.test(raw)) return null;
-  try {
-    const r = await fetch(raw, { signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return null;
-    const type = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!OK_TYPE.test(type)) return null;
-    const buf = new Uint8Array(await r.arrayBuffer());
-    if (!buf.length || buf.length > MAX_ART) return null;
-    return 'data:' + type + ';base64,' + b64(buf);
-  } catch { return null; }
+
+  let got = await grab(preferReadable(raw));
+  for (const alt of (got ? [] : altGateways(raw))) {
+    got = await grab(alt, 9000);
+    if (got) break;
+  }
+  if (!got) return null;
+
+  if (!OK_TYPE.test(got.type)) {
+    /* WebP, AVIF, or something we cannot name: rent the conversion once. */
+    const conv = await grab(toReadableUrl(raw), 9000);
+    if (!conv || !OK_TYPE.test(conv.type)) return null;
+    got = conv;
+  }
+  return 'data:' + got.type + ';base64,' + b64(got.buf);
 }
 
 /* Build the SVG for a token in one window, or null when that window has no
