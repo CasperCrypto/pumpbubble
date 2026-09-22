@@ -9,7 +9,8 @@ import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolP
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
-import { cardSvgFor, boardCardSvgFor, sharePage, page } from './share.mjs';
+import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page } from './share.mjs';
+import { seedFor } from './bubblecard.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
@@ -122,6 +123,33 @@ const caches = new Map();
    rasteriser and is printed onto an image that carries our domain. */
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
+const TEN_TITLE = {
+  trending: 'TOP 10 TRENDING',
+  pumpfun: 'TOP 10 ON PUMP.FUN',
+  majors: 'TOP 10 IN CRYPTO',
+  stocks: 'TOP 10 STOCKS',
+  robinhood: 'TOP 10 ON ROBINHOOD',
+  base: 'TOP 10 ON BASE',
+};
+const TEN_SHARE = {
+  trending: 'Trending right now — the top 10, across every chain',
+  pumpfun: 'The top 10 on pump.fun right now',
+  majors: 'The top 10 in crypto right now',
+  stocks: 'The top 10 stocks right now',
+  robinhood: 'The top 10 on Robinhood Chain right now',
+  base: 'The top 10 on Base right now',
+};
+
+/* The ten the card draws: the tab's own order, not a re-ranking of it — that
+   order is the product. Only rows whose window was actually measured, because
+   a bubble with no percentage has nothing to say and the card would print a
+   dash where the number is the point. */
+function pickTen(tokens, tf) {
+  return (tokens || [])
+    .filter(t => t && t.sym && t.solid !== false && t.pc && Number.isFinite(Number(t.pc[tf])))
+    .slice(0, 10);
+}
+
 const BOARD_TITLE = {
   pumpfun: 'Top movers on pump.fun today',
   majors: 'Top movers in crypto today',
@@ -1026,6 +1054,45 @@ export async function handle(req, ctx) {
       const tf = url.searchParams.get('tf') || 'h24';
       if (!TF_LABEL[tf]) return json({ ok: false, error: 'unknown timeframe' }, 400);
 
+      /* The generative card: the top ten of a tab, drawn as the map draws
+         them. Trending by default, because that tab is the one whose order is
+         a claim worth a picture — pump.fun's own list leading, ours after.
+         The seed is the hour and the tickers, so the cache key can be the
+         same thing and a post never shows two pictures of one fact. */
+      if (url.searchParams.get('kind') === 'bubbles') {
+        const srcId = BOARD_SRC[url.searchParams.get('source') || 'trending'];
+        if (!srcId) return json({ ok: false, error: 'unknown source' }, 400);
+
+        const snap = await snapshot(ctx, sourceOf(srcId));
+        const top = pickTen(snap.tokens || [], tf);
+        if (top.length < 3) return json({ ok: false, error: 'not enough measured movers' }, 404);
+        const seed = seedFor(top, Date.now());
+
+        const store0 = globalThis.caches && globalThis.caches.default;
+        const bk = new Request(url.origin + '/api/card/bubbles/v1/' + srcId + ':' + tf + ':' + seed);
+        if (store0) {
+          const hit = await store0.match(bk);
+          if (hit) return hit;
+        }
+
+        const svg = await bubbleCardSvgFor(top, tf, {
+          title: TEN_TITLE[srcId] || 'TOP 10 TRENDING',
+          sub: (TF_SHORT[tf] || '24H').toUpperCase(),
+          seed,
+        });
+        if (!svg) return json({ ok: false, error: 'no measured changes' }, 404);
+        const buf = await svgToPng(svg, CARD_W);
+        const out = new Response(buf, {
+          headers: {
+            'content-type': 'image/png',
+            'cache-control': 'public, max-age=600',
+            'access-control-allow-origin': '*',
+          },
+        });
+        if (store0) await store0.put(bk, out.clone());
+        return out;
+      }
+
       /* The ranked card. Same filters the poster uses, so what a project sees
          on the leaderboard is what the account would say about it. */
       if (url.searchParams.get('kind') === 'board') {
@@ -1097,6 +1164,40 @@ export async function handle(req, ctx) {
        its own is a dead end for a visitor. */
     /* The ranked share page. A leaderboard gives five projects a reason to
        repost instead of one, which is the whole reason it is published. */
+    /* The page behind the generative card. Same shape as /s/top: crawlers get
+       the picture, people get a way through to the map. */
+    if (path === '/s/top10') {
+      const tf = url.searchParams.get('tf') || 'h24';
+      const srcId = BOARD_SRC[url.searchParams.get('source') || 'trending'];
+      if (!TF_LABEL[tf] || !srcId) return Response.redirect(url.origin + '/', 302);
+
+      const snap = await snapshot(ctx, sourceOf(srcId));
+      const top = pickTen(snap.tokens || [], tf);
+      if (top.length < 3) return Response.redirect(url.origin + '/', 302);
+
+      const qs = (srcId === 'trending' ? '' : '?source=' + srcId);
+      const q = 'kind=bubbles&source=' + srcId + '&tf=' + tf;
+      const desc = top.slice(0, 6).map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
+        + Number(t.pc[tf]).toFixed(0) + '%').join(' · ');
+      const share = url.origin + '/s/top10' + qs;
+
+      return new Response(page({
+        title: (TEN_SHARE[srcId] || 'Top 10') + ' — pumpbubble.fun',
+        desc,
+        canonical: url.origin + '/s/top10',
+        cardUrl: url.origin + '/api/card?' + q,
+        mapUrl: url.origin + '/?source=' + srcId,
+        tweetUrl: 'https://twitter.com/intent/tweet?text='
+          + encodeURIComponent(TEN_SHARE[srcId] || 'Top 10') + '&url=' + encodeURIComponent(share),
+        alt: desc,
+      }), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'public, max-age=300',
+        },
+      });
+    }
+
     if (path === '/s/top') {
       const tf = url.searchParams.get('tf') || 'h24';
       const srcId = BOARD_SRC[url.searchParams.get('source') || 'pumpfun'];

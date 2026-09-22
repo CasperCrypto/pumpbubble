@@ -12,6 +12,7 @@
    ========================================================================== */
 
 import { buildCardSvg, buildBoardSvg, pctLabel, mcapLabel, TF_LABEL } from './card.mjs';
+import { buildBubbleSvg, seedFor } from './bubblecard.mjs';
 
 /* base64 for a byte array. String.fromCharCode(...buf) on a megabyte of image
    overflows the argument stack, so it goes in chunks. */
@@ -37,7 +38,13 @@ export function upstreamImg(t) {
   return /^https?:\/\//i.test(img) ? img : '';
 }
 
-const OK_TYPE = /^image\/(png|jpeg|jpg|gif|webp|avif)$/;
+/* What the rasteriser can actually decode. resvg-wasm 2.6.2 does not do WebP
+   or AVIF, and it fails the way an image library fails inside an SVG: no
+   error, no logo, just the space where one should be. Measured on a live top
+   ten — five of the ten tokens served `image/webp` and every one of them drew
+   an empty ring. Letting those through was worse than having no art at all,
+   because the card had already committed the space to it. */
+const OK_TYPE = /^image\/(png|jpeg|jpg|gif)$/;
 
 /* A card is not worth an unbounded decode. Some pump.fun art is many megabytes
    of animated GIF, which would spend the whole CPU budget on one thumbnail. */
@@ -80,6 +87,22 @@ export async function boardCardSvgFor(tokens, tf, title, sub) {
   })));
   if (!rows.some(r => r.pct != null && Number.isFinite(Number(r.pct)))) return null;
   return buildBoardSvg({ rows, title, sub });
+}
+
+/* The generative card: the top ten as a bubble field. Ten logos from ten
+   different hosts, so they are fetched together — they are the whole latency,
+   exactly as on the five-row card. A logo that does not answer is not an
+   error; that bubble simply wears its ticker. */
+export async function bubbleCardSvgFor(tokens, tf, { title, sub, seed } = {}) {
+  const list = (tokens || []).slice(0, 10);
+  if (list.length < 3) return null;
+  const rows = await Promise.all(list.map(async t => ({
+    sym: t.sym, pct: t && t.pc ? t.pc[tf] : null, mcap: t.mcap,
+    logo: await logoDataUri(t),
+  })));
+  if (rows.filter(r => r.pct != null && Number.isFinite(Number(r.pct))).length < 3) return null;
+  try { return buildBubbleSvg({ rows, title, sub, seed }); }
+  catch { return null; }
 }
 
 const esc = s => String(s == null ? '' : s)

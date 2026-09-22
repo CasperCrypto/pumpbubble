@@ -483,6 +483,46 @@ The client: a click on this tab is a tap (`tapHit`), the card is one button away
 kick the bubble for a few frames (`t.kick`, decayed in `draw()`), and a poll never eats what
 somebody is typing into the add box. `?source=taps|tap|tapwars|arena`.
 
+## The generative card
+
+`src/bubblecard.mjs`, `/api/card?kind=bubbles`, the page at `/s/top10`, and the **Share top 10**
+button on the tabs whose top ten is a claim (trending, pump.fun, majors, stocks, robinhood, base —
+not the flow views, whose venues have no ticker and no logo).
+
+The five-row card answers "who moved". This one answers "what does the site look like": the top ten
+drawn the way the map draws them — packed bubbles, sized by rank, coloured by direction, logo above
+the ticker above the percentage. A post then carries a picture of the product.
+
+**Generative, not random.** `seedFor()` is the tickers plus the *hour*. The same ten in the same
+hour is always the same picture — which is what lets the edge cache it, and what stops one link
+showing two pictures of one fact — and the next hour, or one change in the ten, recomposes the
+whole field: positions, radii jitter and the glow blobs behind them. The cache key is the seed, so
+cache and composition cannot disagree.
+
+Packing is a seeded relaxation (push apart, pull to the middle, clamp), then **a spread pass**,
+because relaxation leaves the cluster compact in the middle of a 1.9:1 letterbox with a third of
+the card empty. The spread scales *positions only, never radii, and never below 1*, on each axis
+independently: every pair of centres moves further apart, so it can separate bubbles but can never
+push one through another. One factor for both axes fills the tight axis and leaves the wide one
+short, which is the axis the eye reads.
+
+Two things had to be solved that the row card never faced:
+
+- **Text has to fit inside a circle.** There is no way to measure a string in the Worker, so
+  `fitSize()` solves the size from Archivo Black's ~0.62em average advance against the chord at the
+  height each line sits on. Without it `$SCHRÖDINGER` ran a hundred pixels past its rim and across
+  its neighbours at the size that suits `$SOL`.
+- **resvg-wasm 2.6.2 decodes PNG, JPEG and GIF — not WebP or AVIF**, and it fails the way an image
+  library fails inside an SVG: no error, no logo, just the committed space. Measured on a live top
+  ten, **five of the ten served `image/webp`** and every one drew an empty ring. `OK_TYPE` in
+  share.mjs now admits only what the rasteriser reads — **this was a pre-existing bug affecting the
+  single-token and five-row cards too**, not something the new card introduced — and a bubble with
+  no art draws no ring at all, moving its two lines up into the space instead.
+
+A row whose window was never measured is not drawn, the same rule as everywhere else; under three
+measured rows and the route 404s and the page redirects to the map rather than publishing a top ten
+we could not fill.
+
 ## The rail moves
 
 The ad rail is a slow continuous belt (`#rail.marquee`, the items twice, `translateX(-50%)`,

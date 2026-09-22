@@ -236,6 +236,18 @@ button,input{font-family:inherit}
   backdrop-filter:blur(8px);font-size:12px;line-height:1.3;
 }
 #tapbar.on{display:flex}
+/* The generative card, one tap from the tab it is about. Bottom-right so it
+   never sits under the arena bar, which owns the bottom of the Tap wars tab. */
+#shareTen{
+  position:absolute;right:10px;bottom:10px;z-index:29;display:none;align-items:center;gap:6px;
+  height:30px;padding:0 13px;border-radius:999px;cursor:pointer;
+  font:inherit;font-size:12px;font-weight:800;color:#2b1c00;background:var(--gold);
+  border:none;box-shadow:0 6px 20px rgba(0,0,0,.45);transition:.15s;
+}
+#shareTen.on{display:inline-flex}
+#shareTen:hover{filter:brightness(1.08)}
+#shareTen:active{transform:translateY(1px)}
+@media (max-width:560px){#shareTen{right:8px;bottom:8px;font-size:11.5px;height:28px;padding:0 11px}}
 #tapbar .row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 #tapbar .av{width:22px;height:22px;border-radius:50%;object-fit:cover;background:#222;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:11px}
 #tapbar b{font-weight:800}
@@ -682,6 +694,7 @@ body.embed #brandbadge.on{display:flex}
   <canvas id="cv"></canvas>
   <div id="tip"></div>
   <div id="tapbar"></div>
+  <button id="shareTen" title="Share this tab's top 10 as a picture">📣 Share top 10</button>
   <!-- The legend is gone. It explained three colours to somebody who had
        already worked them out from a screen full of red and green, and the
        "boosted = paid" line is carried by the gold bubbles themselves — they
@@ -2051,7 +2064,7 @@ wire('mode',b=>{
   S.mode=b.dataset.mode;
   if(S.pinFromRail){S.pin='';S.pinFromRail=false}
   fixTf();
-  tapbar();
+  tapbar();shareTenBtn();
   /* Keep the current bubbles on screen while the new feed loads. Clearing them
      left an empty map for as long as the fetch took — and the whole-market feed
      is the slow one, being 250 coins from a cold cache. The old set is replaced
@@ -2480,6 +2493,49 @@ async function railOpen(key){
   if(t)openCard(t);
 }
 
+/* ------------------------------------------------- share this tab's top 10 */
+/* The card is a picture of the tab, so the button belongs on tabs whose top
+   ten is a claim somebody would repost. Chains, launchpads, prediction and
+   casinos are venues rather than projects — a "top 10 trending" of them is not
+   a thing, and the card's shape (ticker, logo, percentage) is not theirs. */
+const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1};
+function shareTenBtn(){
+  const b=document.getElementById('shareTen');
+  if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
+}
+document.getElementById('shareTen').onclick=()=>openTen();
+function openTen(){
+  const src=S.mode,tf=S.tf;
+  const page=location.origin+'/s/top10?source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
+  const card='/api/card?kind=bubbles&source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
+  document.getElementById('shTk').textContent='top 10';
+  document.getElementById('shActs').style.display='';
+  document.getElementById('shImgWrap').style.display='';
+  document.getElementById('shNote').innerHTML=
+    'A fresh picture of this tab\u2019s top ten \u2014 <b>it recomposes every hour</b>. X reads it straight off the link, so posting the link is enough.';
+  const img=document.getElementById('shImg');
+  img.classList.remove('on');
+  img.onload=()=>img.classList.add('on');
+  /* the card is built on demand and cached at the edge; the busted parameter
+     is the hour, so a reader and a poster see the same picture */
+  img.src=card+'&h='+Math.floor(Date.now()/36e5);
+  const dl=document.getElementById('shDl');
+  dl.href=img.src;
+  dl.setAttribute('download','pumpbubble-top10-'+src+'-'+tf+'.png');
+  const label=(S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
+  document.getElementById('shX').onclick=()=>{
+    open('https://twitter.com/intent/tweet?text='+encodeURIComponent(label)
+      +'&url='+encodeURIComponent(page),'_blank','noopener');
+  };
+  const cp=document.getElementById('shCopy');
+  cp.onclick=async()=>{
+    try{await navigator.clipboard.writeText(page);cp.textContent='Copied'}
+    catch{cp.textContent='Copy failed'}
+    setTimeout(()=>{cp.textContent='Copy link'},1400);
+  };
+  sveil.classList.add('on');
+}
+
 /* --------------------------------------------------------------- tap wars */
 /* Taps are counted here first and sent in batches — every ~700ms or 25 taps,
    whichever comes first — so a thumb never waits on the network. The server
@@ -2704,7 +2760,7 @@ initEmbed();
 merge(demo());
 setLive(false,'loading…');
 resize();rebuild();rail();loop();
-refresh(true);loadAds();resumePendingOrder();
+refresh(true);loadAds();resumePendingOrder();shareTenBtn();
 /* The server caches pump.fun for 10s, so polling faster than that only costs
    us bandwidth — 15s keeps the map live without hammering anything. */
 setInterval(()=>refresh(false),15000);
