@@ -157,8 +157,28 @@ button,input{font-family:inherit}
   padding:8px 12px;overflow-x:auto;scroll-snap-type:x proximity;
   border-bottom:1px solid var(--line);background:rgba(255,255,255,.015);
 }
-#rail::before{content:"AD";flex:0 0 auto;font-size:9px;font-weight:900;letter-spacing:.1em;
-  color:#2b1c00;background:var(--gold);padding:3px 6px;border-radius:5px}
+/* The rail moves. Sold slots, tap-won slots, the pitch, then the top of the
+   Trending tab, on a slow continuous belt that pauses under the pointer.
+   Each item says what it is — AD, 👆 won, #N trending — because a moving
+   strip of tokens must never let a paid one pass as a ranked one. */
+#rail.marquee{overflow:hidden;scroll-snap-type:none;padding-left:0;padding-right:0;
+  mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}
+#rail .track{display:flex;align-items:center;gap:8px;width:max-content;padding:0 12px;
+  animation:rail 60s linear infinite;will-change:transform}
+#rail.marquee:hover .track,#rail.marquee:focus-within .track{animation-play-state:paused}
+@keyframes rail{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){#rail .track{animation:none}}
+.slot .tag{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:5px;
+  font-size:9px;font-weight:900;letter-spacing:.06em;line-height:1}
+.slot.ad .tag{color:#2b1c00;background:var(--gold)}
+.slot.tap .tag{color:var(--up,#26d985);background:rgba(38,217,133,.14);border:1px solid rgba(38,217,133,.35)}
+.slot.trend .tag{color:var(--dim);background:rgba(255,255,255,.06)}
+.slot.pitch{border-style:dashed;border-color:rgba(255,201,60,.45)}
+.slot.pitch b{color:var(--gold)}
+.slot .chg{font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+.slot .chg.up{color:var(--up,#26d985)}.slot .chg.dn{color:var(--dn,#ff4d6a)}
+.slot.trend:hover{border-color:rgba(255,255,255,.3)}
 .slot{
   flex:0 0 auto;scroll-snap-align:start;display:flex;align-items:center;gap:7px;
   height:30px;padding:0 12px 0 4px;border-radius:999px;
@@ -2325,12 +2345,14 @@ async function resumePendingOrder(){
 /* Two kinds of inventory share the rail: boosts (self-serve, on-chain) and
    sold ad slots (from KV, so a slot can be filled without a deploy). Empty
    slots stay visible on purpose — they are the sales pitch. */
-let ADS=[],AD_CONTACT='',OUR=null;
+let ADS=[],AD_CONTACT='',OUR=null,FILL=[];
 async function loadAds(){
   try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';
+    FILL=Array.isArray(j.fill)?j.fill:[];
     OUR=(j.token&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(j.token.mint||'')))?j.token:null;rail();official()}
   catch(e){}
 }
+setInterval(loadAds,60000);
 /* The strip that names the site's own token. It exists because the moment a
    project announces a launch, lookalike addresses appear under its name, and
    the page the project controls is the one place a visitor can check. So it
@@ -2369,23 +2391,59 @@ document.getElementById('official').addEventListener('click',async e=>{
    displayed on the map both double-counts one purchase and gives away
    inventory that should be for sale. */
 function rail(){
+  /* sold first, then slots won by taps, then the pitch, then trending */
   const ads=ADS.slice(0,4)
-    .map(a=>({sym:a.title||'AD',img:a.img,url:a.url,tag:a.sub||'sponsored'}));
-  const openSlots=['YOUR AD HERE','SLOT OPEN','SLOT OPEN','SLOT OPEN']
-    .map(sym=>({sym,url:AD_CONTACT,tag:'ad here'}));
-  const slots=[...ads,...openSlots].slice(0,4);
-  document.getElementById('rail').innerHTML=slots.map(t=>{
+    .map(a=>({kind:a.tap?'tap':'ad',sym:a.title||'AD',img:a.img,url:a.url,tag:a.tap?'👆 won':'AD',sub:a.sub||''}));
+  const pitch={kind:'pitch',sym:'YOUR AD HERE',url:AD_CONTACT,sub:'this slot is for sale'};
+  const fill=FILL.slice(0,14).map(t=>({kind:'trend',sym:t.sym,img:t.img,key:t.key,pc:t.pc,
+    tag:t.rank?'#'+t.rank+' trending':'trending'}));
+  let items=[...ads,pitch,...fill];
+  /* before trending has loaded the rail is what it always was: four slots */
+  if(!fill.length)items=[...ads,pitch,{kind:'pitch',sym:'SLOT OPEN',url:AD_CONTACT,sub:'ad here'},{kind:'pitch',sym:'SLOT OPEN',url:AD_CONTACT,sub:'ad here'}].slice(0,4);
+  const html=items.map(t=>{
     const av=t.img?`<img class="av" src="${esc(t.img)}" alt="" loading="lazy"
         onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'av',textContent:'${esc(t.sym[0])}'}))">`
       :`<span class="av" style="background:hsl(${hue(t.sym)},45%,55%)">${esc(t.sym[0])}</span>`;
-    const inner=`${av}<b>${esc(t.sym)}</b><small>${esc(t.tag||'ad here')}</small>`;
+    const chg=t.kind==='trend'&&t.pc!=null?`<span class="chg ${t.pc>=0?'up':'dn'}">${esc(fmtPct(t.pc))}</span>`:'';
+    const inner=`${av}<b>${esc(t.sym)}</b>${chg}${t.tag?`<span class="tag">${esc(t.tag)}</span>`:''}${t.sub?`<small>${esc(t.sub)}</small>`:''}`;
     /* only ever emit http(s) — an ad row must not be able to smuggle in a
        javascript: URL, even though ad rows come from our own KV */
     const href=/^https?:\/\//i.test(t.url||'')?t.url:'';
+    if(t.kind==='trend')return `<div class="slot trend" data-key="${esc(t.key||'')}" role="button" tabindex="0">${inner}</div>`;
     return href
-      ? `<a class="slot" href="${esc(href)}" target="_blank" rel="noopener nofollow sponsored">${inner}</a>`
-      : `<div class="slot ${t.gold?'gold':''}" ${t.gold?'':'data-open="1"'}>${inner}</div>`;
+      ? `<a class="slot ${t.kind}" href="${esc(href)}" target="_blank" rel="noopener nofollow${t.kind==='ad'?' sponsored':''}">${inner}</a>`
+      : `<div class="slot ${t.kind}">${inner}</div>`;
   }).join('');
+  const el=document.getElementById('rail');
+  const moving=fill.length>0&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.classList.toggle('marquee',moving);
+  /* the belt is the items twice; the animation moves it by half its width, so
+     the second copy arrives exactly where the first began */
+  el.innerHTML=moving?`<div class="track">${html}${html}</div>`:html;
+  if(moving){const tr=el.firstElementChild;requestAnimationFrame(()=>{const w=tr.scrollWidth/2;tr.style.animationDuration=Math.max(24,Math.round(w/34))+'s'})}
+}
+/* A trending item opens that token: on the map if it is here, else on the
+   Trending tab with the bubble pinned. */
+document.getElementById('rail').addEventListener('click',e=>{
+  const d=e.target.closest('[data-key]');if(!d)return;
+  railOpen(d.dataset.key);
+});
+document.getElementById('rail').addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;const d=e.target.closest('[data-key]');if(!d)return;e.preventDefault();railOpen(d.dataset.key);
+});
+async function railOpen(key){
+  if(!key)return;
+  let t=S.tokens.find(x=>(x.addr||x.mint||x.id)===key);
+  if(t){openCard(t);return}
+  S.pin=key;
+  if(S.mode!=='trending'){
+    S.mode='trending';
+    document.querySelectorAll('#mode button').forEach(b=>b.classList.toggle('on',b.dataset.mode==='trending'));
+    fixTf();setLive(false,'loading trending…');
+  }
+  await refresh(true);
+  t=S.tokens.find(x=>(x.addr||x.mint||x.id)===key);
+  if(t)openCard(t);
 }
 
 /* --------------------------------------------------------------- tap wars */

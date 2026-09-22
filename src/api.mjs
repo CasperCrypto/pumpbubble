@@ -1880,7 +1880,26 @@ export async function handle(req, ctx) {
           token = { mint: String(o.mint), sym: clean(String(o.sym || ''), 12), name: clean(String(o.name || ''), 48) };
         }
       } catch { token = null; }
-      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '', token });
+      /* What fills the rail when nothing is sold: the top of the Trending
+         tab. Not ads and not labelled as ads — each carries its rank and its
+         move, and the page tags them "trending". Read from the trending
+         snapshot, which is shared through KV, so a cold isolate answers from
+         one KV read; if even that is slow the rail goes out without them and
+         the next minute's fetch has them. */
+      let fill = [];
+      try {
+        const snap = await Promise.race([
+          snapshot(ctx, sourceOf('trending')),
+          new Promise(res => setTimeout(() => res(null), 1500)),
+        ]);
+        fill = ((snap && snap.tokens) || []).filter(t => t.solid !== false && t.sym).slice(0, 14).map(t => ({
+          key: t.addr || t.mint || t.id, mint: t.mint || '', addr: t.addr || '', chain: t.chain || '',
+          sym: t.sym, img: t.img || '',
+          pc: t.pc && Number.isFinite(t.pc.h24) ? t.pc.h24 : (t.pc && Number.isFinite(t.pc.h1) ? t.pc.h1 : null),
+          rank: t.via === 'pump' ? (t.rank || 0) : 0,
+        }));
+      } catch { fill = []; }
+      return json({ ok: true, ads, contact: ctx.env.AD_CONTACT || '', token, fill });
     }
 
     /* ------------------------------------------------------- /api/health */

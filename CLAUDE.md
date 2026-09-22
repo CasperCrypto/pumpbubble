@@ -479,6 +479,22 @@ The client: a click on this tab is a tap (`tapHit`), the card is one button away
 kick the bubble for a few frames (`t.kick`, decayed in `draw()`), and a poll never eats what
 somebody is typing into the add box. `?source=taps|tap|tapwars|arena`.
 
+## The rail moves
+
+The ad rail is a slow continuous belt (`#rail.marquee`, the items twice, `translateX(-50%)`,
+speed set from the belt's own width, paused under the pointer, off under
+`prefers-reduced-motion`). Order: **sold slots, tap-won slots, the pitch, then the top fourteen of
+the Trending tab.** The trending items exist because an empty rail is an empty rail; the pitch stays
+because an empty *slot* is the sales pitch.
+
+**A moving strip of tokens must never let a paid one pass as a ranked one**, so every item wears
+what it is: `AD` on a sold slot, `👆 won` on a tap-won one, `#N trending` on a filler with its 24h
+move in green or red, and the pitch is dashed gold. The old `AD` badge on the rail itself is gone —
+it would have labelled the trending items as ads. Filler comes through `/api/ads` as `fill`, read
+from the trending snapshot behind a 1.5s race so a cold isolate never holds the rail for a feed;
+a trending item opens its card on the map, switching to the Trending tab and pinning it when the
+current tab does not carry it. The client refetches the rail every minute.
+
 ## Chains and launchpads
 
 `src/flows.mjs`. Two views that are not about individual tokens: where trading is happening across
