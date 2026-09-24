@@ -1329,7 +1329,9 @@ function renderTraderTable(box,list){
   const key={realized:t=>t.realized||0,total:t=>t.total==null?-1e15:t.total,open:t=>t.unrealized==null?-1e15:t.unrealized,
              positions:t=>t.positions||0}[TR_SORT];
   const rows=[...list].sort((a,b)=>key(b)-key(a));
+  /* under a dollar is flat: "$0" in grey, never "\u2212$0" */
   const money=v=>v==null||!Number.isFinite(+v)?'<span style="color:var(--dim)">\u2014</span>'
+    :Math.abs(v)<1?'<span style="color:var(--dim)">$0</span>'
     :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'\u2212'}${esc(fmtUsd(Math.abs(v)))}</span>`;
   const th=(k,label,cls='')=>`<th class="${cls}${TR_SORT===k?' on':''}" ${k?'data-tsort="'+k+'"':''}>${label}${TR_SORT===k?' \u2193':''}</th>`;
   box.innerHTML='<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num')+th('open','Open positions','num c-h1')
