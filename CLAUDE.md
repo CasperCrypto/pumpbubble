@@ -178,6 +178,17 @@ leaves a 0×0 canvas and an empty map. Three paths keep it correct: the `resize`
 `ResizeObserver`, and a check every 30 frames in `loop()`. The last one is not redundant:
 ResizeObserver callbacks are only delivered with a rendering frame.
 
+## Pushing deploys
+
+**Every push to `main` deploys**, through Cloudflare's Git integration (Workers Builds); the GitHub
+Action in `.github/workflows/deploy.yml` has its push trigger switched off. So a local
+`npx wrangler deploy` of uncommitted work is overwritten a minute or two later by the build of
+whatever was last pushed — which is exactly how the Smart money table went live at 19:26 and
+vanished at 19:28, replaced by the previous commit's page. Commit and push first; deploy manually
+after that only to skip the wait, since both then ship the same code. A second deploy landing a
+minute after the first also restarts every isolate again, which is the likeliest cause of the
+smoke test's post-deploy 502s.
+
 ## Conventions
 
 - No dependencies, front end or back. If a library is genuinely needed, argue for it first.
@@ -611,6 +622,23 @@ held; the other three were Robinhood Chain tokens that endpoint does not cover.
   tab uses without liquidity (`MAX_CAP_TO_VOL`, 2000) removes them: ETH turned over 1/29,831 of its
   "cap" a day, real coins on the tab 1/50 to 1/300.
 - It is a token view: Boost, Buy and Chart all work. Share top 10 reads "N TRADERS" on each bubble.
+
+**One tab, two views, four boards — and the holdings are a table.** Traders and Smart money share
+the strip's 🧠 Smart money tab; `#subbar` switches between *What they hold* (`S.mode='smart'`) and
+*Top traders* (`'traders'`), and under *What they hold* the board tabs pick whose holdings count —
+All, Today's, This week's, This month's (sources `smart`, `smart-daily|weekly|monthly`,
+`smartMoney(periods)`). The board is its own control now, so the 1H/24H pills keep meaning the price
+move. The boards tell different stories on the same afternoon: all boards ZCAT ×16, today's traders
+goon ×7, this month's ZCAT ×12. `feedId()` is the one place tab state becomes a source id;
+`lightMode()` lights Smart money for either view; `?source=traders`, `traders-weekly`,
+`smart-monthly` and the rest land on the right view and board.
+
+*What they hold* is drawn as a **table, not bubbles** — asked for directly, and right: "who holds
+what" is names and numbers, and a circle can carry one of them. `renderSmartTable()` takes the
+rebuild's full ranked list (not the bubble limit), sorts by holders, market cap, 1H or 24H from its
+headers, and a row opens the ordinary card with Chart, Buy and Boost. While it shows, the canvas is
+hidden and `loop()` skips the physics and the draw — ninety bubbles animating under a table was
+CPU spent on nothing. *Top traders* stays a bubble map: that is the flex picture people post.
 
 ## The generative card
 
