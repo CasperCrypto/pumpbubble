@@ -353,6 +353,15 @@ const SPEND_EXP = 0.637;
 const SPEND_K = 0.1233;
 const BONUS_CAP = 5.0;       // radius x4 — beyond this one bubble owns the map
 
+/* The inverse of the curve below: what spend buys a given bonus. The console
+   sets a house bubble's size as "×2" or "×4" — what the face will print —
+   and this turns that into the spend the one sizing path already understands,
+   so a house bubble is sized exactly like a paid one of the same face. */
+export function spendForBonus(bonus) {
+  const b = Math.max(0, Math.min(BONUS_CAP, Number(bonus) || 0));
+  return b > 0 ? Math.pow(b / SPEND_K, 1 / SPEND_EXP) : 0;
+}
+
 export function bonusFromSpend(usd) {
   if (!(usd > 0)) return 0;
   return Math.min(BONUS_CAP, SPEND_K * Math.pow(usd, SPEND_EXP));
@@ -473,7 +482,9 @@ export async function sweepPayments(store, rpcUrl, treasury, resolveRef = null) 
 
 export async function activeBoosts(store, now = Date.now()) {
   const list = (await store.get('boosts')) || [];
-  const live = list.filter(b => b.house || b.until > now);
+  /* A house bubble now has a duration the operator picks; one written before
+     that carries `until` a century out, so the same test serves both. */
+  const live = list.filter(b => (b.house && !b.until) || b.until > now);
   const byMint = new Map();
   for (const b of live) {
     const cur = byMint.get(b.mint) ||

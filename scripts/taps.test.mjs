@@ -133,9 +133,10 @@ console.log('\ndecay in the arena');
   is('gold today', a.state(T0).tokens[0].award, 'gold');
   is('half the taps tomorrow', a.state(T0 + HALF_LIFE_MS).tokens[0].taps, GOLD_MIN / 2);
   is('…so a rail slot, not gold', a.state(T0 + HALF_LIFE_MS).tokens[0].award, 'ad');
-  is('…and nothing in three days', a.state(T0 + 3 * HALF_LIFE_MS).tokens[0].award, '');
   const r = a.tap(MINT(1), 10, '2.2.2.2', T0 + HALF_LIFE_MS);
   is('a tap after decay adds to the decayed score', r.score, GOLD_MIN / 2 + 10);
+  /* the 24-hour rule: nobody tapped it for a day, so it has left the arena */
+  is('…and gone once nobody tapped it for a day', a.state(T0 + 3 * HALF_LIFE_MS).tokens.length, 0);
 }
 
 console.log('\nkeeping a slot');
@@ -183,6 +184,42 @@ console.log('\nround trip');
   is('taps survive serialisation', b.state(T0).tokens[0].taps, 1234);
   is('awards survive serialisation', b.state(T0).tokens[0].award, 'ad');
   is('events survive serialisation', b.state(T0).events.length, 1);
+}
+
+console.log('\nthe 24-hour rule');
+{
+  const a = new Arena();
+  a.add(tok(1), '1.1.1.1', T0);
+  a.add(tok(2), '1.1.1.2', T0);
+  crowd(a, MINT(1), GOLD_MIN, T0, 100);
+  is('a token tapped within the day stays', a.state(T0 + 20 * 36e5).tokens.some(r => r.sym === 'T1'), true);
+  is('a token added and never tapped leaves after a day', a.state(T0 + 25 * 36e5).tokens.some(r => r.sym === 'T2'), false);
+  is('…and so does gold nobody defends', a.state(T0 + 25 * 36e5).tokens.some(r => r.sym === 'T1'), false);
+  is('…and says so in the feed', a.state(T0 + 25 * 36e5).events.some(e => e.kind === 'expired' && e.sym === 'T1'), true);
+
+  const b = new Arena();
+  b.add(tok(3), '1.1.1.3', T0);
+  crowd(b, MINT(3), 50, T0, 100);
+  crowd(b, MINT(3), 50, T0 + 23 * 36e5, 300);
+  is('a tap resets the clock', b.state(T0 + 40 * 36e5).tokens.length, 1);
+
+  const c = new Arena();
+  is('the hours are the operator’s', c.config({ idleHours: 72 }).ok, true);
+  c.add(tok(4), '1.1.1.4', T0);
+  is('…a longer window keeps an idle token', c.state(T0 + 48 * 36e5).tokens.length, 1);
+  is('…and nonsense is refused', c.config({ idleHours: 0 }).ok, false);
+  is('…survives serialisation', Arena.from(JSON.parse(JSON.stringify(c.toJSON()))).cfg.idleHours, 72);
+}
+
+console.log('\nthe console');
+{
+  const a = new Arena();
+  a.add(tok(1), '1.1.1.1', T0);
+  crowd(a, MINT(1), AD_MIN + 10, T0, 100);
+  is('reset takes the taps to zero', (a.reset(MINT(1), T0), a.state(T0).tokens[0].taps), 0);
+  is('…and the slot with them', a.state(T0).tokens[0].award, '');
+  is('remove takes it out', (a.remove(MINT(1)), a.state(T0).tokens.length), 0);
+  is('removing what is not there says so', a.remove(MINT(9)).ok, false);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

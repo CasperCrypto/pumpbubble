@@ -166,24 +166,58 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
 
   <div class="card">
     <h2>Ad rail</h2>
+    <p class="dim" style="font-size:12px;margin:0 0 8px">
+      Four slots. Yours come first, then slots won in Tap wars, then trending fills what is left.
+      A slot whose time is up disappears by itself.</p>
     <div id="ads"></div>
     <div class="row">
       <input id="aTitle" placeholder="title" style="width:120px">
       <input id="aSub" placeholder="subtitle" style="width:150px">
       <input id="aUrl" placeholder="https://…" style="flex:1;min-width:200px">
       <input id="aImg" placeholder="image url (optional)" style="flex:1;min-width:180px">
-      <button class="go" id="aAdd">Add slot</button>
+      <select id="aHours" class="dur"></select>
+      <button class="go" id="aAdd">Save slot</button>
+      <button id="aCancel" class="hide">Cancel edit</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>Boosts</h2>
+    <h2>Bubbles on the map</h2>
+    <p class="dim" style="font-size:12px;margin:0 0 8px">
+      Gold bubbles you place, on every tab. Size is what the bubble's face will say. Any chain —
+      paste the contract. Paid boosts from buyers are listed here too.</p>
     <div id="boosts"></div>
     <div class="row">
-      <select id="bChain"><option value="">solana (mint)</option><option value="base">base</option><option value="robinhood">robinhood</option></select>
-      <input id="bMint" placeholder="mint or 0x contract" style="flex:1;min-width:240px">
-      <input id="bUsd" placeholder="usd" value="400" style="width:90px">
-      <button class="go" id="bAdd">Add house boost</button>
+      <input id="bMint" placeholder="contract address — any chain" style="flex:1;min-width:240px">
+      <select id="bSize">
+        <option value="1.5">size ×1.5</option><option value="2">size ×2</option>
+        <option value="3" selected>size ×3</option><option value="4">size ×4</option><option value="6">size ×6 (max)</option>
+      </select>
+      <select id="bHours" class="dur"></select>
+      <button class="go" id="bAdd">Save bubble</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Hidden from the map</h2>
+    <p class="dim" style="font-size:12px;margin:0 0 8px">
+      Off every tab, the rail and the share cards — for scams, spam, or anything you do not want shown.</p>
+    <div id="hidden"></div>
+    <div class="row">
+      <input id="hCa" placeholder="contract address" style="flex:1;min-width:240px">
+      <input id="hNote" placeholder="note (optional)" style="width:180px">
+      <button class="bad" id="hAdd">Hide</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tap wars</h2>
+    <div id="arena"></div>
+    <div class="row">
+      <span class="dim">Remove tokens nobody tapped for</span>
+      <input id="tIdle" style="width:70px" inputmode="numeric">
+      <span class="dim">hours</span>
+      <button class="go" id="tIdleSave">Save</button>
     </div>
   </div>
 
@@ -237,6 +271,14 @@ let PW='';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money=n=>n>=1e6?'$'+(n/1e6).toFixed(2)+'M':n>=1e3?'$'+(n/1e3).toFixed(1)+'K':'$'+(+n||0).toFixed(2);
+let D=null, EDIT_AD='';
+const DUR=[[1,'1 hour'],[6,'6 hours'],[24,'24 hours'],[72,'3 days'],[168,'7 days'],[720,'30 days'],[0,'until removed']];
+/* how long something still shows; a century out is how "forever" was written */
+const left=u=>{if(!u||u-Date.now()>50*365*864e5)return 'always';const ms=u-Date.now();if(ms<=0)return 'expired';
+  const h=ms/36e5;return h>=48?Math.round(h/24)+' days left':h>=1?Math.floor(h)+'h '+Math.round((h%1)*60)+'m left':Math.max(1,Math.round(ms/6e4))+'m left'};
+/* the size the bubble's face prints — the same curve the map uses */
+const face=b=>b.size>1?String(b.size):(1+Math.min(5,0.1233*Math.pow(+b.usd||0,0.637))).toFixed(1);
+document.querySelectorAll('select.dur').forEach(s=>{s.innerHTML=DUR.map(([h,l])=>'<option value="'+h+'"'+(h===24?' selected':'')+'>show '+l+'</option>').join('')});
 
 async function api(action,body){
   const r=await fetch(BASE+'/api',{method:'POST',
@@ -293,21 +335,41 @@ async function load(){
     d.feeds.map(f=>'<tr><td>'+esc(f.id)+'</td><td>'+f.tokens+'</td><td>'+f.solid+'</td><td class="dim">'+
       (f.age==null?'—':Math.round(f.age/1000)+'s')+'</td></tr>').join('')+'</table>';
 
+  D=d;
   $('ads').innerHTML=d.ads.length
-    ? '<table><tr><th>title</th><th>url</th><th></th></tr>'+d.ads.map(a=>
-        '<tr><td>'+esc(a.title)+'</td><td class="dim">'+esc((a.url||'').slice(0,52))+'</td>'+
-        '<td><button class="bad" data-del-ad="'+esc(a.title)+'">remove</button></td></tr>').join('')+'</table>'
-    : '<div class="dim">no slots filled — the rail shows SLOT OPEN</div>';
+    ? '<table><tr><th>title</th><th>subtitle</th><th>link</th><th>shows</th><th></th></tr>'+d.ads.map(a=>
+        '<tr><td>'+esc(a.title)+'</td><td class="dim">'+esc(a.sub||'')+'</td><td class="dim">'+esc((a.url||'').slice(0,40))+'</td>'+
+        '<td class="dim">'+esc(left(a.until))+'</td>'+
+        '<td style="white-space:nowrap"><button data-edit-ad="'+esc(a.title)+'">edit</button> <button class="bad" data-del-ad="'+esc(a.title)+'">remove</button></td></tr>').join('')+'</table>'
+    : '<div class="dim">no slots filled — the rail shows trending and the "your ad here" pitch</div>';
+
+  $('hidden').innerHTML=(d.hidden||[]).length
+    ? '<table><tr><th>token</th><th>address</th><th>note</th><th></th></tr>'+d.hidden.slice().reverse().map(h=>
+        '<tr><td>'+esc(h.sym||'?')+'</td><td class="dim"><code>'+esc(h.key.slice(0,6)+'…'+h.key.slice(-4))+'</code></td><td class="dim">'+esc(h.note||'')+'</td>'+
+        '<td><button data-del-hide="'+esc(h.key)+'">unhide</button></td></tr>').join('')+'</table>'
+    : '<div class="dim">nothing hidden</div>';
+
+  if(d.arena){
+    $('tIdle').value=d.arena.idleHours;
+    const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<60?m+'m ago':m<2880?Math.round(m/60)+'h ago':Math.round(m/1440)+'d ago'};
+    $('arena').innerHTML=d.arena.tokens.length
+      ? '<table><tr><th>#</th><th>token</th><th>taps</th><th>holds</th><th>last tap</th><th></th></tr>'+d.arena.tokens.map((t,i)=>
+          '<tr><td class="dim">'+(i+1)+'</td><td>'+esc(t.sym)+'</td><td>'+esc(String(t.taps))+'</td><td>'+(t.award==='gold'?'<b style="color:#ffc93c">gold</b>':t.award==='ad'?'rail slot':'<span class="dim">—</span>')+'</td>'+
+          '<td class="dim">'+ago(t.lastTap)+'</td><td style="white-space:nowrap"><button data-tap-reset="'+esc(t.key)+'">reset taps</button> <button class="bad" data-tap-remove="'+esc(t.key)+'">remove</button></td></tr>').join('')+'</table>'
+      : '<div class="dim">the arena is empty</div>';
+  }else $('arena').innerHTML='<div class="dim">the arena is not running</div>';
 
   $('ourtoken').innerHTML=d.token&&d.token.mint
     ? '<div><b>$'+esc(d.token.sym||'')+'</b> <span class="dim">'+esc(d.token.name||'')+'</span><br><code>'+esc(d.token.mint)+'</code></div>'
     : '<div class="dim">none - the header strip is hidden</div>';
-  $('boosts').innerHTML=d.boosts.length
-    ? '<table><tr><th>token</th><th>kind</th><th>spent</th><th>until</th><th></th></tr>'+d.boosts.map(b=>
-        '<tr><td>'+esc(b.sym||b.mint.slice(0,6))+'</td><td>'+(b.house?'<span class="dim">house</span>':'paid')+
-        '</td><td>'+money(b.spentUsd||0)+'</td><td class="dim">'+(b.house?'never':new Date(b.until).toISOString().slice(0,16).replace('T',' '))+
-        '</td><td><button class="bad" data-del-boost="'+esc(b.mint)+'">remove</button></td></tr>').join('')+'</table>'
-    : '<div class="dim">none</div>';
+  const live=d.boosts.filter(b=>!(b.until&&b.until<Date.now()));
+  $('boosts').innerHTML=live.length
+    ? '<table><tr><th>token</th><th>kind</th><th>size</th><th>shows</th><th></th></tr>'+live.map(b=>
+        '<tr><td>'+esc(b.sym||b.mint.slice(0,6))+'</td><td>'+(b.house?'<span class="dim">yours</span>':'paid '+money(b.spentUsd||0))+
+        '</td><td>×'+face(b)+'</td><td class="dim">'+esc(left(b.until))+
+        '</td><td style="white-space:nowrap">'+(b.house?'<button data-edit-boost="'+esc(b.mint)+'">edit</button> ':'')+
+        '<button class="bad" data-del-boost="'+esc(b.mint)+'">remove</button></td></tr>').join('')+'</table>'
+    : '<div class="dim">no gold bubbles on the map</div>';
 
   $('seeds').innerHTML=Object.entries(d.seeds).map(([chain,list])=>
     '<div style="margin-bottom:6px"><b>'+esc(chain)+'</b> '+
@@ -330,6 +392,18 @@ document.addEventListener('click',async e=>{
   try{
     if(b.dataset.delAd){await api('ad.remove',{title:b.dataset.delAd});say('removed');return load()}
     if(b.dataset.delBoost){await api('boost.remove',{mint:b.dataset.delBoost});say('removed');return load()}
+    if(b.dataset.delHide){await api('hide.remove',{key:b.dataset.delHide});say('back on the map');return load()}
+    if(b.dataset.tapReset){await api('tap.reset',{key:b.dataset.tapReset});say('taps reset');return load()}
+    if(b.dataset.tapRemove){await api('tap.remove',{key:b.dataset.tapRemove});say('removed from the arena');return load()}
+    if(b.dataset.editAd){
+      const a=(D&&D.ads||[]).find(x=>x.title===b.dataset.editAd);if(!a)return;
+      $('aTitle').value=a.title;$('aSub').value=a.sub||'';$('aUrl').value=a.url||'';$('aImg').value=a.img||'';
+      EDIT_AD=a.title;$('aAdd').textContent='Save changes';$('aCancel').classList.remove('hide');$('aTitle').focus();return}
+    if(b.dataset.editBoost){
+      const x=(D&&D.boosts||[]).find(y=>y.mint===b.dataset.editBoost);if(!x)return;
+      $('bMint').value=x.mint;
+      const f=+face(x);let best='3';for(const o of $('bSize').options)if(Math.abs(+o.value-f)<Math.abs(+best-f))best=o.value;
+      $('bSize').value=best;$('bMint').focus();say('change size or time, then Save bubble');return}
     if(b.dataset.delSeed){const [c,a]=b.dataset.delSeed.split('|');await api('seed.remove',{chain:c,addr:a});say('unpinned');return load()}
   }catch(err){say(err.message,true)}
 });
@@ -347,14 +421,29 @@ function opState(){let on=false;try{on=localStorage.getItem('pb_op')==='1'}catch
   $('opState').textContent=on?'on in this browser':'off in this browser'}
 $('opOff').onclick=()=>{try{localStorage.removeItem('pb_op')}catch(_){}opState()};
 
+const adReset=()=>{$('aTitle').value=$('aSub').value=$('aUrl').value=$('aImg').value='';EDIT_AD='';
+  $('aAdd').textContent='Save slot';$('aCancel').classList.add('hide')};
 $('aAdd').onclick=async()=>{
-  try{ await api('ad.add',{title:$('aTitle').value,sub:$('aSub').value,url:$('aUrl').value,img:$('aImg').value});
-    $('aTitle').value=$('aSub').value=$('aUrl').value=$('aImg').value=''; say('slot added'); load(); }
+  try{ await api('ad.add',{title:$('aTitle').value,sub:$('aSub').value,url:$('aUrl').value,img:$('aImg').value,
+      hours:+$('aHours').value,prevTitle:EDIT_AD});
+    say(EDIT_AD?'slot updated':'slot added'); adReset(); load(); }
   catch(e){say(e.message,true)}
 };
+$('aCancel').onclick=adReset;
 $('bAdd').onclick=async()=>{
-  try{ await api('boost.house',{mint:$('bMint').value,chain:$('bChain').value,usd:+$('bUsd').value||400});
-    $('bMint').value=''; say('house boost added'); load(); }
+  const ca=$('bMint').value.trim();if(!ca){say('paste a contract address',true);return}
+  try{ const r=await api('boost.house',{ca,size:+$('bSize').value,hours:+$('bHours').value});
+    $('bMint').value=''; say('$'+(r.sym||'')+' is on the map at ×'+$('bSize').value); load(); }
+  catch(e){say(e.message,true)}
+};
+$('hAdd').onclick=async()=>{
+  const ca=$('hCa').value.trim();if(!ca){say('paste a contract address',true);return}
+  try{ const r=await api('hide.add',{ca,note:$('hNote').value});
+    $('hCa').value=$('hNote').value=''; say((r.sym?'$'+r.sym:'token')+' hidden from the map'); load(); }
+  catch(e){say(e.message,true)}
+};
+$('tIdleSave').onclick=async()=>{
+  try{ await api('tap.config',{idleHours:+$('tIdle').value}); say('saved'); load(); }
   catch(e){say(e.message,true)}
 };
 $('tSet').onclick=async()=>{

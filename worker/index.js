@@ -41,6 +41,10 @@ export class TapArena {
       case 'add': out = this.arena.add(body.tok, body.ip, now); break;
       case 'tap': out = this.arena.tap(body.key, body.n, body.ip, now); break;
       case 'sweep': this.arena.sweep(now); out = { ok: true }; break;
+      case 'remove': out = this.arena.remove(body.key); break;
+      case 'reset': out = this.arena.reset(body.key, now); break;
+      case 'config': out = this.arena.config(body.cfg); break;
+      case 'cfg': out = { ok: true, cfg: this.arena.cfg }; break;
       default: out = this.arena.state(now);
     }
     /* state() records slot flips, so every op can dirty the arena */

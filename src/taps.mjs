@@ -83,12 +83,13 @@ export class Arena {
     /* who held what at the last look, so a change can be named */
     this.held = s.held && typeof s.held === 'object' ? s.held : { gold: [], ad: [] };
     this.updatedAt = +s.updatedAt || 0;
+    this.cfg = s.cfg && typeof s.cfg === 'object' ? s.cfg : { idleHours: 24 };
   }
 
   static from(json) { return new Arena(json); }
 
   toJSON() {
-    return { tokens: this.tokens, events: this.events, ips: this.ips, held: this.held, updatedAt: this.updatedAt };
+    return { tokens: this.tokens, events: this.events, ips: this.ips, held: this.held, updatedAt: this.updatedAt, cfg: this.cfg };
   }
 
   /* -------------------------------------------------------------- limits */
@@ -202,6 +203,17 @@ export class Arena {
      Calling state() is therefore not free of side effects, on purpose — the
      arena is the one place that knows a slot changed hands. */
   state(now = Date.now()) {
+    /* Nobody tapped it for a day: it leaves the arena, slot and all. Taps
+       already halve daily, but a halving never reaches zero — a token at
+       5,000 taps would have sat on the tab for a week after its community
+       stopped. The operator sets the hours in the console. */
+    const idle = (this.cfg && this.cfg.idleHours > 0 ? this.cfg.idleHours : 24) * 36e5;
+    for (const [k, t] of Object.entries(this.tokens)) {
+      if (now - Math.max(t.lastTap || 0, t.added || 0) > idle) {
+        delete this.tokens[k];
+        this.events.push({ at: now, kind: 'expired', key: k, sym: t.sym, taps: 0 });
+      }
+    }
     const rows = Object.values(this.tokens).map(t => this._row(t, now));
     rows.sort((a, b) => b.taps - a.taps || a.added - b.added);
 
@@ -257,6 +269,26 @@ export class Arena {
     if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
   }
 
+  /* ---------------------------------------------------------- the console */
+  remove(key) {
+    const k = String(key || '');
+    if (!this.tokens[k]) return { ok: false, error: 'not in the arena' };
+    delete this.tokens[k];
+    return { ok: true };
+  }
+  reset(key, now = Date.now()) {
+    const t = this.tokens[String(key || '')];
+    if (!t) return { ok: false, error: 'not in the arena' };
+    t.score = 0; t.since = now;
+    return { ok: true };
+  }
+  config(c = {}) {
+    const h = Math.round(Number(c.idleHours));
+    if (!(h >= 1 && h <= 720)) return { ok: false, error: 'hours must be 1–720' };
+    this.cfg = { ...this.cfg, idleHours: h };
+    return { ok: true, cfg: this.cfg };
+  }
+
   /* housekeeping the owner calls now and then */
   sweep(now = Date.now()) {
     this._pruneIps(now);
@@ -273,6 +305,10 @@ export function memoryArena() {
     if (op === 'add') return arena.add(body.tok, body.ip, now);
     if (op === 'tap') return arena.tap(body.key, body.n, body.ip, now);
     if (op === 'sweep') { arena.sweep(now); return { ok: true }; }
+    if (op === 'remove') return arena.remove(body.key);
+    if (op === 'reset') return arena.reset(body.key, now);
+    if (op === 'config') return arena.config(body.cfg);
+    if (op === 'cfg') return { ok: true, cfg: arena.cfg };
     return arena.state(now);
   };
 }

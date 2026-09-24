@@ -43,7 +43,7 @@ import { board, priceFor, standing, countClick, bidsAsBoostSpend,
          FLOOR_SOL, INCREMENT_SOL } from './bids.mjs';
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
-  activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend,
+  activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend, spendForBonus,
   addPending, listPending, sweepPayments, ORDER_TTL_MS,
 } from './boosts.mjs';
 
@@ -220,6 +220,20 @@ async function findToken(ctx, origin, { mint, sym, srcId }) {
   return null;
 }
 
+/* ---------------------------------------------------------- hidden tokens */
+/* The operator's hide list, read through a 30s per-isolate cache so a map
+   poll does not cost a KV read. Busted on this isolate by the console. */
+let hiddenCache = { at: 0, set: new Set() };
+async function hiddenSet(ctx) {
+  if (Date.now() - hiddenCache.at < 30_000) return hiddenCache.set;
+  try {
+    const list = (await ctx.store.get('hidden')) || [];
+    hiddenCache = { at: Date.now(), set: new Set(list.map(h => h.key)) };
+  } catch { hiddenCache.at = Date.now(); }
+  return hiddenCache.set;
+}
+const isHidden = (set, t) => set.size > 0 && t && (set.has(t.addr || '') || set.has(t.mint || '') || set.has(String(t.addr || '').toLowerCase()));
+
 /* ---------------------------------------------------------- the rail fill */
 /* What fills the rail when nothing is sold: the top of the Trending tab.
    Not ads and never labelled as ads — each row carries its rank and its move
@@ -243,8 +257,9 @@ async function railFill(ctx) {
   if (!snap || !snap.tokens || !snap.tokens.length) {
     try { snap = await ctx.store.get('snap:trending'); } catch { snap = null; }
   }
+  const hid = await hiddenSet(ctx);
   const rows = ((snap && snap.tokens) || [])
-    .filter(t => t && t.sym && t.solid !== false)
+    .filter(t => t && t.sym && t.solid !== false && !isHidden(hid, t))
     .slice(0, 14)
     .map(t => ({
       key: t.addr || t.mint || t.id, mint: t.mint || '', addr: t.addr || '', chain: t.chain || '',
@@ -776,6 +791,10 @@ export async function handle(req, ctx) {
         tokens.push(...readd);
       }
 
+      /* the operator's hide list — off every tab, whatever put it there */
+      const hid = await hiddenSet(ctx);
+      if (hid.size) tokens = tokens.filter(t => !isHidden(hid, t));
+
       /* Say on the token that its gold was tapped for, not paid for. */
       for (const [k, b] of byMint) if (b.tap) {
         const t = tokens.find(x => (x.addr || x.mint) === k);
@@ -1097,7 +1116,8 @@ export async function handle(req, ctx) {
         if (!srcId) return json({ ok: false, error: 'unknown source' }, 400);
 
         const snap = await snapshot(ctx, sourceOf(srcId));
-        const top = pickTen(snap.tokens || [], tf);
+        const hid = await hiddenSet(ctx);
+        const top = pickTen((snap.tokens || []).filter(t => !isHidden(hid, t)), tf);
         if (top.length < 3) return json({ ok: false, error: 'not enough measured movers' }, 404);
         const seed = seedFor(top, Date.now());
 
@@ -1679,6 +1699,14 @@ export async function handle(req, ctx) {
             traffic, feeds,
             ads: await readAds(),
             boosts: all.slice(-40).reverse(),
+            hidden: (await ctx.store.get('hidden')) || [],
+            arena: ctx.arena ? await (async () => {
+              try {
+                const [st, c] = await Promise.all([ctx.arena('state'), ctx.arena('cfg')]);
+                return { tokens: (st.tokens || []).map(t => ({ key: t.key, sym: t.sym, taps: t.taps, award: t.award, lastTap: t.lastTap, added: t.added })),
+                         idleHours: (c && c.cfg && c.cfg.idleHours) || 24 };
+              } catch { return null; }
+            })() : null,
             token: (await ctx.store.get('ourtoken')) || null,
             seeds, xbot, tg,
           });
@@ -1695,9 +1723,18 @@ export async function handle(req, ctx) {
           if (img && !/^https:\/\//i.test(img)) {
             return json({ ok: false, error: 'image must be https' }, 400);
           }
-          const ads = (await readAds()).filter(a => (a.title || '').toUpperCase() !== title.toUpperCase());
-          ads.push({ title, sub: String(body.sub || 'sponsored').slice(0, 40), img, url });
-          await ctx.store.put('ads', ads.slice(0, 4));
+          /* Editing is saving under the same title; renaming names the old
+             one in `prevTitle` so it is replaced rather than left behind. */
+          const prev = String(body.prevTitle || '').toUpperCase();
+          const hours = Math.max(0, Math.min(24 * 90, Number(body.hours) || 0));
+          const ads = (await readAds()).filter(a => {
+            const t = (a.title || '').toUpperCase();
+            return t !== title.toUpperCase() && (!prev || t !== prev);
+          });
+          if (ads.length >= 4) return json({ ok: false, error: 'the rail has four slots — remove one first' }, 400);
+          ads.push({ title, sub: String(body.sub || 'sponsored').slice(0, 40), img, url,
+                     at: Date.now(), until: hours ? Date.now() + hours * 36e5 : 0 });
+          await ctx.store.put('ads', ads);
           return json({ ok: true });
         }
 
@@ -1709,12 +1746,19 @@ export async function handle(req, ctx) {
         }
 
         if (action === 'boost.house') {
-          const id = String(body.mint || '').trim();
-          const chain = String(body.chain || '').trim();
+          const id = String(body.ca || body.mint || '').trim();
+          let chain = String(body.chain || '').trim();
           const evm = /^0x[0-9a-f]{40}$/i.test(id);
           if (!evm && !isMint(id)) return json({ ok: false, error: 'not a mint or contract' }, 400);
+          /* The chain comes from the token, not a dropdown: the same lookup a
+             boost order uses names it. A dropdown was one more way to file a
+             Robinhood token as Base. */
           if (evm && chain !== 'base' && chain !== 'robinhood') {
-            return json({ ok: false, error: 'contract needs a chain' }, 400);
+            try {
+              const r = await resolveAnyToken(id, ctx.env.IMG_SECRET);
+              chain = (r && r.chain) || '';
+            } catch { chain = ''; }
+            if (!chain) return json({ ok: false, error: 'could not find a market for that contract' }, 404);
           }
 
           /* Identity comes from the chain rather than from the form, so a house
@@ -1741,13 +1785,19 @@ export async function handle(req, ctx) {
 
           const key = evm ? id.toLowerCase() : id;
           const all = await readBoosts();
-          const usd = Math.max(1, Math.min(10_000, Number(body.usd) || 400));
+          /* Size as the face will print it (×1.5 … ×6), or a spend for the
+             older form. Duration in hours; 0 is until removed. */
+          const size = Number(body.size);
+          const usd = size > 1
+            ? Math.max(1, Math.round(spendForBonus(size - 1) * 100) / 100)
+            : Math.max(1, Math.min(10_000, Number(body.usd) || 400));
+          const hours = Math.max(0, Math.min(24 * 365, Number(body.hours) || 0));
           const next = all.filter(b => b.mint !== key);
           next.push({
             mint: key, sym, name, img, mcap,
             ...(evm ? { chain } : {}),
-            usd, spentUsd: usd, tier: 'house', mult: 0,
-            at: Date.now(), until: Date.now() + 100 * 365 * 864e5,
+            usd, spentUsd: usd, tier: 'house', mult: 0, size: size > 1 ? size : 0,
+            at: Date.now(), until: hours ? Date.now() + hours * 36e5 : Date.now() + 100 * 365 * 864e5,
             house: true,
           });
           await ctx.store.put('boosts', next);
@@ -1769,6 +1819,41 @@ export async function handle(req, ctx) {
         if (action === 'token.clear') {
           await ctx.store.put('ourtoken', null);
           return json({ ok: true });
+        }
+
+        /* Hidden from the map: off every tab, the rail and the share cards.
+           Named from the chain where possible so the list says what it is. */
+        if (action === 'hide.add') {
+          const id = String(body.ca || '').trim();
+          if (!isCA(id)) return json({ ok: false, error: 'not a contract address' }, 400);
+          const key = /^0x/i.test(id) ? id.toLowerCase() : id;
+          let sym = '';
+          try { const r = await resolveAnyToken(id, ctx.env.IMG_SECRET); sym = (r && r.sym) || ''; } catch {}
+          const list = ((await ctx.store.get('hidden')) || []).filter(h => h.key !== key);
+          list.push({ key, sym, note: String(body.note || '').slice(0, 60), at: Date.now() });
+          await ctx.store.put('hidden', list.slice(-500));
+          hiddenCache.at = 0;
+          return json({ ok: true, sym });
+        }
+        if (action === 'hide.remove') {
+          const key = String(body.key || '');
+          await ctx.store.put('hidden', ((await ctx.store.get('hidden')) || []).filter(h => h.key !== key));
+          hiddenCache.at = 0;
+          return json({ ok: true });
+        }
+
+        /* Tap wars, from the console. */
+        if (action === 'tap.remove' || action === 'tap.reset') {
+          if (!ctx.arena) return json({ ok: false, error: 'the arena is not running' }, 503);
+          const r = await ctx.arena(action === 'tap.remove' ? 'remove' : 'reset', { key: String(body.key || '') });
+          arenaCache.at = 0; cacheFor('taps').at = 0;
+          return json(r, r.ok ? 200 : 400);
+        }
+        if (action === 'tap.config') {
+          if (!ctx.arena) return json({ ok: false, error: 'the arena is not running' }, 503);
+          const r = await ctx.arena('config', { cfg: { idleHours: body.idleHours } });
+          arenaCache.at = 0;
+          return json(r, r.ok ? 200 : 400);
         }
 
         if (action === 'boost.remove') {
@@ -2043,7 +2128,8 @@ export async function handle(req, ctx) {
          a broken image. A sold slot showing no logo is worse than an empty one,
          because the empty slot is at least an advert for the inventory. */
       const ads = [];
-      for (const a of raw) {
+      /* a slot whose time is up is simply not served */
+      for (const a of raw.filter(a => !(a.until > 0 && a.until < Date.now()))) {
         let img = a.img || '';
         if (img && ctx.env.IMG_SECRET && !img.startsWith('/api/img?')) {
           try {

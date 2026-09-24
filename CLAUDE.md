@@ -932,7 +932,26 @@ would not publish them to the world — but git history is forever and repos cha
 whereas a secret can be rotated in one command without touching a commit.
 
 It shows revenue, traffic, per-feed health, and manages the ad rail, house boosts and pinned
-tokens. **House boosts are excluded from the revenue figure** — they are the operator's own slot and
+tokens.
+
+**What the operator can do from it now** (asked for as "edit ads, add remove tokens, bubbles, control
+size and how long"): ads are edited in place (renaming names the old title in `prevTitle`) and carry
+a **show-for** time — `until`, 0 for always — after which `/api/ads` simply stops serving them. Gold
+bubbles take any contract (the chain comes from `resolveAnyToken`, not a dropdown), a **size** as
+the face will print it (×1.5–×6, turned into spend by `spendForBonus`, the inverse of the one sizing
+curve) and a **duration**; `activeBoosts` honours `until` on house bubbles now, and old ones carry
+`until` a century out. A **hide list** (KV `hidden`, 30s isolate cache) takes a token off every tab,
+the rail and the share cards. **Tap wars** can be reset or pruned per token, and the arena removes a
+token nobody tapped for `cfg.idleHours` (default 24, set in the console) — taps halve daily but a
+halving never reaches zero, so a 5,000-tap token sat on the tab for a week after its community left.
+
+**KV writes are over the free tier, and have been for a while.** Measured when the console's first
+save returned *"KV put() limit exceeded for the day"*: every `shared` source writes its snapshot on
+every rebuild (trending ≈1,440/day at a 60s lifetime, base ≈720, majors and robinhood ≈480, the four
+flow views ≈288 each), plus history, sweeps and stats — well over 5,000 a day against 1,000. Every
+one of those writes is wrapped in "next tick retries", so once the cap hits each day the site stops
+saving *silently* — including the `boosts` write that activates a paid boost. Workers Paid ($5/month)
+includes a million writes a month; until then, decouple the KV write interval from the TTL. **House boosts are excluded from the revenue figure** — they are the operator's own slot and
 counting them would be inventing income. And the rule this project already learned about sweeps
 holds here: *where money goes is never a request parameter*, so nothing in the console accepts a
 destination address.
