@@ -112,6 +112,18 @@ async function grab(url, ms = 7000) {
   } catch { return null; }
 }
 
+/* The same, through a fetcher that returns a Response (the image proxy). */
+async function grabVia(via, url) {
+  try {
+    const r = await via(url);
+    if (!r || !r.ok) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (!buf.length || buf.length > MAX_ART) return null;
+    const type = sniffType(buf) || (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    return type ? { type, buf } : null;
+  } catch { return null; }
+}
+
 /* A card is not worth an unbounded decode. Some pump.fun art is many megabytes
    of animated GIF, which would spend the whole CPU budget on one thumbnail. */
 const MAX_ART = 3_000_000;
@@ -125,11 +137,18 @@ const MAX_ART = 3_000_000;
      3. the type header is wrong        → believe the bytes (see sniffType)
 
    Any step may fail and the result is simply no logo, exactly as before. */
-export async function logoDataUri(t) {
+export async function logoDataUri(t, via = null) {
   const raw = upstreamImg(t);
   if (!/^https?:\/\//i.test(raw)) return null;
 
-  let got = await grab(preferReadable(raw));
+  /* **The map's own image proxy first.** It has usually served this exact
+     art already, so it is an edge-cache hit with no upstream call at all —
+     and on a miss it walks the same gateways. Measured on the first Smart
+     money table card: six of ten logos were ipfs.io art that ipfs.io
+     answered 429 to the card's direct fetch, while /api/img served every one
+     of them in ~0.1s from the cache. */
+  let got = via ? await grabVia(via, raw) : null;
+  if (!got) got = await grab(preferReadable(raw));
   for (const alt of (got ? [] : altGateways(raw))) {
     got = await grab(alt, 9000);
     if (got) break;
@@ -152,23 +171,23 @@ export async function logoDataUri(t) {
 /* Build the SVG for a token in one window, or null when that window has no
    measured value. Absent is not zero: a card reading +0.00% because we never
    had a 30-day figure is a fabricated screenshot with our domain on it. */
-export async function cardSvgFor(t, tf) {
+export async function cardSvgFor(t, tf, via = null) {
   const pct = t && t.pc ? t.pc[tf] : null;
   if (pct == null || !Number.isFinite(Number(pct))) return null;
   return buildCardSvg({
     sym: t.sym, name: t.name, pct, tf, mcap: t.mcap,
-    logo: await logoDataUri(t),
+    logo: await logoDataUri(t, via),
   });
 }
 
 /* The ranked card for a set of tokens. Art is fetched in parallel because it
    is five round trips to five different hosts and they are the whole latency. */
-export async function boardCardSvgFor(tokens, tf, title, sub) {
+export async function boardCardSvgFor(tokens, tf, title, sub, via = null) {
   const list = (tokens || []).slice(0, 5);
   if (!list.length) return null;
   const rows = await Promise.all(list.map(async t => ({
     sym: t.sym, pct: t && t.pc ? t.pc[tf] : null, mcap: t.mcap,
-    logo: await logoDataUri(t),
+    logo: await logoDataUri(t, via),
   })));
   if (!rows.some(r => r.pct != null && Number.isFinite(Number(r.pct)))) return null;
   return buildBoardSvg({ rows, title, sub });
@@ -178,13 +197,13 @@ export async function boardCardSvgFor(tokens, tf, title, sub) {
    different hosts, so they are fetched together — they are the whole latency,
    exactly as on the five-row card. A logo that does not answer is not an
    error; that bubble simply wears its ticker. */
-export async function bubbleCardSvgFor(tokens, tf, { title, sub, seed } = {}) {
+export async function bubbleCardSvgFor(tokens, tf, { title, sub, seed, via = null } = {}) {
   const list = (tokens || []).slice(0, 10);
   if (list.length < 3) return null;
   const rows = await Promise.all(list.map(async t => ({
     sym: t.sym, pct: t && t.pc ? t.pc[tf] : null, mcap: t.mcap,
     label: t.cardLabel, title: t.cardTitle, up: t.cardUp,
-    logo: await logoDataUri(t),
+    logo: await logoDataUri(t, via),
   })));
   if (rows.filter(r => r.label || (r.pct != null && Number.isFinite(Number(r.pct)))).length < 3) return null;
   try { return buildBubbleSvg({ rows, title, sub, seed }); }

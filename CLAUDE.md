@@ -655,6 +655,12 @@ the pill's window / MCAP. The window label sits on the tag line, not beside the 
 capitals average ~0.7em, not the 0.62 the mixed-case estimate uses, and the first render ran the
 title into it. `/s/top10` and the popup switch to `kind=table` for these sources on their own.
 
+**Card art goes through the map's image proxy first** (`logoDataUri(t, via)`, `via` =
+`ctx.fetchImage`). The first live table card had six letter discs in ten: all ipfs.io art, which
+ipfs.io answered 429 to the card's direct fetch while `/api/img` served every one in ~0.1s from the
+edge cache the map had already filled. The proxy is a cache hit with no upstream call, and on a miss
+it walks the same gateways; the old direct path stays as the fallback. Every card kind passes it.
+
 ## The generative card
 
 `src/bubblecard.mjs`, `/api/card?kind=bubbles`, the page at `/s/top10`, and the **Share top 10**

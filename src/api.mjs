@@ -1114,12 +1114,10 @@ export async function handle(req, ctx) {
 
       const tf = url.searchParams.get('tf') || 'h24';
       if (!TF_LABEL[tf]) return json({ ok: false, error: 'unknown timeframe' }, 400);
+      /* card art comes through the map's image proxy: edge-cached, with the
+         gateway fallbacks already proven there (see logoDataUri) */
+      const via = ctx.fetchImage ? (u => ctx.fetchImage(u, IMG_TTL)) : null;
 
-      /* The generative card: the top ten of a tab, drawn as the map draws
-         them. Trending by default, because that tab is the one whose order is
-         a claim worth a picture — pump.fun's own list leading, ours after.
-         The seed is the hour and the tickers, so the cache key can be the
-         same thing and a post never shows two pictures of one fact. */
       /* The leaderboard card: Smart money's two views are tables, so their
          share card is one — ten rows of picture, name and numbers. Cached
          per source, window, hour and names, like the bubble card. */
@@ -1139,16 +1137,18 @@ export async function handle(req, ctx) {
         const seed = seedFor(top, Date.now());
 
         const store0 = globalThis.caches && globalThis.caches.default;
-        const bk = new Request(url.origin + '/api/card/table/v1/' + srcId + ':' + tf + ':' + seed);
+        const bk = new Request(url.origin + '/api/card/table/v2/' + srcId + ':' + tf + ':' + seed);
         if (store0) {
           const hit = await store0.match(bk);
           if (hit) return hit;
         }
 
-        const money = v => (v >= 0 ? '+' : '\u2212') + (mcapLabel(Math.abs(v)) || '$0');
+        /* under a dollar is flat, not "\u2212$0" */
+        const money = v => Math.abs(v) < 1 ? '$0' : (v >= 0 ? '+' : '\u2212') + (mcapLabel(Math.abs(v)) || '$0');
+        const tone = v => v == null || Math.abs(v) < 1 ? T_DIM : v >= 0 ? T_UP : T_DN;
         const pct = v => v == null || !Number.isFinite(+v) ? '\u2014'
           : (v >= 0 ? '+' : '\u2212') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(1)) + '%';
-        const logos = await Promise.all(top.map(t => logoDataUri(t).catch(() => null)));
+        const logos = await Promise.all(top.map(t => logoDataUri(t, via).catch(() => null)));
         const period = { h24: '24H', d7: '7D', d30: '30D', h1: '1H' }[tf] || '24H';
         let spec;
         if (traders) {
@@ -1158,8 +1158,8 @@ export async function handle(req, ctx) {
             rows: top.map((t, i) => ({
               title: t.xh ? '@' + t.xh : t.sym, subtitle: t.xh ? t.sym : '', logo: logos[i],
               values: [{ text: money(t.realized || 0), color: T_UP },
-                       { text: t.unrealized == null ? '\u2014' : money(t.unrealized), color: t.unrealized == null ? T_DIM : t.unrealized >= 0 ? T_UP : T_DN },
-                       { text: t.total == null ? '\u2014' : money(t.total), color: t.total == null ? T_DIM : t.total >= 0 ? T_UP : T_DN }],
+                       { text: t.unrealized == null ? '\u2014' : money(t.unrealized), color: tone(t.unrealized) },
+                       { text: t.total == null ? '\u2014' : money(t.total), color: tone(t.total) }],
             })),
           };
         } else {
@@ -1184,6 +1184,11 @@ export async function handle(req, ctx) {
         return out;
       }
 
+      /* The generative card: the top ten of a tab, drawn as the map draws
+         them. Trending by default, because that tab is the one whose order is
+         a claim worth a picture — pump.fun's own list leading, ours after.
+         The seed is the hour and the tickers, so the cache key can be the
+         same thing and a post never shows two pictures of one fact. */
       if (url.searchParams.get('kind') === 'bubbles') {
         const srcId = BOARD_SRC[url.searchParams.get('source') || 'trending'];
         if (!srcId) return json({ ok: false, error: 'unknown source' }, 400);
@@ -1195,7 +1200,7 @@ export async function handle(req, ctx) {
         const seed = seedFor(top, Date.now());
 
         const store0 = globalThis.caches && globalThis.caches.default;
-        const bk = new Request(url.origin + '/api/card/bubbles/v3/' + srcId + ':' + tf + ':' + seed);
+        const bk = new Request(url.origin + '/api/card/bubbles/v4/' + srcId + ':' + tf + ':' + seed);
         if (store0) {
           const hit = await store0.match(bk);
           if (hit) return hit;
@@ -1215,7 +1220,7 @@ export async function handle(req, ctx) {
         const svg = await bubbleCardSvgFor(rows, tf, {
           title: TEN_TITLE[srcId] || 'TOP 10 TRENDING',
           sub: (TF_SHORT[tf] || '24H').toUpperCase() + (traders ? ' · REALIZED' : ''),
-          seed,
+          seed, via,
         });
         if (!svg) return json({ ok: false, error: 'no measured changes' }, 404);
         const buf = await svgToPng(svg, CARD_W);
@@ -1247,7 +1252,7 @@ export async function handle(req, ctx) {
         const top = topMovers(snap.tokens || [], tf, 5, srcId);
         if (top.length < 3) return json({ ok: false, error: 'not enough movers' }, 404);
 
-        const svg = await boardCardSvgFor(top, tf, 'TOP MOVERS', BOARD_SUB[srcId]);
+        const svg = await boardCardSvgFor(top, tf, 'TOP MOVERS', BOARD_SUB[srcId], via);
         if (!svg) return json({ ok: false, error: 'no measured changes' }, 404);
         const buf = await svgToPng(svg, CARD_W);
         const out = new Response(buf, {
@@ -1280,7 +1285,7 @@ export async function handle(req, ctx) {
         if (hit) return hit;
       }
 
-      const svg = await cardSvgFor(found.t, tf);
+      const svg = await cardSvgFor(found.t, tf, via);
       if (!svg) return json({ ok: false, error: 'no measured change for that window' }, 404);
 
       const png = await svgToPng(svg, CARD_W);
