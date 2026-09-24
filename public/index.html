@@ -1274,7 +1274,7 @@ function rebuild(){
   const RANK=(S.mode==='trending'||S.mode==='smart')?(t=>+t.heat||0):S.mode==='taps'?(t=>+t.taps||0):M;
   L.sort((a,b)=>RANK(b)-RANK(a));
   /* the table shows the whole ranked list, not the bubble limit */
-  if(S.mode==='smart')renderSmartTable(L);else renderSmartTable([]);
+  if(S.mode==='smart'||S.mode==='traders')renderSmartTable(L);else renderSmartTable([]);
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
   /* a partner's pinned token stays on screen regardless of ranking */
@@ -1295,10 +1295,11 @@ function rebuild(){
 let SM_SORT='held';
 function renderSmartTable(list){
   const box=document.getElementById('smTable');
-  const on=S.mode==='smart';
+  const on=S.mode==='smart'||S.mode==='traders';
   box.hidden=!on;
   document.getElementById('cv').style.visibility=on?'hidden':'';
   if(!on)return;
+  if(S.mode==='traders')return renderTraderTable(box,list);
   const key={held:t=>(t.smartN||0)*1e3+(t.heat||0),mcap:t=>t.mcap||0,
              h24:t=>t.pc&&t.pc.h24!=null?t.pc.h24:-1e9,h1:t=>t.pc&&t.pc.h1!=null?t.pc.h1:-1e9,vol:t=>t.vol||0}[SM_SORT];
   const rows=[...list].sort((a,b)=>key(b)-key(a));
@@ -1321,7 +1322,37 @@ function renderSmartTable(list){
     }).join('')
     +'</tbody></table>';
 }
+/* Top traders as rows: banked first — it is the ranking — then the rest of
+   the picture, and what they hold. A row opens the trader's card. */
+let TR_SORT='realized';
+function renderTraderTable(box,list){
+  const key={realized:t=>t.realized||0,total:t=>t.total==null?-1e15:t.total,open:t=>t.unrealized==null?-1e15:t.unrealized,
+             positions:t=>t.positions||0}[TR_SORT];
+  const rows=[...list].sort((a,b)=>key(b)-key(a));
+  const money=v=>v==null||!Number.isFinite(+v)?'<span style="color:var(--dim)">\u2014</span>'
+    :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'\u2212'}${esc(fmtUsd(Math.abs(v)))}</span>`;
+  const th=(k,label,cls='')=>`<th class="${cls}${TR_SORT===k?' on':''}" ${k?'data-tsort="'+k+'"':''}>${label}${TR_SORT===k?' \u2193':''}</th>`;
+  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num')+th('open','Open positions','num c-h1')
+    +th('total','Total PnL','num')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+    +'</tr></thead><tbody>'
+    +rows.map((t,i)=>{
+      const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
+      const handle=t.xh?'@'+t.xh:'';
+      return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
+        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' <span style="color:var(--up,#26d985)">\u2713</span>':''}</b><small>${esc(handle)}</small></div></div></td>`
+        +`<td class="num"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
+        +`<td class="num c-h1">${money(t.unrealized)}</td>`
+        +`<td class="num">${money(t.total)}</td>`
+        +`<td class="num c-vol">${t.positions!=null?esc(String(t.positions)):'\u2014'}</td>`
+        +`<td class="who c-who">${(t.top||[]).map(p=>'<b>$'+esc(p.sym)+'</b>').join(', ')}</td>`
+        +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+}
+
 document.getElementById('smTable').addEventListener('click',e=>{
+  const ht=e.target.closest('th[data-tsort]');
+  if(ht){TR_SORT=ht.dataset.tsort;rebuild();return}
   const h=e.target.closest('th[data-sort]');
   if(h){SM_SORT=h.dataset.sort;rebuild();return}
   const r=e.target.closest('tr[data-id]');if(!r)return;
@@ -1903,7 +1934,7 @@ function loop(now){
 
   if((++frameN%30)===0)resize();
   /* under the Smart money table the canvas is hidden; do not animate it */
-  if(S.mode!=='smart'){step();draw();}
+  if(S.mode!=='smart'&&S.mode!=='traders'){step();draw();}
   requestAnimationFrame(loop);
 }
 
@@ -2860,7 +2891,8 @@ document.getElementById('shareTen').onclick=()=>openTen();
 function openTen(){
   const src=feedId(),tf=S.tf;
   const page=location.origin+'/s/top10?source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
-  const card='/api/card?kind=bubbles&source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
+  const kind=(S.mode==='smart'||S.mode==='traders')?'table':'bubbles';
+  const card='/api/card?kind='+kind+'&source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
   document.getElementById('shTk').textContent='top 10';
   document.getElementById('shActs').style.display='';
   document.getElementById('shImgWrap').style.display='';

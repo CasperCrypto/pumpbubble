@@ -638,7 +638,22 @@ what" is names and numbers, and a circle can carry one of them. `renderSmartTabl
 rebuild's full ranked list (not the bubble limit), sorts by holders, market cap, 1H or 24H from its
 headers, and a row opens the ordinary card with Chart, Buy and Boost. While it shows, the canvas is
 hidden and `loop()` skips the physics and the draw — ninety bubbles animating under a table was
-CPU spent on nothing. *Top traders* stays a bubble map: that is the flex picture people post.
+CPU spent on nothing.
+
+*Top traders* is a table too now — asked for the day the holdings table shipped ("i want top
+traders in tables too"). `renderTraderTable()` inside the same `#smTable`: rank, avatar, name with
+✓ and the legal `@handle`, Banked (the default sort — it is the ranking), Open, Total, Positions,
+what they hold, and pump.fun's own rank for the same wallet. On a phone it is rank, trader, banked,
+total. The 24H / 1W / 1M pills still pick the board.
+
+**The share card for both views is a leaderboard, not bubbles** (`src/tablecard.mjs`,
+`/api/card?kind=table&source=smart*|traders-*`). A picture of ten people and their amounts is what
+the people on it repost; ten circles could carry one number each. Rows are the same `pickTen()` as
+every top-ten card; smart money ranks by `heat` so the card and the table agree. Traders read
+BANKED / OPEN / TOTAL with a dash, not a zero, where pump.fun gave nothing; holdings read HELD BY /
+the pill's window / MCAP. The window label sits on the tag line, not beside the title: Archivo Black
+capitals average ~0.7em, not the 0.62 the mixed-case estimate uses, and the first render ran the
+title into it. `/s/top10` and the popup switch to `kind=table` for these sources on their own.
 
 ## The generative card
 

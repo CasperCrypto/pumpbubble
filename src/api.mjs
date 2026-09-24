@@ -9,8 +9,9 @@ import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolP
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
-import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page } from './share.mjs';
+import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page, logoDataUri } from './share.mjs';
 import { seedFor } from './bubblecard.mjs';
+import { buildTableSvg, UP as T_UP, DN as T_DN, DIM as T_DIM } from './tablecard.mjs';
 import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
@@ -1119,6 +1120,70 @@ export async function handle(req, ctx) {
          a claim worth a picture — pump.fun's own list leading, ours after.
          The seed is the hour and the tickers, so the cache key can be the
          same thing and a post never shows two pictures of one fact. */
+      /* The leaderboard card: Smart money's two views are tables, so their
+         share card is one — ten rows of picture, name and numbers. Cached
+         per source, window, hour and names, like the bubble card. */
+      if (url.searchParams.get('kind') === 'table') {
+        const srcId = BOARD_SRC[url.searchParams.get('source') || 'smart'];
+        if (!srcId || !(srcId.startsWith('smart') || srcId.startsWith('traders'))) {
+          return json({ ok: false, error: 'the table card is for Smart money' }, 400);
+        }
+        const snap = await snapshot(ctx, sourceOf(srcId));
+        const hid = await hiddenSet(ctx);
+        const traders = srcId.startsWith('traders');
+        /* holdings rank by how many hold it; traders arrive ranked by realized */
+        let pool = (snap.tokens || []).filter(t => !isHidden(hid, t));
+        if (!traders) pool = [...pool].sort((a, b) => (b.heat || 0) - (a.heat || 0));
+        const top = pickTen(pool, tf);
+        if (top.length < 3) return json({ ok: false, error: 'not enough rows' }, 404);
+        const seed = seedFor(top, Date.now());
+
+        const store0 = globalThis.caches && globalThis.caches.default;
+        const bk = new Request(url.origin + '/api/card/table/v1/' + srcId + ':' + tf + ':' + seed);
+        if (store0) {
+          const hit = await store0.match(bk);
+          if (hit) return hit;
+        }
+
+        const money = v => (v >= 0 ? '+' : '\u2212') + (mcapLabel(Math.abs(v)) || '$0');
+        const pct = v => v == null || !Number.isFinite(+v) ? '\u2014'
+          : (v >= 0 ? '+' : '\u2212') + (Math.abs(v) >= 100 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(1)) + '%';
+        const logos = await Promise.all(top.map(t => logoDataUri(t).catch(() => null)));
+        const period = { h24: '24H', d7: '7D', d30: '30D', h1: '1H' }[tf] || '24H';
+        let spec;
+        if (traders) {
+          spec = {
+            title: 'TOP TRADERS BY REALIZED PNL', sub: period + ' \u00b7 NOT PAPER GAINS', nameLabel: 'TRADER',
+            cols: [{ label: 'BANKED', x: 760 }, { label: 'OPEN', x: 960 }, { label: 'TOTAL', x: 1152 }],
+            rows: top.map((t, i) => ({
+              title: t.xh ? '@' + t.xh : t.sym, subtitle: t.xh ? t.sym : '', logo: logos[i],
+              values: [{ text: money(t.realized || 0), color: T_UP },
+                       { text: t.unrealized == null ? '\u2014' : money(t.unrealized), color: t.unrealized == null ? T_DIM : t.unrealized >= 0 ? T_UP : T_DN },
+                       { text: t.total == null ? '\u2014' : money(t.total), color: t.total == null ? T_DIM : t.total >= 0 ? T_UP : T_DN }],
+            })),
+          };
+        } else {
+          spec = {
+            title: TEN_TITLE[srcId] || 'WHAT TOP TRADERS HOLD', sub: period + ' · BY HOLDERS', nameLabel: 'TOKEN',
+            cols: [{ label: 'HELD BY', x: 760 }, { label: period, x: 960 }, { label: 'MCAP', x: 1152 }],
+            rows: top.map((t, i) => ({
+              title: '$' + t.sym, subtitle: t.name && t.name !== t.sym ? t.name : '', logo: logos[i],
+              values: [{ text: t.smartN + (t.smartN === 1 ? ' TRADER' : ' TRADERS'), color: '#ffffff' },
+                       { text: pct(t.pc[tf]), color: t.pc[tf] >= 0 ? T_UP : T_DN },
+                       { text: mcapLabel(t.mcap) || '\u2014', color: '#c9d3de' }],
+            })),
+          };
+        }
+        let svg;
+        try { svg = buildTableSvg(spec); } catch { return json({ ok: false, error: 'not enough rows' }, 404); }
+        const buf = await svgToPng(svg, CARD_W);
+        const out = new Response(buf, {
+          headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=600', 'access-control-allow-origin': '*' },
+        });
+        if (store0) await store0.put(bk, out.clone());
+        return out;
+      }
+
       if (url.searchParams.get('kind') === 'bubbles') {
         const srcId = BOARD_SRC[url.searchParams.get('source') || 'trending'];
         if (!srcId) return json({ ok: false, error: 'unknown source' }, 400);
@@ -1248,7 +1313,8 @@ export async function handle(req, ctx) {
       if (top.length < 3) return Response.redirect(url.origin + '/', 302);
 
       const qs = (srcId === 'trending' ? '' : '?source=' + srcId);
-      const q = 'kind=bubbles&source=' + srcId + '&tf=' + tf;
+      const q = 'kind=' + (srcId.startsWith('smart') || srcId.startsWith('traders') ? 'table' : 'bubbles')
+        + '&source=' + srcId + '&tf=' + tf;
       const desc = srcId.startsWith('traders')
         ? top.slice(0, 6).map(t => (t.xh ? '@' + t.xh : t.sym) + ' +' + (mcapLabel(t.realized) || '$0')).join(' · ')
         : top.slice(0, 6).map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
