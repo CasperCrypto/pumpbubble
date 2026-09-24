@@ -648,6 +648,7 @@ body.embed #brandbadge.on{display:flex}
   <div class="seg" id="mode">
     <button data-mode="trending">🔥 Trending</button>
     <button data-mode="taps">👆 Tap wars</button>
+    <button data-mode="traders">💰 Traders</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
@@ -896,8 +897,17 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
    on sixty grey bubbles. Chains and launchpads publish a day and a week and
    nothing shorter — DefiLlama has no five-minute candle for a chain. */
 const FLOW_MODES=new Set(['chains','pads','prediction','casinos']);
-const FLOW_KINDS=new Set(['chain','pad','pm','casino']);
+const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
+/* The Traders tab asks pump.fun for one period at a time, so its timeframe
+   pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
+const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly'};
 function fixTf(){
+  if(S.mode==='traders'){
+    if(TRADER_PERIOD[S.tf])return;
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+    return;
+  }
   if(!FLOW_MODES.has(S.mode))return;
   if(S.tf==='h24'||S.tf==='d7')return;
   S.tf='h24';
@@ -969,8 +979,9 @@ async function fetchLive(){
      before falling back to demo data: dropping to demo is a visible downgrade
      and should be a last resort, not the response to one slow request. */
   let j;
-  try{ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),12000) }
-  catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(S.mode),15000) }
+  const src=S.mode==='traders'?'traders-'+(TRADER_PERIOD[S.tf]||'daily'):S.mode;
+  try{ j=await jget('/api/tokens?source='+encodeURIComponent(src),12000) }
+  catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(src),15000) }
   if(!j||!j.ok||!Array.isArray(j.tokens))throw new Error('empty');
   /* An empty arena is a state, not a failure: nobody has added a token yet,
      and the bar says so. Every other feed empty means the feed is down. */
@@ -997,6 +1008,9 @@ async function fetchLive(){
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
     ageH:NN(t.ageH), rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kol:NN(t.kol), tx5:NN(t.tx5),
+    wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
+    positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
+    top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
     key:t.addr||t.mint||'', taps:+t.taps||0, tapsTotal:+t.tapsTotal||0, tapRank:+t.tapRank||0, award:t.award||'', tapGold:+t.tapGold||0, goldSince:+t.goldSince||0, adSince:+t.adSince||0,
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
@@ -1163,6 +1177,20 @@ function rebuild(){
 function stats(){
   const v=S.view; if(!v.length)return;
   const cap=v.reduce((s,t)=>s+t.mcap,0);
+  /* On Traders the header counts money banked, and the "top" is the top
+     banker — the biggest percentage there is a total return on whatever was
+     spent, which crowns a $200 flip over a $1.7M month. */
+  const lab=(id,txt)=>{const u=document.getElementById(id);const l=u&&u.previousElementSibling;if(l)l.textContent=txt};
+  if(S.mode==='traders'){
+    lab('stCap','Banked');lab('stGR','Up / Underwater');lab('stTop','Top banker');
+    const b=v.reduce((a,t)=>(t.realized||0)>(a.realized||0)?t:a,v[0]);
+    document.getElementById('stCap').textContent=fmtUsd(cap);
+    const upN=v.filter(t=>!(t.total<0)).length;
+    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${v.length-upN}</span>`;
+    document.getElementById('stTop').innerHTML=`${esc(b.sym)} <span class="up">+${esc(fmtUsd(b.realized||0))}</span>`;
+    return;
+  }
+  lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Top mover');
   const up=v.filter(t=>!t.noData&&t.chg>=0).length;
   const rated=v.filter(t=>!t.noData);
   const top=rated.length?rated.reduce((a,t)=>Math.abs(t.chg)>Math.abs(a.chg)?t:a,rated[0]):null;
@@ -1469,7 +1497,8 @@ function flowFace(t,r){
      `mcap` is where the feed puts it, because that is the field that sizes a
      bubble everywhere else on the map. */
   if(t.mcap>0&&r>=16){
-    const money=fmtUsd(t.mcap);
+    /* a trader's money is what they banked, so it carries its sign */
+    const money=(t.kind==='trader'?'+':'')+fmtUsd(t.mcap);
     const fs=fitFont(money,900,clamp(r*.30,10,26),maxW);
     ctx.fillStyle='#fff';
     if(fs>=13){ctx.shadowColor='rgba(0,0,0,.45)';ctx.shadowBlur=4}
@@ -1478,9 +1507,20 @@ function flowFace(t,r){
   }
 
   if(r>=26){
-    fitFont('+00.00%',800,clamp(r*.19,8,15),maxW);
-    ctx.fillStyle='rgba(255,255,255,.78)';
-    ctx.fillText(t.noData?'—':fmtPct(t.chg),t.x,top+r*.66);
+    /* A trader's third line says why the bubble is the colour it is: what the
+       positions still open are worth against what they cost. A red bubble
+       with "+$58.7K" on it reads as a contradiction until this line explains
+       it — banked, and still holding bags that are down more. */
+    if(t.kind==='trader'&&t.unrealized!=null){
+      const u=t.unrealized, s='open '+(u>=0?'+':'−')+fmtUsd(Math.abs(u));
+      fitFont(s,800,clamp(r*.17,8,14),maxW);
+      ctx.fillStyle='rgba(255,255,255,.78)';
+      ctx.fillText(s,t.x,top+r*.66);
+    }else{
+      fitFont('+00.00%',800,clamp(r*.19,8,15),maxW);
+      ctx.fillStyle='rgba(255,255,255,.78)';
+      ctx.fillText(t.noData?'—':fmtPct(t.chg),t.x,top+r*.66);
+    }
   }
 }
 
@@ -1780,11 +1820,13 @@ function openCard(t){
   /* "Chart" is wrong for a chain: chartUrl sends it to its DefiLlama page,
      which is where the number came from and what the reader wants next. */
   const co=e('cOpen');
-  if(co)co.textContent=FLOW_KINDS.has(t.kind)?'Open':'Chart';
+  if(co)co.textContent=t.kind==='trader'?'Profile':FLOW_KINDS.has(t.kind)?'Open':'Chart';
   e('cSym').textContent=t.sym+(t.boost>0?' ★':'');
   /* A venue's subtitle says what it is and where it runs, so "Off Chain" is
      said out loud on the ones that are not crypto at all. */
-  e('cName').textContent=(t.kind==='pm'||t.kind==='casino')
+  e('cName').textContent=t.kind==='trader'
+    ? ((t.xh?'@'+t.xh:'pump.fun trader')+(t.verified?' · ✓ verified':''))
+    : (t.kind==='pm'||t.kind==='casino')
     ? ((t.kind==='casino'?(t.via==='hot'?'hot wallets':'on-chain casino'):'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
     : (t.name||'').slice(0,32);
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
@@ -1808,7 +1850,20 @@ function openCard(t){
   const money=v=>v>0?esc(fmtUsd(v)):dash;
 
   e('cMc').textContent=fmtUsd(t.mcap);
-  if(t.kind==='pm'){
+  if(t.kind==='trader'){
+    /* Realized first — it is the ranking and the size — then the rest of the
+       picture, each number labelled for what it is. */
+    const signed=v=>(v==null||!Number.isFinite(v))?dash
+      :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'−'}${esc(fmtUsd(Math.abs(v)))}</span>`;
+    lab('cMc','Realized profit');
+    lab('cVol','Open positions');
+    lab('cA','Total PnL');
+    lab('cB','Positions');
+    e('cMc').innerHTML='<span class="up">+'+esc(fmtUsd(t.realized||0))+'</span>';
+    e('cVol').innerHTML=signed(t.unrealized);
+    e('cA').innerHTML=signed(t.total);
+    e('cB').innerHTML=t.positions!=null?esc(String(t.positions)):dash;
+  }else if(t.kind==='pm'){
     /* A prediction market: what was wagered, its share of all wagering on the
        map, the move, and the house take — the one number a punter never sees
        on the venue itself. */
@@ -1899,7 +1954,13 @@ function openCard(t){
       +(t.kol!=null&&t.kol>0?' · '+nf(t.kol)+' KOLs':'')
       +'</div>'
     : '')+tapLine;
-  e('cWarn').innerHTML=t.via==='hot'
+  const traderLine=t.kind==='trader'
+    ? '<div class="warn" style="opacity:.9">💰 #'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'')+')'
+      +' · '+(t.pumpRank?'#'+esc(String(t.pumpRank))+' on pump.fun\u2019s board, which counts paper gains':'not in pump.fun\u2019s top 100, which counts paper gains')
+      +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
+      +'</div>'
+    : '';
+  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
@@ -1914,7 +1975,10 @@ scrim.onclick=closeAll;
 /* The share page carries an Open Graph card showing the number, which is what
    actually travels on X. Linking straight to the image would post a picture
    with no way back to the map. */
-document.getElementById('cShare').onclick=()=>{const t=S.target;closeAll();openShare(t)};
+document.getElementById('cShare').onclick=()=>{const t=S.target;closeAll();
+  /* a trader has no ticker card; their share is the board they are on */
+  if(t&&t.kind==='trader'){openTen();return}
+  openShare(t)};
 
 /* Timeframe in prose, for tweet text and the no-data message. The pills
    above the map carry the same set as their labels. */
@@ -2002,6 +2066,7 @@ function openShare(t){
    403 to anything that is not a browser anyway. */
 function chartUrl(t){
   if(!t)return '';
+  if(t.kind==='trader'&&t.wallet)return 'https://pump.fun/profile/'+encodeURIComponent(t.wallet);
   if(t.mint)return 'https://pump.fun/coin/'+encodeURIComponent(t.mint);
 
   const id=String(t.id||'');
@@ -2072,7 +2137,12 @@ wire('mode',b=>{
   setLive(false,'loading '+b.textContent.trim()+'…');
   refresh(true);
 });
-wire('tf',b=>{S.tf=b.dataset.tf;rebuild()});
+wire('tf',b=>{
+  S.tf=b.dataset.tf;
+  /* on Traders the window is a different board, not a different column */
+  if(S.mode==='traders'){fixTf();setLive(false,'loading traders…');refresh(true);return}
+  rebuild();
+});
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
 wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
 wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});
@@ -2498,14 +2568,14 @@ async function railOpen(key){
    ten is a claim somebody would repost. Chains, launchpads, prediction and
    casinos are venues rather than projects — a "top 10 trending" of them is not
    a thing, and the card's shape (ticker, logo, percentage) is not theirs. */
-const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1};
+const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,traders:1};
 function shareTenBtn(){
   const b=document.getElementById('shareTen');
   if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
 }
 document.getElementById('shareTen').onclick=()=>openTen();
 function openTen(){
-  const src=S.mode,tf=S.tf;
+  const src=S.mode==='traders'?'traders-'+(TRADER_PERIOD[S.tf]||'daily'):S.mode,tf=S.tf;
   const page=location.origin+'/s/top10?source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
   const card='/api/card?kind=bubbles&source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
   document.getElementById('shTk').textContent='top 10';
@@ -2522,7 +2592,9 @@ function openTen(){
   const dl=document.getElementById('shDl');
   dl.href=img.src;
   dl.setAttribute('download','pumpbubble-top10-'+src+'-'+tf+'.png');
-  const label=(S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
+  const label=S.mode==='traders'
+    ? 'Who actually banked on pump.fun \u2014 realized profit, not paper gains'
+    : (S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
   document.getElementById('shX').onclick=()=>{
     open('https://twitter.com/intent/tweet?text='+encodeURIComponent(label)
       +'&url='+encodeURIComponent(page),'_blank','noopener');
@@ -2680,7 +2752,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
+  const OK={traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
             prediction:'prediction',predictions:'prediction',bets:'prediction',
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};

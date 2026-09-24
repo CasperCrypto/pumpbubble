@@ -602,7 +602,11 @@ export async function buildSnapshot({ source, hist, secret, store } = {}) {
 
   /* History is keyed by token id, which is unique per source — a Solana mint
      for launchpads, a coingecko id for the wider market. */
-  if (hist) {
+  /* A source whose `mcap` is not a market cap opts out. Traders size by
+     realized profit, and pushing that into the price history would back-fill
+     their 1H and 6H "price change" from how their profit moved — a number
+     with a price change's label and nothing of one's meaning. */
+  if (hist && source.history !== false) {
     pushHistory(hist, tokens, now);
     for (const t of tokens) {
       const own = changeFromHistory(hist, t.id, t.mcap, now);

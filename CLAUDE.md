@@ -483,6 +483,64 @@ The client: a click on this tab is a tap (`tapHit`), the card is one button away
 kick the bubble for a few frames (`t.kick`, decayed in `draw()`), and a poll never eats what
 somebody is typing into the add box. `?source=taps|tap|tapwars|arena`.
 
+## Traders
+
+`src/traders.mjs`, sources `traders-daily|weekly|monthly`, the 💰 Traders tab. pump.fun's own PnL
+leaderboard, **re-ranked by realized profit** — what was actually sold for more than it cost.
+
+The endpoint is `frontend-api-v3.pump.fun/pnl-leaderboard?period=<daily|weekly|monthly>&sort=
+<combined|realized|unrealized>&limit=100`, found by hooking the leaderboard page's `fetch` and
+switching its 1W tab (a cold load server-renders the first period, so nothing shows in the network
+log until the period changes). Rows carry realized, unrealized and total PnL in USD and SOL,
+positions count, top three positions, username, avatar, X handle and verified badge. Everyone on it
+is a pump.fun profile that opted in by making a callout, so nothing is published here that pump.fun
+does not publish itself; there is no losers ordering and none is built.
+
+**Why realized, the whole reason the tab exists.** pump.fun sorts by `combined`. The day this was
+built its daily #1 showed +$1.1M with **$0 realized** and its weekly #1 +$1.31M with **−$31,848
+realized** — the top of pump.fun's board is paper. Here, **size is realized profit** (it goes in
+`mcap`, the field that sizes every bubble) and a row with nothing realized is not on the map at all.
+**Colour is the total** in the tab's window: green if the trader is up overall, red if the open
+bags outweigh what was banked. The face says why — `+$58.7K` banked, `open −$95.8K` — because a red
+bubble with a plus sign on it reads as a contradiction until the third line explains it. The card
+shows realized / open / total / positions and where pump.fun's own board puts the same wallet
+(joined from a second, optional `combined` call): cooker was #1 by realized and **not in pump.fun's
+top 100 at all**.
+
+Details that are decisions:
+
+- **The timeframe pill is the query.** 24H → daily, 1W → weekly, 1M → monthly; 1H and 1Y fall back
+  to 24H in `fixTf()`, and on this tab a pill change refetches instead of re-sorting.
+- **A trader is not a token**: no `mint`, no `addr`, so the card's Boost and Buy buttons stay
+  hidden by the rules they already follow; the button says **Profile** and goes to
+  `pump.fun/profile/<wallet>`; Share opens the top-10 card rather than a ticker card.
+- **The X handle is `xh`, never `x`** — `x` is a bubble's position on the canvas.
+- **`@` only in front of a real X handle.** The first card put one in front of every pump.fun
+  username, and "@MadToast" on X may be somebody else.
+- **`history: false`** on these sources. `buildSnapshot` pushes every row's `mcap` into the price
+  history and back-fills short windows from it, which here would have printed how a trader's profit
+  moved under a price-change label. The flag is generic for any source whose `mcap` is not a cap.
+- **Not `shared`.** Three feeds refreshed through KV would spend ~860 of the 1,000 free writes a
+  day on a list pump.fun refreshes every few minutes; per-isolate caching at 2–5 minutes is plenty.
+
+**Node's fetch is blocked, the Worker's is not.** From a laptop, `pnl-leaderboard` answered curl 200
+and Node's built-in `fetch` 403 with Cloudflare `rule_id 0.07` — identical headers, so it is the TLS
+fingerprint, not anything a header can fix. From the deployed Worker all three periods answered 200.
+The project rule held again: an upstream is tested from the Worker or it has not been tested.
+
+**Avatars go through pump.fun's own image optimizer.** pump.fun serves profile pictures as WebP,
+which resvg cannot decode, and wsrv.nl answers **400** to that host — so the first share card had
+two avatars out of ten. `pump.fun/_next/image?url=…&w=256&q=75`, asked with an Accept that does not
+list WebP, returns the same picture as JPEG: first-party, and now the first conversion step for any
+pump.fun-hosted art in `logoDataUri` (token cards benefit too). **`q=75` exactly** — current Next.js
+answers 400 to any quality it was not configured for, which is what `q=80` did. Ten of ten after.
+
+**Cards live on the free plan's burst allowance, and sometimes lose.** Measured from `wrangler tail`:
+a cold bubble card costs **~1,065 ms of CPU**; the free plan's limit is 10 ms per request, tolerated
+in bursts, so a cold render is occasionally killed with *"Worker exceeded CPU time limit"* (503) and
+succeeds on the next try, after which the edge serves it. This is true of every share card, not
+this one. Workers Paid ($5/month) removes it; until then, open a link once before posting it.
+
 ## The generative card
 
 `src/bubblecard.mjs`, `/api/card?kind=bubbles`, the page at `/s/top10`, and the **Share top 10**

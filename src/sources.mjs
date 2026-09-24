@@ -18,6 +18,7 @@
      quoting a price it cannot deliver.
    ========================================================================== */
 
+import { tradersFor } from './traders.mjs';
 import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
@@ -285,6 +286,26 @@ export const SOURCES = {
     id: 'taps', label: 'Tap wars', group: 'Tap wars',
     chain: 'mixed', ttl: 5_000, enrich: false, boostable: true, quality: 'major',
     fetch: () => [],
+  },
+  /* Traders: pump.fun's PnL leaderboard ranked by what was realized, not by
+     paper — see src/traders.mjs. One source per period because the period is
+     the query, and the tab's timeframe pill picks between them. Not `shared`:
+     three feeds refreshed through KV would spend ~860 of the 1,000 free
+     writes a day on a list pump.fun itself only refreshes every few minutes. */
+  'traders-daily': {
+    id: 'traders-daily', label: 'Traders', group: 'Traders',
+    chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => tradersFor('daily'),
+  },
+  'traders-weekly': {
+    id: 'traders-weekly', label: 'Traders', group: 'Traders',
+    chain: 'mixed', ttl: 180_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => tradersFor('weekly'),
+  },
+  'traders-monthly': {
+    id: 'traders-monthly', label: 'Traders', group: 'Traders',
+    chain: 'mixed', ttl: 300_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => tradersFor('monthly'),
   },
   trending: {
     id: 'trending', label: 'Trending', group: 'Trending',

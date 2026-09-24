@@ -83,6 +83,20 @@ export function toReadableUrl(url, px = 256) {
     + '&output=png&w=' + px + '&h=' + px + '&fit=cover&we';
 }
 
+/* pump.fun's own image optimizer re-encodes anything pump.fun hosts. Its
+   profile pictures are WebP, and wsrv.nl answers 400 to that host — so for
+   the Traders card eight avatars of ten came back blank. Asked through
+   `/_next/image` with an Accept that does not list WebP, the same picture
+   comes back as JPEG: first-party, no third party, and tried before wsrv.
+   `q=75` exactly: current Next.js accepts only its configured qualities and
+   answers 400 to anything else, which is what q=80 did on the first pass. */
+const PUMP_HOST = /^https:\/\/([a-z0-9-]+\.)*pump\.fun\//i;
+export function pumpOptimizerUrl(url, px = 256) {
+  return PUMP_HOST.test(String(url))
+    ? 'https://pump.fun/_next/image?url=' + encodeURIComponent(String(url)) + '&w=' + px + '&q=75'
+    : '';
+}
+
 /* One fetch, with the type decided by the bytes. */
 async function grab(url, ms = 7000) {
   try {
@@ -123,8 +137,12 @@ export async function logoDataUri(t) {
   if (!got) return null;
 
   if (!OK_TYPE.test(got.type)) {
-    /* WebP, AVIF, or something we cannot name: rent the conversion once. */
-    const conv = await grab(toReadableUrl(raw), 9000);
+    /* WebP, AVIF, or something we cannot name: pump.fun's own optimizer for
+       art it hosts, then rent the conversion. */
+    let conv = null;
+    const own = pumpOptimizerUrl(raw);
+    if (own) conv = await grab(own, 8000);
+    if (!conv || !OK_TYPE.test(conv.type)) conv = await grab(toReadableUrl(raw), 9000);
     if (!conv || !OK_TYPE.test(conv.type)) return null;
     got = conv;
   }
@@ -165,9 +183,10 @@ export async function bubbleCardSvgFor(tokens, tf, { title, sub, seed } = {}) {
   if (list.length < 3) return null;
   const rows = await Promise.all(list.map(async t => ({
     sym: t.sym, pct: t && t.pc ? t.pc[tf] : null, mcap: t.mcap,
+    label: t.cardLabel, title: t.cardTitle, up: t.cardUp,
     logo: await logoDataUri(t),
   })));
-  if (rows.filter(r => r.pct != null && Number.isFinite(Number(r.pct))).length < 3) return null;
+  if (rows.filter(r => r.label || (r.pct != null && Number.isFinite(Number(r.pct)))).length < 3) return null;
   try { return buildBubbleSvg({ rows, title, sub, seed }); }
   catch { return null; }
 }

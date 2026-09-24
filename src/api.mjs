@@ -8,7 +8,7 @@ import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolP
          signUrl, enrich, resolveAnyToken } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
-import { pctLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
+import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page } from './share.mjs';
 import { seedFor } from './bubblecard.mjs';
 import { svgToPng } from './png.mjs';
@@ -121,9 +121,11 @@ const caches = new Map();
 /* Which feeds the ranked card is allowed to draw from, and what it calls them.
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
-const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending' };
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending',
+  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const TEN_TITLE = {
+  'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED',
   trending: 'TOP 10 TRENDING',
   pumpfun: 'TOP 10 ON PUMP.FUN',
   majors: 'TOP 10 IN CRYPTO',
@@ -132,6 +134,9 @@ const TEN_TITLE = {
   base: 'TOP 10 ON BASE',
 };
 const TEN_SHARE = {
+  'traders-daily': 'Who actually banked on pump.fun today — realized profit, not paper gains',
+  'traders-weekly': 'Who actually banked on pump.fun this week — realized profit, not paper gains',
+  'traders-monthly': 'Who actually banked on pump.fun this month — realized profit, not paper gains',
   trending: 'Trending right now — the top 10, across every chain',
   pumpfun: 'The top 10 on pump.fun right now',
   majors: 'The top 10 in crypto right now',
@@ -178,6 +183,8 @@ const LEGACY_MODES = { graduated: 'pumpfun', bonding: 'bonding', all: 'pumpfun' 
 function resolveSource(url) {
   const q = url.searchParams.get('source') || '';
   if (SOURCES[q]) return SOURCES[q];
+  /* a link to the tab, with no period in it, is the daily board */
+  if (q === 'traders') return SOURCES['traders-daily'];
   const legacy = LEGACY_MODES[url.searchParams.get('mode') || ''];
   return SOURCES[legacy] || SOURCES[DEFAULT_SOURCE];
 }
@@ -1069,15 +1076,22 @@ export async function handle(req, ctx) {
         const seed = seedFor(top, Date.now());
 
         const store0 = globalThis.caches && globalThis.caches.default;
-        const bk = new Request(url.origin + '/api/card/bubbles/v1/' + srcId + ':' + tf + ':' + seed);
+        const bk = new Request(url.origin + '/api/card/bubbles/v3/' + srcId + ':' + tf + ':' + seed);
         if (store0) {
           const hit = await store0.match(bk);
           if (hit) return hit;
         }
 
-        const svg = await bubbleCardSvgFor(top, tf, {
+        /* A trader's bubble carries money, not a percentage: what was
+           banked, coloured by whether the trader is up overall. */
+        const traders = srcId.startsWith('traders');
+        const rows = traders
+          ? top.map(t => ({ ...t, cardTitle: t.xh ? '@' + t.xh : t.sym, cardLabel: '+' + (mcapLabel(t.realized) || '$0'),
+                            cardUp: !(t.total < 0) }))
+          : top;
+        const svg = await bubbleCardSvgFor(rows, tf, {
           title: TEN_TITLE[srcId] || 'TOP 10 TRENDING',
-          sub: (TF_SHORT[tf] || '24H').toUpperCase(),
+          sub: (TF_SHORT[tf] || '24H').toUpperCase() + (traders ? ' · REALIZED' : ''),
           seed,
         });
         if (!svg) return json({ ok: false, error: 'no measured changes' }, 404);
@@ -1177,8 +1191,10 @@ export async function handle(req, ctx) {
 
       const qs = (srcId === 'trending' ? '' : '?source=' + srcId);
       const q = 'kind=bubbles&source=' + srcId + '&tf=' + tf;
-      const desc = top.slice(0, 6).map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
-        + Number(t.pc[tf]).toFixed(0) + '%').join(' · ');
+      const desc = srcId.startsWith('traders')
+        ? top.slice(0, 6).map(t => (t.xh ? '@' + t.xh : t.sym) + ' +' + (mcapLabel(t.realized) || '$0')).join(' · ')
+        : top.slice(0, 6).map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
+          + Number(t.pc[tf]).toFixed(0) + '%').join(' · ');
       const share = url.origin + '/s/top10' + qs;
 
       return new Response(page({

@@ -158,7 +158,10 @@ const DN = { hi: '#ff97a6', mid: '#e8364d', lo: '#5a0f1c', ink: '#24050c' };
 
 export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR',
                                  tag = 'PUMPBUBBLE.FUN', seed }) {
-  const list = (rows || []).filter(r => r && r.sym && pctLabel(r.pct) != null).slice(0, 10);
+  /* A row can bring its own label (a trader's bubble says "+$58K", not a
+     percentage), its own title, and its own direction. Without them it is a
+     token, and the old rule holds: no measured change, no bubble. */
+  const list = (rows || []).filter(r => r && r.sym && (r.label || pctLabel(r.pct) != null)).slice(0, 10);
   if (list.length < 3) throw new Error('not enough rows');
 
   const rand = rng(seed == null ? seedFor(list) : seed);
@@ -173,7 +176,7 @@ export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR
   let halo = '', defs = '', body = '';
   list.forEach((r, i) => {
     const p = P[i];
-    const up = Number(r.pct) >= 0;
+    const up = r.up != null ? !!r.up : Number(r.pct) >= 0;
     const C = up ? UP : DN;
     const R = p.r, x = p.x, y = p.y;
     const id = 'b' + i;
@@ -186,8 +189,10 @@ export function buildBubbleSvg({ rows, title = 'TOP 10 TRENDING', sub = '24 HOUR
     const lr = R * 0.40, ly = y - R * 0.30;
     defs += `<clipPath id="c${id}"><circle cx="${x.toFixed(1)}" cy="${ly.toFixed(1)}" r="${lr.toFixed(1)}"/></clipPath>`;
 
-    const ticker = '$' + (renderable(r.sym) ? String(r.sym).slice(0, 12) : '???');
-    const label = pctLabel(r.pct);
+    const ticker = r.title
+      ? (renderable(r.title) ? String(r.title).slice(0, 20) : '@???')
+      : '$' + (renderable(r.sym) ? String(r.sym).slice(0, 12) : '???');
+    const label = r.label || pctLabel(r.pct);
     /* the chord at the height each line sits on, less a margin, is the width
        it has to fit in */
     const symSize = fitSize(ticker, R * 1.52, Math.min(R * 0.36, 44));
