@@ -535,6 +535,22 @@ list WebP, returns the same picture as JPEG: first-party, and now the first conv
 pump.fun-hosted art in `logoDataUri` (token cards benefit too). **`q=75` exactly** — current Next.js
 answers 400 to any quality it was not configured for, which is what `q=80` did. Ten of ten after.
 
+**Ready posts.** The Share top 10 popup writes the post too: an editable box with the text, an X
+character count (links weigh 23, emoji 2), Copy post, and Post on X pre-filled with exactly what is
+in the box — link included, which is what makes the card unfurl under it. It was asked for after
+the operator started hand-typing these lists, and the generated monthly post matched the
+hand-typed one name for name. `tenRows()` is the server's `pickTen()` on the client: the tab's own
+order, measured rows only, so the post and the picture name the same ten in the same order.
+Traders get `@handle` only when pump.fun's X field is a legal handle, else the pump.fun username;
+tokens get a cashtag only when X would link it (a CJK ticker is printed bare).
+
+**`+null` is 0, and 0 is finite** — the null-as-zero trap once more, on both sides this time.
+`pickTen()` and `tenRows()` filtered on `Number.isFinite(+pc[tf])`, so after leaving Traders on 1M
+the Trending post printed **+0.0% for all ten** and the share page's description said "+0%" for a
+window nobody measured. Both check `!= null` first now; under three measured rows the popup says
+there is nothing measured for that window instead of a card that never draws. And leaving Traders
+resets the timeframe to 24H, because its 1W and 1M are its own boards and most tabs have neither.
+
 **Cards live on the free plan's burst allowance, and sometimes lose.** Measured from `wrangler tail`:
 a cold bubble card costs **~1,065 ms of CPU**; the free plan's limit is 10 ms per request, tolerated
 in bursts, so a cold render is occasionally killed with *"Worker exceeded CPU time limit"* (503) and

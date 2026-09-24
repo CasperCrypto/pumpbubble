@@ -607,6 +607,18 @@ body.embed #brandbadge.on{display:flex}
   flex:1 1 100%;background:#fff;color:#000;border-color:#fff;font-weight:800;letter-spacing:.02em}
 #shActs #shX svg{width:15px;height:15px}
 #shNote{margin:12px 0 0;font-size:11.5px;line-height:1.45;color:var(--dim)}
+#shPost{margin:14px 0 0}
+#shPost[hidden]{display:none}
+#shPost .phd{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12.5px}
+#shPost .phd span{margin-right:auto;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+#shPost .phd span.over{color:#ffb86b}
+#shPost .phd button{height:32px;padding:0 13px;border-radius:10px;border:0;cursor:pointer;
+  background:var(--gold);color:#2b1c00;font:inherit;font-weight:800;font-size:12px}
+#shPost .phd button.ok{background:var(--up,#26d985);color:#03200f}
+#shPostTx{display:block;width:100%;box-sizing:border-box;min-height:190px;max-height:40vh;resize:vertical;
+  padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:#0b0f15;color:var(--ink);
+  font:500 12.5px/1.55 ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap}
+#shPostTx:focus{outline:none;border-color:rgba(255,201,60,.5)}
 #shNote b{color:var(--ink);font-weight:700}
 </style>
 </head>
@@ -809,6 +821,11 @@ body.embed #brandbadge.on{display:flex}
       <button id="shX"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23 22h-6.3l-4.9-6.4L6.2 22H3l7.3-8.3L2.4 2h6.4l4.4 5.9L18.9 2Zm-1.1 18h1.7L7.3 3.8H5.5L17.8 20Z"/></svg>Post on X</button>
       <a id="shDl" download>Download</a>
       <button id="shCopy">Copy link</button>
+    </div>
+    <!-- A post written from the same ten the card draws, ready to paste. -->
+    <div id="shPost" hidden>
+      <div class="phd"><b>Ready post</b><span id="shPostN"></span><button type="button" id="shPostCopy">Copy post</button></div>
+      <textarea id="shPostTx" rows="9" spellcheck="false" aria-label="Ready post text"></textarea>
     </div>
     <p id="shNote">X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.</p>
   </div>
@@ -2009,6 +2026,7 @@ function shareUrls(t,tf){
 
 function openShare(t){
   if(!t)return;
+  showPost('');
   const tf=S.tf, u=shareUrls(t,tf);
   const tk=document.getElementById('shTk');
   /* Refuse rather than show a card for a window we never measured — the server
@@ -2126,7 +2144,15 @@ function wire(id,fn){
   });
 }
 wire('mode',b=>{
+  /* Traders' 1W and 1M are its own weekly and monthly boards. Leaving the tab
+     on them carried a window most other tabs do not have, and the next map
+     came up grey from edge to edge. */
+  const wasTraders=S.mode==='traders';
   S.mode=b.dataset.mode;
+  if(wasTraders&&S.mode!=='traders'&&S.tf!=='h24'){
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+  }
   if(S.pinFromRail){S.pin='';S.pinFromRail=false}
   fixTf();
   tapbar();shareTenBtn();
@@ -2563,6 +2589,73 @@ async function railOpen(key){
   if(t)openCard(t);
 }
 
+/* ------------------------------------------------------------ ready posts */
+/* The post for a top-10 card, built from the very ten the card draws: the
+   server's pickTen() is "the tab's own order, only rows whose window was
+   measured", and S.tokens arrives in that order, so the same filter here
+   names the same ten in the same order as the picture above it. */
+function tenRows(){
+  const tf=S.tf;
+  /* `!= null` first: `+null` is 0 and 0 is finite, so a window nobody measured
+     passed as "flat" and the post printed +0.0% for all ten. */
+  return S.tokens.filter(t=>t&&t.sym&&t.solid!==false&&t.pc&&t.pc[tf]!=null&&Number.isFinite(+t.pc[tf])).slice(0,10);
+}
+/* A handle X would accept, or nothing. pump.fun shows it on the trader's
+   profile; a string that is not a legal handle is not tagged, it is printed
+   as the pump.fun username instead. */
+const X_HANDLE=/^[A-Za-z0-9_]{1,15}$/;
+/* A cashtag only links on X when it is letters and digits; anything else is
+   printed bare rather than as a broken tag. */
+const tagOf=sym=>/^[A-Za-z][A-Za-z0-9]{0,9}$/.test(sym)?'$'+sym:String(sym).replace(/\s+/g,' ').slice(0,20);
+const postPct=v=>(v>=0?'+':'\u2212')+(Math.abs(v)>=100?Math.round(Math.abs(v)).toLocaleString('en-US'):Math.abs(v).toFixed(1))+'%';
+const TEN_HEAD={
+  trending:'\ud83d\udd25 Top 10 trending right now',
+  pumpfun:'\ud83d\udfe2 Top 10 on pump.fun',
+  majors:'Top 10 in crypto',
+  stocks:'Top 10 stocks',
+  robinhood:'Top 10 on Robinhood Chain',
+  base:'Top 10 on Base',
+};
+const TF_WORD={h1:'1h',h24:'24h',d7:'7d',d30:'30d',y1:'1y'};
+function readyPost(link){
+  const rows=tenRows();
+  if(S.mode==='traders'){
+    const when={h24:'today',d7:'this week',d30:'this month'}[S.tf]||'today';
+    const lines=rows.map((t,i)=>{
+      const who=X_HANDLE.test(t.xh||'')?'@'+t.xh:t.sym;
+      return (i+1)+'. '+who+' +'+fmtUsd(t.realized||t.mcap||0);
+    });
+    return '\ud83d\udcb0 Top 10 traders on pump.fun '+when+'\n'
+      +'Ranked by realized PnL, not paper gains\n\n'
+      +lines.join('\n')+'\n\n'+link;
+  }
+  const lines=rows.map((t,i)=>(i+1)+'. '+tagOf(t.sym)+' '+postPct(+t.pc[S.tf]));
+  return (TEN_HEAD[S.mode]||'Top 10')+' \u00b7 '+(TF_WORD[S.tf]||S.tf)+'\n\n'+lines.join('\n')+'\n\n'+link;
+}
+/* How X counts it: every link is 23 characters whatever its length, and
+   emoji and most symbols outside Latin weigh two. */
+function xLength(txt){
+  const noLinks=txt.replace(/https?:\/\/\S+/g,'x'.repeat(23));
+  let n=0;for(const ch of noLinks)n+=ch.codePointAt(0)>0x2FFF?2:1;
+  return n;
+}
+function showPost(txt){
+  const box=document.getElementById('shPost'),ta=document.getElementById('shPostTx'),cnt=document.getElementById('shPostN');
+  if(!txt){box.hidden=true;return}
+  ta.value=txt;box.hidden=false;
+  const count=()=>{const n=xLength(ta.value);cnt.textContent=n+' / 280'+(n>280?' \u00b7 fits with X Premium':'');cnt.classList.toggle('over',n>280)};
+  ta.oninput=count;count();
+  const cp=document.getElementById('shPostCopy');
+  cp.textContent='Copy post';cp.classList.remove('ok');
+  cp.onclick=async()=>{
+    let ok=false;
+    try{await navigator.clipboard.writeText(ta.value);ok=true}
+    catch{ta.select();try{ok=document.execCommand('copy')}catch{}}
+    cp.textContent=ok?'Copied':'Copy failed';cp.classList.toggle('ok',ok);
+    setTimeout(()=>{cp.textContent='Copy post';cp.classList.remove('ok')},1600);
+  };
+}
+
 /* ------------------------------------------------- share this tab's top 10 */
 /* The card is a picture of the tab, so the button belongs on tabs whose top
    ten is a claim somebody would repost. Chains, launchpads, prediction and
@@ -2592,12 +2685,23 @@ function openTen(){
   const dl=document.getElementById('shDl');
   dl.href=img.src;
   dl.setAttribute('download','pumpbubble-top10-'+src+'-'+tf+'.png');
-  const label=S.mode==='traders'
-    ? 'Who actually banked on pump.fun \u2014 realized profit, not paper gains'
-    : (S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
+  /* The post is written out in full, editable, and Post on X sends exactly
+     what is in the box — including the link, which is what makes the card
+     appear under it. */
+  /* Nothing measured in this window: say so, as the single-token share does,
+     rather than a card that will never draw and a post of zeros. */
+  if(tenRows().length<3){
+    showPost('');
+    document.getElementById('shActs').style.display='none';
+    document.getElementById('shImgWrap').style.display='none';
+    document.getElementById('shNote').innerHTML='<b>This tab has no measured change for '+esc(TF_WORD[tf]||tf)+'.</b> Pick another timeframe and share again.';
+    sveil.classList.add('on');
+    return;
+  }
+  showPost(readyPost(page));
   document.getElementById('shX').onclick=()=>{
-    open('https://twitter.com/intent/tweet?text='+encodeURIComponent(label)
-      +'&url='+encodeURIComponent(page),'_blank','noopener');
+    const txt=document.getElementById('shPostTx').value;
+    open('https://twitter.com/intent/tweet?text='+encodeURIComponent(txt),'_blank','noopener');
   };
   const cp=document.getElementById('shCopy');
   cp.onclick=async()=>{

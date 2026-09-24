@@ -151,7 +151,9 @@ const TEN_SHARE = {
    dash where the number is the point. */
 function pickTen(tokens, tf) {
   return (tokens || [])
-    .filter(t => t && t.sym && t.solid !== false && t.pc && Number.isFinite(Number(t.pc[tf])))
+    /* `!= null` first — Number(null) is 0, which is finite, and would have put
+       an unmeasured window on the card's share page as "+0%" */
+    .filter(t => t && t.sym && t.solid !== false && t.pc && t.pc[tf] != null && Number.isFinite(Number(t.pc[tf])))
     .slice(0, 10);
 }
 
