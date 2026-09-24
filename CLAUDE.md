@@ -316,6 +316,34 @@ request, so it fills in ~30 symbols per cron tick and caches in KV for a day. Ma
 twelve requests once a day and needs no warm-up at all. Neither ever blocks the map; an unenriched
 symbol reports null.
 
+## When DexScreener refuses the Worker
+
+**Measured:** DexScreener answered **429 to every request from the Worker** (`/api/health` → `dex`)
+while answering a laptop fine — its ~300/min limit is per IP and Cloudflare's egress IPs are shared
+with every Worker on the platform. The pump.fun tab then showed **five bubbles with 295 hidden**:
+no liquidity for anyone, so the quality filter called every token unbacked, and the old collapse
+guard compared against the same isolate's previous build — which a fresh isolate (every isolate,
+after a deploy) does not have. Robinhood showed zero rows for the same reason.
+
+Four layers now, each answering one part:
+
+1. **Answers are remembered** (`DEX_MEM` in core.mjs): reused for 60s instead of re-asked every
+   10s build (roughly a sixth of the traffic), and a failed request falls back to the last good
+   answer for 15 minutes. "No pair" is remembered too. It is DexScreener's own answer reused,
+   never a number made up in its place.
+2. **pump.fun's own market activity fills what DexScreener would not** (`src/activity.mjs`, moved
+   out of pumptrend so core can use it without a cycle): price change, volume and buys/sells for
+   Solana mints, marked `liqUnknown`. Without a pool, **turnover decides** whether a cap is backed
+   (`UNKNOWN_LIQ_TURNOVER`, mcap / 24h volume): Fartcoin at $168M trading $12M passes; the $4B
+   copycat swarms at the top of pump.fun's own ranking, trading $40k, do not.
+3. **An absolute guard**: `minEnrich` on a source says what coverage is normal (pump.fun: 25%), so a
+   build under it counts as broken on a fresh isolate too; the page gets `degraded` and **fails
+   open** — every bubble, "prices refreshing" — instead of filtering on quality it could not measure.
+4. **A shared feed that builds empty serves its KV copy however old**; the page shows its age.
+
+`/api/health` carries `dex: { lastError, lastErrorAt, lastOkAt, memSize }` so the next refusal
+names itself instead of looking like a grey map.
+
 ## Trending
 
 `src/trending.mjs`. **"Trending" had to be defined before it could be a tab**, or it becomes

@@ -1004,6 +1004,7 @@ async function fetchLive(){
      and the bar says so. Every other feed empty means the feed is down. */
   if(!j.tokens.length&&S.mode!=='taps')throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
+  S.degraded=!!j.degraded;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null;
   /* The referral template arrives with the feed rather than per token, so the
      Buy button knows where to send people without 300 copies of one URL. */
@@ -1141,7 +1142,10 @@ function rebuild(){
   let L=S.tokens.filter(t=>t.mcap>=min);
   /* A paid bubble is never filtered out — it was bought, and hiding it would be
      selling something we do not deliver. */
-  if(S.realOnly){
+  /* A degraded build had no liquidity or volume to judge with, so "unbacked"
+     would be a verdict on missing data. Show everything and say why, rather
+     than a map of five bubbles with 295 hidden. */
+  if(S.realOnly&&!S.degraded){
     const kept=L.filter(t=>t.solid||t.boost>0);
     /* Fail open. If the quality data is missing or every token happens to be
        flagged, filtering would leave an empty screen — and a blank map is a
@@ -1187,7 +1191,7 @@ function rebuild(){
   /* Say what was hidden and why — a filtered screener that hides the fact it is
      filtering is the same lie as showing the paper caps in the first place. */
   const hn=document.getElementById('hiddenNote');
-  hn.textContent=S.hidden?`${S.hidden} unbacked hidden`:'';
+  hn.textContent=S.degraded?'prices refreshing \u2014 showing all':S.hidden?`${S.hidden} unbacked hidden`:'';
   hn.title=S.hidden?'Hidden: market cap far above pool liquidity, no trading, a ticker shared across many mints, or below the size worth charting.':'';
   stats();
 }
@@ -2639,6 +2643,13 @@ function xLength(txt){
   let n=0;for(const ch of noLinks)n+=ch.codePointAt(0)>0x2FFF?2:1;
   return n;
 }
+/* Ready posts are the operator's tool for the official account, not a
+   feature for visitors: a stranger's timeline full of our copy tagging eight
+   traders is spam wearing our name. The console sets this flag on a
+   successful sign-in, in that browser only. It is a visibility switch, not a
+   lock — the text is built from public data and posting goes through the
+   operator's own X login — so a flag is proportionate where auth would not be. */
+const isOp=()=>{try{return localStorage.getItem('pb_op')==='1'}catch{return false}};
 function showPost(txt){
   const box=document.getElementById('shPost'),ta=document.getElementById('shPostTx'),cnt=document.getElementById('shPostN');
   if(!txt){box.hidden=true;return}
@@ -2698,11 +2709,23 @@ function openTen(){
     sveil.classList.add('on');
     return;
   }
-  showPost(readyPost(page));
-  document.getElementById('shX').onclick=()=>{
-    const txt=document.getElementById('shPostTx').value;
-    open('https://twitter.com/intent/tweet?text='+encodeURIComponent(txt),'_blank','noopener');
-  };
+  if(isOp()){
+    showPost(readyPost(page));
+    document.getElementById('shX').onclick=()=>{
+      const txt=document.getElementById('shPostTx').value;
+      open('https://twitter.com/intent/tweet?text='+encodeURIComponent(txt),'_blank','noopener');
+    };
+  }else{
+    /* visitors: a one-line caption and the link, which brings the card */
+    showPost('');
+    const label=S.mode==='traders'
+      ? 'Who actually banked on pump.fun \u2014 realized profit, not paper gains'
+      : (S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
+    document.getElementById('shX').onclick=()=>{
+      open('https://twitter.com/intent/tweet?text='+encodeURIComponent(label)
+        +'&url='+encodeURIComponent(page),'_blank','noopener');
+    };
+  }
   const cp=document.getElementById('shCopy');
   cp.onclick=async()=>{
     try{await navigator.clipboard.writeText(page);cp.textContent='Copied'}

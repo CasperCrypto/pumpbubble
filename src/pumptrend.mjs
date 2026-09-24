@@ -36,10 +36,11 @@
 
 import { clean, fastImage, signUrl, isMint, isEvmAddr,
          ONEWAY_SELL_SHARE, ONEWAY_MIN_TXNS, MAX_COPIES } from './core.mjs';
+import { fetchActivity } from './activity.mjs';
 
 export const GREAT = 'https://frontend-api-v3.pump.fun/coins/great-coins?topK=50';
 export const BOARD = 'https://advanced-indexer.pump.fun/boards/movers?tier=web&surface=WEB&platform=WEB&limit=150';
-export const ACTIVITY = 'https://swap-api.pump.fun/v1/coins/market-activity/batch';
+export { ACTIVITY } from './activity.mjs';
 const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 
 /* pump.fun writes the chain two ways — CAIP-2 with a genesis hash on the
@@ -97,31 +98,8 @@ export async function fetchMoversIndex() {
   } catch { return new Map(); }
 }
 
-/* Fifty addresses a call. A window the API did not answer for is absent,
-   not zero. */
-export async function fetchActivity(addresses) {
-  const out = new Map();
-  const chunks = [];
-  for (let i = 0; i < addresses.length; i += 50) chunks.push(addresses.slice(i, i + 50));
-  await Promise.all(chunks.map(async chunk => {
-    try {
-      const r = await fetch(ACTIVITY, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': UA },
-        body: JSON.stringify({
-          addresses: chunk,
-          intervals: ['5m', '1h', '6h', '24h'],
-          metrics: ['numTxs', 'volumeUSD', 'numBuys', 'numSells', 'numBuyers', 'numSellers', 'numUsers', 'priceChangePercent'],
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!r.ok) return;
-      const j = await r.json();
-      if (j && typeof j === 'object') for (const [k, v] of Object.entries(j)) out.set(k, v);
-    } catch { /* this chunk stays unenriched */ }
-  }));
-  return out;
-}
+/* fetchActivity moved to src/activity.mjs — core.mjs needs it too. */
+export { fetchActivity };
 
 /* One great-coins row → one map token.
 

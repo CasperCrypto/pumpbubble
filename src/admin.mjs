@@ -150,6 +150,16 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
 <div id="app" class="wrap hide">
   <h1>pumpbubble console</h1>
 
+  <div class="card">
+    <h2>Ready posts</h2>
+    <p class="dim" style="font-size:12px;margin:0 0 8px">
+      On the map, pick a tab and press <b>Share top 10</b>: this browser gets the full post for the
+      official account — @handles, amounts, link — with Copy post and Post on X. Visitors never see it.</p>
+    <div class="row"><span id="opState" class="dim"></span>
+      <a href="/?source=traders" target="_blank" rel="noopener" style="text-decoration:none;padding:7px 12px;border-radius:9px;font-weight:700;background:linear-gradient(180deg,#8ff7b4,#25c464);color:#05210f">Open Traders</a>
+      <button id="opOff">Turn off in this browser</button></div>
+  </div>
+
   <div class="card"><h2>Money</h2><div class="grid" id="money"></div></div>
   <div class="card"><h2>Traffic</h2><div class="grid" id="traffic"></div></div>
   <div class="card"><h2>Feeds</h2><div id="feeds"></div></div>
@@ -326,10 +336,16 @@ document.addEventListener('click',async e=>{
 
 $('in').onclick=async()=>{
   PW=$('pw').value;
-  try{ await load(); $('login').classList.add('hide'); $('app').classList.remove('hide'); }
+  try{ await load(); $('login').classList.add('hide'); $('app').classList.remove('hide');
+    /* unlock ready posts on the map, in this browser */
+    try{localStorage.setItem('pb_op','1')}catch(_){}
+    opState(); }
   catch(e){ $('lmsg').textContent=e.message; PW=''; }
 };
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('in').click()});
+function opState(){let on=false;try{on=localStorage.getItem('pb_op')==='1'}catch(_){}
+  $('opState').textContent=on?'on in this browser':'off in this browser'}
+$('opOff').onclick=()=>{try{localStorage.removeItem('pb_op')}catch(_){}opState()};
 
 $('aAdd').onclick=async()=>{
   try{ await api('ad.add',{title:$('aTitle').value,sub:$('aSub').value,url:$('aUrl').value,img:$('aImg').value});

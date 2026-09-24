@@ -207,6 +207,9 @@ export const SOURCES = {
   pumpfun: {
     id: 'pumpfun', label: 'pump.fun', group: 'Solana launchpads',
     chain: 'solana', ttl: 10_000, enrich: true, boostable: true, quality: 'memecoin',
+    /* DexScreener covers ~98% of graduated pump.fun mints, so a build that
+       enriched under a quarter of them is a refused pass, not a market. */
+    minEnrich: 0.25,
     fetch: () => fetchPumpCoins({ pages: 6, sort: 'market_cap', complete: true }),
   },
   bonding: {

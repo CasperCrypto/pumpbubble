@@ -9,6 +9,8 @@
    only be read server-side. See CLAUDE.md → Data.
    ========================================================================== */
 
+import { fetchActivity } from './activity.mjs';
+
 export const PUMP = 'https://frontend-api-v3.pump.fun';
 export const DEXS = 'https://api.dexscreener.com';
 /* pump.fun rejects on Origin, not on User-Agent, but a browser-ish UA is the
@@ -281,6 +283,39 @@ export async function fetchSolPrice() {
 /* pump.fun exposes no price-change field, and colour is the whole point of the
    map. DexScreener covers graduated pump.fun mints at ~100%, is free and needs
    no key, so it supplies change + volume only. Identity stays pump.fun's. */
+/* DexScreener's answers, remembered per isolate.
+
+   Every isolate used to re-ask for all 300 pump.fun tokens every ten seconds:
+   ten requests a build, ~60 a minute each, against a limit of ~300 a minute
+   per IP — and Cloudflare's egress IPs are shared with every other Worker on
+   the platform. A few busy isolates were enough to be refused, a refused pass
+   left every token with no liquidity and no volume, the quality filter then
+   called all of them unbacked, and the map showed **five bubbles with 295
+   hidden**. Measured live, intermittently, on the default tab.
+
+   So an answer is reused for a minute before it is asked again (DexScreener's
+   own numbers move no faster than that), and when a request *fails* the last
+   good answer stands in for up to fifteen minutes. It is the same pair
+   DexScreener returned, not a number made up in its place; a token with no
+   answer at all still gets none. */
+const DEX_MEM = new Map();          // chain:key -> { at, p }
+const DEX_FRESH_MS = 60_000;
+const DEX_KEEP_MS = 15 * 60_000;
+const DEX_MEM_MAX = 6000;
+function dexRemember(key, p, now) {
+  DEX_MEM.set(key, { at: now, p });
+  if (DEX_MEM.size > DEX_MEM_MAX) {
+    for (const [k, v] of DEX_MEM) { if (now - v.at > DEX_KEEP_MS || DEX_MEM.size > DEX_MEM_MAX * 0.9) DEX_MEM.delete(k); else break; }
+  }
+}
+export function _dexMemForTests() { return DEX_MEM; }
+export function _actMemForTests() { return ACT_MEM; }
+/* What DexScreener last said when it refused, for /api/health. A refusal
+   is otherwise silent by design — a failed batch is skipped — which is right
+   for the map and useless for finding out why the map is grey. */
+export const dexStatus = { lastError: '', lastErrorAt: 0, lastOkAt: 0, memSize: 0 };
+const ACT_MEM = new Map();          // mint -> { at, a }  pump.fun market activity
+
 export async function enrich(tokens, chain = 'solana') {
   /* Solana addresses are base58 and case-sensitive; EVM addresses are hex and
      are not. Blockscout returns them checksummed and DexScreener does not
@@ -293,18 +328,37 @@ export async function enrich(tokens, chain = 'solana') {
     return evm ? a.toLowerCase() : a;
   };
 
+  const now = Date.now();
+  const memKey = k => chain + ':' + k;
   const mints = tokens.map(keyOf).filter(Boolean);
   const byMint = new Map();
+  /* only what has not been answered in the last minute goes back out */
+  const need = [];
+  for (const k of mints) {
+    const m = DEX_MEM.get(memKey(k));
+    if (m && now - m.at < DEX_FRESH_MS) { if (m.p) byMint.set(k, m.p); }
+    else need.push(k);
+  }
   const batches = [];
-  for (let i = 0; i < mints.length; i += 30) batches.push(mints.slice(i, i + 30));
+  for (let i = 0; i < need.length; i += 30) batches.push(need.slice(i, i + 30));
+  const answered = new Set();
 
   /* modest concurrency — DexScreener rate-limits per minute, not per burst */
   for (let i = 0; i < batches.length; i += 4) {
     const group = batches.slice(i, i + 4);
     const res = await Promise.allSettled(group.map(b =>
       jget(DEXS + '/tokens/v1/' + chain + '/' + b.join(','), { ms: 7000 })));
-    for (const r of res) {
-      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+    for (let bi = 0; bi < res.length; bi++) {
+      const r = res[bi];
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) {
+        dexStatus.lastError = String((r.reason && r.reason.message) || 'not an array').slice(0, 120);
+        dexStatus.lastErrorAt = Date.now();
+        continue;
+      }
+      dexStatus.lastOkAt = Date.now();
+      /* a batch that answered is an answer for every mint in it — including
+         "no pair", which is remembered too so it is not re-asked each build */
+      for (const k of group[bi]) answered.add(k);
       for (const p of r.value) {
         const raw = p && p.baseToken && p.baseToken.address;
         if (!raw) continue;
@@ -318,8 +372,62 @@ export async function enrich(tokens, chain = 'solana') {
     }
   }
 
+  for (const k of answered) dexRemember(memKey(k), byMint.get(k) || null, now);
+  /* a batch that failed: the last good answer, if it is recent enough */
+  for (const k of need) {
+    if (answered.has(k) || byMint.has(k)) continue;
+    const m = DEX_MEM.get(memKey(k));
+    if (m && m.p && now - m.at < DEX_KEEP_MS) byMint.set(k, m.p);
+  }
+
+  /* DexScreener refused, or has never heard of it: ask pump.fun. Its own
+     market-activity endpoint carries price change, volume and buys/sells —
+     the colour and the size of the map — and answers the Worker when
+     DexScreener's shared-IP limit does not. It has no liquidity, so those
+     tokens are marked `liqUnknown` and judged by turnover instead (see
+     scoreMemecoins). Solana only: it is pump.fun's API. */
+  const fromPump = new Map();
+  if (chain === 'solana') {
+    const miss = mints.filter(k => !byMint.has(k));
+    const ask = [];
+    for (const k of miss) {
+      const m = ACT_MEM.get(k);
+      if (m && now - m.at < DEX_FRESH_MS) { if (m.a) fromPump.set(k, m.a); }
+      else ask.push(k);
+    }
+    if (ask.length) {
+      let got = new Map();
+      try { got = await fetchActivity(ask); } catch { got = new Map(); }
+      for (const k of ask) {
+        const a = got.get(k);
+        if (a) { ACT_MEM.set(k, { at: now, a }); fromPump.set(k, a); }
+        else {
+          const m = ACT_MEM.get(k);
+          if (m && m.a && now - m.at < DEX_KEEP_MS) fromPump.set(k, m.a);
+          /* "nothing for this one" is an answer too — not re-asked for a minute */
+          else ACT_MEM.set(k, { at: now, a: null });
+        }
+      }
+      if (ACT_MEM.size > DEX_MEM_MAX) ACT_MEM.clear();
+    }
+  }
+
   let hit = 0;
   for (const t of tokens) {
+    const a = fromPump.get(keyOf(t));
+    if (a && !byMint.has(keyOf(t))) {
+      const w = x => (a[x] && a[x].priceChangePercent != null && Number.isFinite(+a[x].priceChangePercent)) ? +a[x].priceChangePercent : null;
+      const d = a['24h'];
+      if (!d && !a['1h']) continue;
+      hit++;
+      t.pc = { ...(t.pc || {}), m5: w('5m'), h1: w('1h'), h6: w('6h'), h24: w('24h') };
+      t.vol = num(d && d.volumeUSD);
+      t.volH1 = num(a['1h'] && a['1h'].volumeUSD);
+      const buys = num(d && d.numBuys), sells = num(d && d.numSells), n = buys + sells;
+      t.txns = n ? { buys, sells, n, sellShare: sells / n } : null;
+      t.liqUnknown = true;
+      continue;
+    }
     const p = byMint.get(keyOf(t));
     if (!p) continue;
     hit++;
@@ -467,6 +575,7 @@ export function histFromJSON(o) {
    so the bar is set where the number stops meaning anything, and the copycat
    count below carries most of the weight. */
 const THIN_RATIO = 120;     // mcap/liquidity above this is essentially paper
+const UNKNOWN_LIQ_TURNOVER = 2000;  // mcap/24h volume, used only when liquidity is unknown
 
 /* A floor on what is worth drawing.
 
@@ -528,7 +637,14 @@ function scoreMemecoins(tokens, solPrice = 0) {
     t.ageH = t.created ? (now - t.created) / 36e5 : null;
     t.mcLiq = t.liq > 0 ? t.mcap / t.liq : null;
 
-    const thin = t.mcLiq === null || t.mcLiq > THIN_RATIO;
+    /* With liquidity measured, the pool decides. Without it — DexScreener
+       refused and pump.fun's activity filled the colour — turnover stands in:
+       a cap nobody trades is paper whatever its pool. Fartcoin at $168M turns
+       over its cap every week or so; the $4B copycat swarms at the top of
+       pump.fun's own ranking trade next to nothing. */
+    const thin = t.liqUnknown
+      ? !(t.vol > 0) || t.mcap / t.vol > UNKNOWN_LIQ_TURNOVER
+      : (t.mcLiq === null || t.mcLiq > THIN_RATIO);
 
     /* Volume comes from DexScreener, which only indexes tokens that have
        graduated onto a DEX. A bonding-curve token therefore reports zero

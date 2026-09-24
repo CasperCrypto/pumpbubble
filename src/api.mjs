@@ -5,7 +5,7 @@
    ========================================================================== */
 
 import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
-         signUrl, enrich, resolveAnyToken } from './core.mjs';
+         signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig } from './refs.mjs';
 import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
@@ -445,7 +445,16 @@ async function snapshot(ctx, source, force = false) {
          tokens, for the sources that depend on it. */
       const enrNow = snap.enriched || 0;
       const enrWas = (cache.data && cache.data.enriched) || 0;
-      const enrichBroke = src.enrich !== false && enrWas > 0 && enrNow < enrWas * 0.25;
+      /* Relative to the last build in this isolate — and absolute, for a
+         source that states its normal coverage. The relative check alone saw
+         nothing on a fresh isolate, which after a deploy is every isolate, so
+         a refused DexScreener pass went straight to the page. */
+      const enrichBroke = src.enrich !== false && (
+        (enrWas > 0 && enrNow < enrWas * 0.25) ||
+        (src.minEnrich && got >= 20 && enrNow < got * src.minEnrich));
+      /* carried to the page, which then shows everything instead of filtering
+         on quality it could not measure */
+      snap.degraded = !!(src.minEnrich && got >= 20 && enrNow < got * src.minEnrich);
 
       /* The arena is allowed to be empty, and allowed to shrink: nobody has
          added a token yet, or the idle ones were pruned. Neither is an outage. */
@@ -455,6 +464,20 @@ async function snapshot(ctx, source, force = false) {
         /* Keep the good data, and come back well before the normal lifetime. */
         cache.at = Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS);
         return cache.data;
+      }
+      /* A fresh isolate has nothing to keep — but a shared feed has a copy
+         in KV, however old. The Robinhood tab served zero rows to a fresh
+         isolate while a good snapshot sat in KV, because the KV read only
+         accepts data inside its lifetime. Stale beats empty. */
+      if (empty && !had && src.shared) {
+        try {
+          const saved = await ctx.store.get(kvKey);
+          if (saved && saved.tokens && saved.tokens.length) {
+            cache.data = saved;
+            cache.at = Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS);
+            return saved;
+          }
+        } catch { /* fall through */ }
       }
 
       cache.data = snap;
@@ -782,6 +805,7 @@ export async function handle(req, ctx) {
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
+        degraded: !!snap.degraded,
         tokens,
       });
     }
@@ -2055,6 +2079,7 @@ export async function handle(req, ctx) {
 
     /* ------------------------------------------------------- /api/health */
     if (path === '/api/health') {
+      dexStatus.memSize = _dexMemForTests().size;
       return json({
         ok: true,
         cachedAt: cacheFor('graduated').at,
@@ -2067,6 +2092,7 @@ export async function handle(req, ctx) {
         imgSecret: !!ctx.env.IMG_SECRET,
         /* the one line that answers "why is nobody able to buy a boost?" */
         boostsOpen: !!(ctx.env.TREASURY_WALLET && ctx.env.SOLANA_RPC && ctx.store.available),
+        dex: dexStatus,
       });
     }
 
