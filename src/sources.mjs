@@ -305,6 +305,22 @@ export const SOURCES = {
     chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
     fetch: () => smartMoney(),
   },
+  /* the same, for one board's traders — the Smart money board tabs */
+  'smart-daily': {
+    id: 'smart-daily', label: 'Smart money', group: 'Traders',
+    chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
+    fetch: () => smartMoney(['daily']),
+  },
+  'smart-weekly': {
+    id: 'smart-weekly', label: 'Smart money', group: 'Traders',
+    chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
+    fetch: () => smartMoney(['weekly']),
+  },
+  'smart-monthly': {
+    id: 'smart-monthly', label: 'Smart money', group: 'Traders',
+    chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
+    fetch: () => smartMoney(['monthly']),
+  },
   'traders-daily': {
     id: 'traders-daily', label: 'Traders', group: 'Traders',
     chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,

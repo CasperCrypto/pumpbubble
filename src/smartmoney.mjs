@@ -169,8 +169,10 @@ export function shapeHolding(h, coin, act) {
   };
 }
 
-export async function smartMoney() {
-  const got = await Promise.allSettled(['daily', 'weekly', 'monthly'].map(p => board(p, 'realized').then(b => [p, b])));
+/* `periods` is which boards' traders count: all three for the default view,
+   or one — today's, this week's, this month's — for the board tabs. */
+export async function smartMoney(periods = ['daily', 'weekly', 'monthly']) {
+  const got = await Promise.allSettled(periods.map(p => board(p, 'realized').then(b => [p, b])));
   const boards = got.filter(g => g.status === 'fulfilled').map(g => g.value);
   if (!boards.length) throw new Error('pnl-leaderboard: no board answered');
 
