@@ -314,6 +314,9 @@ button,input{font-family:inherit}
   #smTable td:first-child{width:18px}
 }
 #subbar .subnote{font-size:11px;color:var(--dim);white-space:nowrap}
+.sb-short{display:none}
+#tools{display:contents}
+
 #chips{
   position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
@@ -351,6 +354,42 @@ button,input{font-family:inherit}
 .iconbtn:hover{background:var(--glass2)}
 .iconbtn.act{border-color:rgba(40,224,140,.5);color:var(--mint2)}
 .spacer{flex:1 0 8px}
+
+/* ============ the toolbar on a phone ============
+   On desktop the tabs, timeframe, size and links share one row. On a phone
+   that row was 2,134px of sideways scroll on a 375px screen: three tabs
+   showed, nothing said there were nine more, and the timeframe started three
+   screens to the right, where nobody finds it. So a phone gets two rows —
+   the tabs as their own swipeable strip, fading at whichever edge has more,
+   with the open tab scrolled into view; then the timeframe and Filters, whole
+   and on screen. Mcap / Gain / Vol moves into the Filters sheet (`placeSize`). */
+@media (max-width:819px){
+  #chips{flex-direction:column;align-items:stretch;gap:6px;padding:8px 0;overflow:visible}
+  #chips #mode{overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
+    background:none;border:0;border-radius:0;padding:0 12px;gap:6px}
+  #chips #mode::-webkit-scrollbar,#tools::-webkit-scrollbar{display:none}
+  #chips #mode button{background:var(--glass);border:1px solid var(--line)}
+  #chips #mode button.on{background:linear-gradient(180deg,rgba(40,224,140,.26),rgba(40,224,140,.10));
+    border-color:rgba(40,224,140,.45);color:#fff;box-shadow:none}
+  #tools{display:flex;align-items:center;gap:8px;padding:0 12px;overflow-x:auto;scrollbar-width:none}
+  #chips .fr{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent)}
+  #chips .fl{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px);
+    mask-image:linear-gradient(90deg,transparent,#000 44px)}
+  #chips .fl.fr{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent);
+    mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent)}
+
+  /* Smart money's own tabs: full-width segmented controls, short labels, and
+     the explanation on one line. 40px, not 44: each target is a half or a
+     quarter of the screen wide, and two 44px rows here cost the table 8px
+     more than it can spare under the toolbar. */
+  #subbar{flex-wrap:wrap;overflow:visible;padding:6px 12px 7px;gap:6px}
+  #subbar .seg{flex:1 1 100%;min-width:0}
+  #subbar .seg button{flex:1 1 0;min-width:0;min-height:40px;padding:0 6px;justify-content:center}
+  #subbar .subnote{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
+  .sb-full{display:none}
+  .sb-short{display:inline}
+}
 
 /* ============ stage ============ */
 #stage{position:relative;z-index:5;flex:1;min-height:0}
@@ -711,6 +750,9 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="prediction">Prediction</button>
     <button data-mode="casinos">Casinos</button>
   </div>
+  <!-- #tools is layout-transparent on desktop (display:contents) and the
+       second row on a phone, under the tab strip -->
+  <div id="tools">
   <div class="seg acc" id="tf">
     <button data-tf="h1" class="on">1H</button>
     <button data-tf="h24">24H</button>
@@ -740,6 +782,7 @@ body.embed #brandbadge.on{display:flex}
   <a class="iconbtn" href="/partners" title="Put this map on your own site">&lt;/&gt; Embed</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
+  </div>
 </div>
 
 <!-- ================= Smart money's own tabs ================= -->
@@ -752,10 +795,10 @@ body.embed #brandbadge.on{display:flex}
     <button data-sv="traders">💰 Top traders</button>
   </div>
   <div class="seg" id="smBoard">
-    <button data-sb="all" class="on">All boards</button>
-    <button data-sb="daily">Today’s</button>
-    <button data-sb="weekly">This week’s</button>
-    <button data-sb="monthly">This month’s</button>
+    <button data-sb="all" class="on"><span class="sb-full">All boards</span><span class="sb-short">All</span></button>
+    <button data-sb="daily"><span class="sb-full">Today’s</span><span class="sb-short">Today</span></button>
+    <button data-sb="weekly"><span class="sb-full">This week’s</span><span class="sb-short">Week</span></button>
+    <button data-sb="monthly"><span class="sb-full">This month’s</span><span class="sb-short">Month</span></button>
   </div>
   <span class="subnote" id="smNote"></span>
 </div>
@@ -814,6 +857,7 @@ body.embed #brandbadge.on{display:flex}
       <button data-n="200">200</button>
     </div>
   </div>
+  <div class="frow" id="szRow" hidden><label>Bubble size</label><div id="szPhone"></div></div>
   <div class="frow"><label>Movement</label>
     <div class="seg" id="mvSeg">
       <button data-mv="all" class="on">All</button>
@@ -987,6 +1031,28 @@ function feedId(){
 function lightMode(){
   const m=S.mode==='traders'?'smart':S.mode;
   document.querySelectorAll('#mode [data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  showActiveTab();
+}
+/* On a phone the tab strip scrolls, so the open tab has to be on screen —
+   a deep link to ?source=casinos otherwise opens with its tab three swipes
+   away and nothing lit. Instant the first time, smooth after. */
+var tabShown=false;
+function showActiveTab(){
+  const strip=document.getElementById('mode'),on=strip&&strip.querySelector('button.on');
+  if(!on||strip.scrollWidth<=strip.clientWidth+2)return;
+  const a=strip.getBoundingClientRect(),b=on.getBoundingClientRect();
+  const left=strip.scrollLeft+(b.left-a.left)-(strip.clientWidth-b.width)/2;
+  try{strip.scrollTo({left:Math.max(0,left),behavior:tabShown?'smooth':'auto'})}catch{strip.scrollLeft=Math.max(0,left)}
+  tabShown=true;
+}
+/* A strip that scrolls says so: it fades at whichever edge has more. */
+function edgeFade(el){
+  if(!el)return;
+  const upd=()=>{const max=el.scrollWidth-el.clientWidth;
+    el.classList.toggle('fl',el.scrollLeft>4);el.classList.toggle('fr',max>4&&el.scrollLeft<max-4)};
+  el.addEventListener('scroll',upd,{passive:true});addEventListener('resize',upd);
+  if(window.ResizeObserver)new ResizeObserver(upd).observe(el);
+  upd();
 }
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
@@ -996,7 +1062,7 @@ function subbar(){
   document.getElementById('smBoard').style.display=S.mode==='smart'?'':'none';
   document.querySelectorAll('#smBoard [data-sb]').forEach(b=>b.classList.toggle('on',b.dataset.sb===(S.smartBoard||'all')));
   document.getElementById('smNote').textContent=S.mode==='smart'
-    ?'tokens held by pump.fun\u2019s top traders by realized profit \u00b7 size = how many hold it \u00b7 colour = price move'
+    ?'what pump.fun\u2019s top traders by realized profit hold right now \u00b7 tap a row for chart, buy and boost'
     :'ranked by realized profit, not paper gains \u00b7 24H / 1W / 1M pick the board';
 }
 function fixTf(){
@@ -2363,6 +2429,24 @@ wire('tf',b=>{
   rebuild();
 });
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
+
+/* On a phone the size control lives in the Filters sheet; the toolbar's
+   second row has room for the timeframe and Filters, not both segments.
+   The element itself moves, so its listener and its lit button go with it. */
+(function placeSize(){
+  const mq=matchMedia('(max-width:819px)');
+  const sz=document.getElementById('sz'),row=document.getElementById('szRow');
+  const put=()=>{
+    if(mq.matches)document.getElementById('szPhone').appendChild(sz);
+    else document.getElementById('tools').insertBefore(sz,document.getElementById('openSheet'));
+    row.hidden=!mq.matches;
+    showActiveTab();
+  };
+  put();
+  if(mq.addEventListener)mq.addEventListener('change',put);else if(mq.addListener)mq.addListener(put);
+})();
+edgeFade(document.getElementById('mode'));
+edgeFade(document.getElementById('tools'));
 wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
 wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});
 
