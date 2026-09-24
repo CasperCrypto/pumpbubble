@@ -19,6 +19,7 @@
    ========================================================================== */
 
 import { tradersFor } from './traders.mjs';
+import { smartMoney } from './smartmoney.mjs';
 import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
@@ -295,6 +296,15 @@ export const SOURCES = {
      the query, and the tab's timeframe pill picks between them. Not `shared`:
      three feeds refreshed through KV would spend ~860 of the 1,000 free
      writes a day on a list pump.fun itself only refreshes every few minutes. */
+  /* Smart money: tokens held by pump.fun's top traders by realized profit —
+     see src/smartmoney.mjs. Five minutes: the boards refresh every few, and a
+     build is three board calls plus coin and activity batches. Not shared,
+     for the same KV reason as Traders. Colour is the ordinary 1H/24H move. */
+  smart: {
+    id: 'smart', label: 'Smart money', group: 'Traders',
+    chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
+    fetch: () => smartMoney(),
+  },
   'traders-daily': {
     id: 'traders-daily', label: 'Traders', group: 'Traders',
     chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,

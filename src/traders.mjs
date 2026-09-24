@@ -35,7 +35,7 @@ export const PERIODS = { daily: 'h24', weekly: 'd7', monthly: 'd30' };
 const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 const num = v => { const n = +v; return Number.isFinite(n) ? n : null; };
 
-async function board(period, sort) {
+export async function board(period, sort) {
   const r = await fetch(`${LB}?period=${period}&sort=${sort}&limit=100`, {
     headers: { accept: 'application/json', 'user-agent': UA },
     signal: AbortSignal.timeout(10000),

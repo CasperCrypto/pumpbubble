@@ -661,6 +661,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="trending">🔥 Trending</button>
     <button data-mode="taps">👆 Tap wars</button>
     <button data-mode="traders">💰 Traders</button>
+    <button data-mode="smart">🧠 Smart money</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="majors">Whole market</button>
     <button data-mode="stocks">Stocks</button>
@@ -919,6 +920,13 @@ const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
    pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
 const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly'};
 function fixTf(){
+  /* Smart money's colour is pump.fun's own market activity: 1H and 24H, nothing longer */
+  if(S.mode==='smart'){
+    if(S.tf==='h1'||S.tf==='h24')return;
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+    return;
+  }
   if(S.mode==='traders'){
     if(TRADER_PERIOD[S.tf])return;
     S.tf='h24';
@@ -1029,6 +1037,8 @@ async function fetchLive(){
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
     positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
+    smartN:+t.smartN||0, smartBanked:+t.smartBanked||0,
+    smartWho:Array.isArray(t.smartWho)?t.smartWho.slice(0,6).map(w=>({name:String(w.name||''),xh:String(w.xh||''),realized:+w.realized||0})):[],
     key:t.addr||t.mint||'', taps:+t.taps||0, tapsTotal:+t.tapsTotal||0, tapRank:+t.tapRank||0, award:t.award||'', tapGold:+t.tapGold||0, goldSince:+t.goldSince||0, adSince:+t.adSince||0,
     kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
@@ -1171,7 +1181,9 @@ function rebuild(){
      ones are small by construction and were being dropped before they could be
      drawn. Size follows the same measure unless a size mode was picked
      explicitly, otherwise the hottest bubble is a dot beside a bridged major. */
-  const byHeat=S.mode==='trending'&&S.sizeBy==='mcap';
+  /* Smart money sizes by how many top traders hold it — carried in `heat` —
+     the same way Trending sizes by its rank */
+  const byHeat=(S.mode==='trending'||S.mode==='smart')&&S.sizeBy==='mcap';
   /* On the arena, size is taps — that is the whole tab. +1 so a token nobody
      has tapped yet is still a bubble somebody can tap. */
   const byTaps=S.mode==='taps'&&S.sizeBy==='mcap';
@@ -1179,7 +1191,7 @@ function rebuild(){
     :byTaps?(+t.taps||0)+1
     :S.sizeBy==='gain'?Math.abs(t.pc[S.tf]||0)+1
     :S.sizeBy==='vol'?Math.max(t.vol,1):Math.max(t.mcap,1);
-  const RANK=S.mode==='trending'?(t=>+t.heat||0):S.mode==='taps'?(t=>+t.taps||0):M;
+  const RANK=(S.mode==='trending'||S.mode==='smart')?(t=>+t.heat||0):S.mode==='taps'?(t=>+t.taps||0):M;
   L.sort((a,b)=>RANK(b)-RANK(a));
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
@@ -1209,6 +1221,15 @@ function stats(){
     const upN=v.filter(t=>!(t.total<0)).length;
     document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${v.length-upN}</span>`;
     document.getElementById('stTop').innerHTML=`${esc(b.sym)} <span class="up">+${esc(fmtUsd(b.realized||0))}</span>`;
+    return;
+  }
+  if(S.mode==='smart'){
+    lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Most held');
+    const m=v.reduce((a,t)=>(t.smartN||0)>(a.smartN||0)?t:a,v[0]);
+    document.getElementById('stCap').textContent=fmtUsd(cap);
+    const upN=v.filter(t=>!t.noData&&t.chg>=0).length;
+    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${v.length-upN}</span>`;
+    document.getElementById('stTop').innerHTML=`${esc(m.sym)} <span class="up">🧠 ${m.smartN}</span>`;
     return;
   }
   lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Top mover');
@@ -1702,6 +1723,12 @@ function draw(){
       ctx.fillStyle=c.gold?'rgba(60,40,0,.85)':'rgba(255,255,255,.85)';
       ctx.fillText('👆 '+fmtTaps(t.taps),t.x,t.y-r*.74);
     }
+    /* how many of the top traders hold it — the number that sized it */
+    else if(S.mode==='smart'&&t.smartN>0&&r>=26){
+      ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
+      ctx.fillStyle=c.gold?'rgba(60,40,0,.85)':'rgba(255,255,255,.88)';
+      ctx.fillText('🧠 '+t.smartN,t.x,t.y-r*.74);
+    }
     else if(c.gold&&r>=34){
       ctx.font=`900 ${clamp(r*.15,8,13)}px ui-sans-serif,sans-serif`;
       ctx.fillStyle='rgba(60,40,0,.85)';
@@ -1975,13 +2002,20 @@ function openCard(t){
       +(t.kol!=null&&t.kol>0?' · '+nf(t.kol)+' KOLs':'')
       +'</div>'
     : '')+tapLine;
+  const whoOf=w=>w.xh?'@'+esc(w.xh):esc(w.name);
+  const smartLine=t.smartN>0
+    ? '<div class="warn" style="opacity:.9">🧠 Held by <b>'+t.smartN+'</b> of pump.fun\u2019s top traders by realized profit'
+      +(t.smartWho.length?' \u00b7 '+t.smartWho.slice(0,4).map(w=>whoOf(w)+' <span style="opacity:.7">+'+esc(fmtUsd(w.realized))+'</span>').join(', ')
+        +(t.smartN>4?' +'+(t.smartN-4)+' more':''):'')
+      +'</div>'
+    : '';
   const traderLine=t.kind==='trader'
     ? '<div class="warn" style="opacity:.9">💰 #'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'')+')'
       +' · '+(t.pumpRank?'#'+esc(String(t.pumpRank))+' on pump.fun\u2019s board, which counts paper gains':'not in pump.fun\u2019s top 100, which counts paper gains')
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.via==='hot'
+  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
@@ -2633,6 +2667,11 @@ function readyPost(link){
       +'Ranked by realized PnL, not paper gains\n\n'
       +lines.join('\n')+'\n\n'+link;
   }
+  if(S.mode==='smart'){
+    const ls=rows.map((t,i)=>(i+1)+'. '+tagOf(t.sym)+' \u2014 held by '+t.smartN+' top trader'+(t.smartN===1?'':'s'));
+    return '\ud83e\udde0 What pump.fun\u2019s best traders are holding right now\n'
+      +'Top traders ranked by realized PnL, not paper gains\n\n'+ls.join('\n')+'\n\n'+link;
+  }
   const lines=rows.map((t,i)=>(i+1)+'. '+tagOf(t.sym)+' '+postPct(+t.pc[S.tf]));
   return (TEN_HEAD[S.mode]||'Top 10')+' \u00b7 '+(TF_WORD[S.tf]||S.tf)+'\n\n'+lines.join('\n')+'\n\n'+link;
 }
@@ -2672,7 +2711,7 @@ function showPost(txt){
    ten is a claim somebody would repost. Chains, launchpads, prediction and
    casinos are venues rather than projects — a "top 10 trending" of them is not
    a thing, and the card's shape (ticker, logo, percentage) is not theirs. */
-const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,traders:1};
+const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,traders:1,smart:1};
 function shareTenBtn(){
   const b=document.getElementById('shareTen');
   if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
@@ -2718,7 +2757,9 @@ function openTen(){
   }else{
     /* visitors: a one-line caption and the link, which brings the card */
     showPost('');
-    const label=S.mode==='traders'
+    const label=S.mode==='smart'
+      ? 'What pump.fun\u2019s best traders are holding right now'
+      : S.mode==='traders'
       ? 'Who actually banked on pump.fun \u2014 realized profit, not paper gains'
       : (S.mode==='trending'?'Trending right now':'Top 10')+' \u2014 the top 10 on pumpbubble.fun';
     document.getElementById('shX').onclick=()=>{
@@ -2879,7 +2920,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
+  const OK={smart:'smart',smartmoney:'smart',whales:'smart',traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
             prediction:'prediction',predictions:'prediction',bets:'prediction',
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun'};

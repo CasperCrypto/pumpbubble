@@ -585,6 +585,33 @@ in bursts, so a cold render is occasionally killed with *"Worker exceeded CPU ti
 succeeds on the next try, after which the edge serves it. This is true of every share card, not
 this one. Workers Paid ($5/month) removes it; until then, open a link once before posting it.
 
+## Smart money
+
+`src/smartmoney.mjs`, source `smart`, the 🧠 tab. Every bubble is a token, sized by **how many of
+pump.fun's top traders by realized profit hold it now** — the daily, weekly and monthly realized
+boards together, each wallet once, up to 300 traders — from the `topPositions` pump.fun lists on
+every leaderboard row. Coin records come from `POST frontend-api-v3.pump.fun/coins-v2/mints`
+(`{"mints":[…]}`, full coin objects, 100 a call); price change and volume from market activity.
+Nothing is predicted: it shows where people with a measured record of banking profit have money.
+
+**The claim was checked before it was built.** "Top positions" could have meant what a trader made
+money on and already sold — the opposite signal. Against pump.fun's per-wallet PnL
+(`profile-api.pump.fun/v2/pnl/token/<wallet>/<mint>`, `amount_held`) 15 of 18 sampled were still
+held; the other three were Robinhood Chain tokens that endpoint does not cover.
+
+- **All three boards, not the pill's period.** Price change is available to 24h only; letting 1W
+  choose the weekly board would have coloured bubbles by a week's move nobody measured. One day's
+  board alone was 255 positions across 228 tokens; three boards make overlap happen.
+- **Size is holders, tie-broken by what they banked** (`scoreOf`: count × 10 + log10 of combined
+  realized), carried in `heat` so the page sizes and ranks it the way it does Trending. The face
+  prints `🧠 N`; the card names the holders, richest first, `@` only on a legal X handle.
+- **Dust and wrapped majors are dropped.** Top positions include tokens called `test` and `4` with
+  nothing traded (`MIN_VOL`, `MIN_MCAP`); and **wrapped ETH on Solana carried Ethereum's whole
+  $324B market cap**, which put the header's tracked cap at $348B. The cap-to-volume bar the pump.fun
+  tab uses without liquidity (`MAX_CAP_TO_VOL`, 2000) removes them: ETH turned over 1/29,831 of its
+  "cap" a day, real coins on the tab 1/50 to 1/300.
+- It is a token view: Boost, Buy and Chart all work. Share top 10 reads "N TRADERS" on each bubble.
+
 ## The generative card
 
 `src/bubblecard.mjs`, `/api/card?kind=bubbles`, the page at `/s/top10`, and the **Share top 10**

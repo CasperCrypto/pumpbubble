@@ -122,9 +122,10 @@ const caches = new Map();
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending',
-  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly' };
+  smart: 'smart', traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const TEN_TITLE = {
+  smart: 'WHAT TOP TRADERS HOLD',
   'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED',
   trending: 'TOP 10 TRENDING',
   pumpfun: 'TOP 10 ON PUMP.FUN',
@@ -134,6 +135,7 @@ const TEN_TITLE = {
   base: 'TOP 10 ON BASE',
 };
 const TEN_SHARE = {
+  smart: 'What pump.fun\u2019s best traders are holding right now',
   'traders-daily': 'Who actually banked on pump.fun today — realized profit, not paper gains',
   'traders-weekly': 'Who actually banked on pump.fun this week — realized profit, not paper gains',
   'traders-monthly': 'Who actually banked on pump.fun this month — realized profit, not paper gains',
@@ -1131,10 +1133,14 @@ export async function handle(req, ctx) {
         /* A trader's bubble carries money, not a percentage: what was
            banked, coloured by whether the trader is up overall. */
         const traders = srcId.startsWith('traders');
+        /* smart money reads "6 TRADERS" where a token reads its percentage:
+           that count is the thing the tab measures */
         const rows = traders
           ? top.map(t => ({ ...t, cardTitle: t.xh ? '@' + t.xh : t.sym, cardLabel: '+' + (mcapLabel(t.realized) || '$0'),
                             cardUp: !(t.total < 0) }))
-          : top;
+          : srcId === 'smart'
+            ? top.map(t => ({ ...t, cardLabel: t.smartN + (t.smartN === 1 ? ' TRADER' : ' TRADERS'), cardUp: !(t.pc[tf] < 0) }))
+            : top;
         const svg = await bubbleCardSvgFor(rows, tf, {
           title: TEN_TITLE[srcId] || 'TOP 10 TRENDING',
           sub: (TF_SHORT[tf] || '24H').toUpperCase() + (traders ? ' · REALIZED' : ''),
