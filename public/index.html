@@ -297,7 +297,7 @@ button,input{font-family:inherit}
 #smTable .tk b{font-weight:800;display:block}
 #smTable .tk small{color:var(--dim);font-size:11px;display:block;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 #smTable .held{font-weight:900;font-size:15px}
-#smTable .held span{font-size:11px;font-weight:700;color:var(--dim)}
+#smTable .htxt{font-size:11px;font-weight:700;color:var(--dim)}
 #smTable .who{color:var(--dim);font-size:11.5px;white-space:normal;min-width:180px;max-width:340px}
 #smTable .who b{color:var(--ink);font-weight:700}
 #smTable .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
@@ -307,7 +307,7 @@ button,input{font-family:inherit}
   /* a phone keeps the four numbers that matter: who is it, how many hold it,
      how big, how it moved — the rest is one tap away in the card */
   #smTable{padding:6px 6px 70px}
-  #smTable .c-who,#smTable .c-vol,#smTable .c-h1,#smTable .held span{display:none}
+  #smTable .c-who,#smTable .c-vol,#smTable .c-h1,#smTable .htxt{display:none}
   #smTable td{padding:8px 6px}#smTable th{padding:6px}#smTable table{font-size:12px}
   #smTable .tk{gap:7px}#smTable .tk img,#smTable .tk .ph{width:26px;height:26px}
   #smTable .tk small{max-width:96px}
@@ -1312,7 +1312,7 @@ function renderSmartTable(list){
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
       return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
         +`<td><div class="tk">${av}<div><b>$${esc(t.sym)}</b><small>${esc(t.name||'')}</small></div></div></td>`
-        +`<td><span class="held">\ud83e\udde0 ${t.smartN||0}</span> <span>top trader${t.smartN===1?'':'s'}</span></td>`
+        +`<td><span class="held">\ud83e\udde0 ${t.smartN||0}</span> <span class="htxt">top trader${t.smartN===1?'':'s'}</span></td>`
         +`<td class="who c-who">${who(t)}</td>`
         +`<td class="num">${esc(fmtUsd(t.mcap||0))}</td>`
         +`<td class="num c-h1">${pc(t.pc&&t.pc.h1)}</td>`
