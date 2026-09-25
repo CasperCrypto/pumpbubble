@@ -32,6 +32,9 @@ export const TIERS = {
 export const AD_TIERS = {
   rail:  { id: 'rail',  label: 'Map ad',        usd: 49, hours: 24, max: 4, key: 'ads' },
   alert: { id: 'alert', label: 'Buy-alert ad',  usd: 79, hours: 24, max: 1, key: 'alertads' },
+  /* one sponsored DM to everyone on the bot's list — held for the operator's
+     approval before it goes, so a paying scam cannot reach every inbox */
+  dm:    { id: 'dm',    label: 'DM blast',      usd: 199, hours: 0, max: 1000, key: 'dmads', review: true },
 };
 export const AD_QUEUE_DAYS = 7;
 
@@ -614,7 +617,8 @@ export async function activateAd(store, order, payment) {
       : 'https://pumpbubble.fun/s/' + order.mint,
     usd: order.usd, sol: payment.received, sig: payment.signature, payer: payment.payer || '',
     notify: order.notify || 0,
-    from, until: from + ms, at: now,
+    from, until: tier.review ? now + 30 * 864e5 : from + ms, at: now,
+    ...(tier.review ? { status: 'review' } : {}),
   };
   /* ended ads older than a day go; queued and running ones stay */
   const kept = list.filter(a => !(a.until > 0 && a.until < now - 864e5)).concat(ad);

@@ -62,7 +62,9 @@ export class Guard {
     const answer = Math.min(OPTIONS - 1, Math.floor(rnd() * OPTIONS));
     const ttl = TTLS.includes(+ttlMin) ? +ttlMin : 5;
     const until = now + ttl * 60_000;
-    this.pending[uid] = { at: now, until, answer, tries: 0, msg: 0 };
+    /* the options stay here too, so a captcha answered in private chat can
+       show the same eight the group was told about */
+    this.pending[uid] = { at: now, until, answer, options, tries: 0, msg: 0 };
     return { ok: true, captcha: true, options, target: options[answer], until, ttl };
   }
 
@@ -79,6 +81,13 @@ export class Guard {
     const p = this.pending[String(uid)];
     delete this.pending[String(uid)];
     return { ok: !!p, msg: p ? p.msg : 0 };
+  }
+
+  /* What the private-chat verification shows: never the answer's index. */
+  peek(uid, now) {
+    const p = this.pending[String(uid)];
+    if (!p || now > p.until || !p.options) return { ok: false };
+    return { ok: true, options: p.options, target: p.options[p.answer], until: p.until, left: TRIES - p.tries };
   }
 
   answer(uid, i, now) {
@@ -123,6 +132,7 @@ export function runGuard(g, op, b = {}, now = Date.now()) {
     case 'msg': return g.setMsg(b.uid, b.msg);
     case 'drop': return g.drop(b.uid);
     case 'answer': return g.answer(b.uid, b.i, now);
+    case 'peek': return g.peek(b.uid, now);
     case 'welcome': return g.welcome(b.msg);
     case 'expired': return { list: g.expired(now) };
     default: return { ok: false, error: 'unknown op' };

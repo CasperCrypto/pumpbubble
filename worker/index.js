@@ -10,7 +10,8 @@
    ========================================================================== */
 
 import { Guard, runGuard } from '../src/guard.mjs';
-import { guardExpire, onEvmBuys } from '../src/tgbot.mjs';
+import { guardExpire, onEvmBuys, sendDm } from '../src/tgbot.mjs';
+import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
@@ -133,6 +134,46 @@ export class EvmWatch {
     }
     await this.state.storage.setAlarm(Date.now() + (this.back || c.every));
   }
+}
+
+/* The bot's list and the mass DM (src/audience.mjs). One object; its alarm
+   paces a send at Telegram's rate, whether or not the console is open. */
+export class AudienceDO {
+  constructor(state, env) { this.state = state; this.env = env; this.a = new Audience(state.storage); }
+  async fetch(req) {
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    let out;
+    switch (b.op) {
+      case 'add': out = await this.a.add(b.id, b.src); break;
+      case 'remove': out = await this.a.remove(b.id); break;
+      case 'count': out = { ok: true, count: await this.a.count() }; break;
+      case 'start':
+        out = await this.a.start({ html: b.html, buttons: b.buttons, label: b.label });
+        if (out.ok) await this.state.storage.setAlarm(Date.now() + 300);
+        break;
+      case 'cancel': out = await this.a.cancel(); break;
+      default: out = { ok: true, count: await this.a.count(), job: await this.a.job() };
+    }
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async alarm() {
+    if (!this.env.TG_BOT_TOKEN) return;
+    const r = await this.a.step((id, html, buttons) => sendDm(this.env, id, html, buttons));
+    if (r.more) await this.state.storage.setAlarm(Date.now() + TICK_MS);
+  }
+}
+
+function audienceClient(env) {
+  if (!env.AUDIENCE) return null;
+  const stub = () => env.AUDIENCE.get(env.AUDIENCE.idFromName('audience'));
+  return async (op, body = {}) => {
+    const r = await stub().fetch('https://audience/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, ...body }),
+    });
+    return r.json();
+  };
 }
 
 function evmClient(env) {
@@ -344,6 +385,7 @@ async function makeCtx(env, execCtx) {
     arena: arenaClient(env),
     guard: guardClient(env),
     evm: evmClient(env),
+    audience: audienceClient(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),

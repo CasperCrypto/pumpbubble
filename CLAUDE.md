@@ -1360,14 +1360,31 @@ Adding ads exposed a real bug: the pending record dropped the order's `kind`, so
 its tab closed was swept in as a zero-hour boost and the bid never landed. `addPending` keeps
 `kind` now.
 
-**Mass DMs to group members were asked for and not built** — "10 projects with 100 members, 1,000
-users I can DM, sell mass DMs". Telegram bots cannot message anyone who has not pressed Start on the
-bot, so group membership gives no reach at all, and getting those Starts through a "verify" button
-that quietly enrols people in promotions is harvesting consent under false pretences — the
-refusal already recorded under *Nobody is messaged who did not ask*. It would also end the product:
-reported bots are restricted, and a restricted bot stops posting buys in every group at once. The
-reach is sold instead through the alert ad (every member of every group sees it) and the opt-in
-subscriber list, which may carry clearly labelled promotions to people who chose it.
+**The mass DM — built on the second ask, with the conditions that protect the bot**
+(`src/audience.mjs`, the `AudienceDO`, console → Mass DM). The first answer was no (harvesting
+group members through a disguised verify, and selling DMs to that list); the operator asked again,
+citing Major and similar bots, and it is his product. What was built:
+
+- **Everyone who presses Start is on the list**, and is told so at that Start (`DISCLOSURE`:
+  "adds you to pumpbubble updates — new launches, trending tokens and sponsored drops. /stop or 🔕
+  any time"). `/stop`, 🔕 on the menu, and the **Unsubscribe button on every mass DM** remove them;
+  a blocked or deleted account is forgotten on the next send.
+- **Growth comes from 🛡 Guard → Verify in private chat**: a new member's captcha opens in a chat
+  with the bot (`t.me/<bot>?start=v_<chat>`), the options are the same pending challenge
+  (`peek`), and that Start is what makes them reachable. Telegram gives a bot no other way to DM
+  a group member. The group's settings page says what the mode does.
+- **The send lives in the Durable Object**, paced at 25 messages per 1.1 s tick by its alarm —
+  under Telegram's ~30/s — so it runs to the end with the console closed, resumes by key cursor, and
+  never sends one person the same job twice. One send at a time; Stop cancels it.
+- **Paid DM blasts ($199, `AD_TIERS.dm`) wait for the operator.** They are bought in the bot's
+  shop like any ad, land in KV `dmads` as `review`, and go out only on *Approve & send* in the
+  console; *Decline* leaves a refund to the operator. The message is the token and nothing it
+  typed, marked "Sponsored", with its chart and bubble buttons.
+
+The risk that remains is the one that was the reason for the first no: a bot whose DMs get reported
+is restricted by Telegram, and a restricted bot stops posting buys in every group at once. The
+disclosure and the one-tap way out are what keep the block rate down — do not remove them to
+"grow faster".
 
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank

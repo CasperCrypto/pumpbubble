@@ -100,6 +100,16 @@ class_name = "EvmWatch"
 tag = "v3-evm"
 new_sqlite_classes = ["EvmWatch"]
 
+# The bot's list and the mass DM (src/audience.mjs): everyone who pressed
+# Start, and a send paced at Telegram's rate by this object's alarm.
+[[durable_objects.bindings]]
+name = "AUDIENCE"
+class_name = "AudienceDO"
+
+[[migrations]]
+tag = "v4-audience"
+new_sqlite_classes = ["AudienceDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

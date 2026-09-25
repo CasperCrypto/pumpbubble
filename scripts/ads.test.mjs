@@ -67,6 +67,17 @@ console.log('\nactivation');
   is('rail ads land in the rail list', ((await store.get('ads')) || []).length, 1);
 }
 
+console.log('\nthe DM blast');
+{
+  const store = memStore();
+  const o = await createOrder({ mint: MINT, sym: 'POK', name: 'Pokmart', tierId: 'dm', kind: 'ad', solPrice: 150, treasury: TREASURY });
+  is('a DM blast is priced from its tier', o.usd, AD_TIERS.dm.usd);
+  const d = await activateAd(store, o, { signature: 's9', received: 1.3, payer: 'P' });
+  is('a paid DM waits for review', d.status, 'review');
+  is('in its own list', ((await store.get('dmads')) || []).length, 1);
+  is('never in the alert line', ((await store.get('alertads')) || []).length, 0);
+}
+
 console.log('\nbids survive the sweep now');
 {
   const store = memStore();
@@ -78,7 +89,7 @@ console.log('\nshop buttons');
 {
   const sol = shopKeyboard(MINT).flat(), evm = shopKeyboard('0x' + 'ab'.repeat(20)).flat();
   const enc = new TextEncoder();
-  is('three boosts and two ad slots', sol.length, 5);
+  is('three boosts, two ad slots and the DM blast', sol.length, 6);
   is('every button fits Telegram’s 64 bytes, Solana', sol.every(b => enc.encode(b.callback_data).length <= 64), true);
   is('and EVM', evm.every(b => enc.encode(b.callback_data).length <= 64), true);
   is('ads first when asked for ads', shopKeyboard(MINT, 'ad')[0][0].callback_data.startsWith('buy:a:'), true);

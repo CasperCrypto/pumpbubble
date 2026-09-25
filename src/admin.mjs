@@ -253,13 +253,24 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
   <div class="card">
     <h2>Telegram bot</h2>
     <div id="tg"></div>
-    <div class="row" style="margin-top:10px">
-      <select id="bAud"><option value="index">Bubble Index subscribers</option><option value="trend">Trending subscribers</option></select>
-      <button class="go" id="bCount">Count recipients</button>
-      <button class="go" id="bSend" disabled>Send</button>
+  </div>
+
+  <div class="card">
+    <h2>Mass DM</h2>
+    <div class="dim" id="dmCount">—</div>
+    <textarea id="bText" rows="5" placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;. Goes to everyone who pressed Start on the bot; every message carries an Unsubscribe button." style="width:100%;margin-top:8px;background:#0d1117;color:inherit;border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;font-size:13px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <input id="dmBtnText" placeholder="button text (optional)" style="flex:1">
+      <input id="dmBtnUrl" placeholder="https://… (optional)" style="flex:2">
     </div>
-    <textarea id="bText" rows="4" placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;. Goes only to people who opted in." style="width:100%;margin-top:8px;background:#0d1117;color:inherit;border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;font-size:13px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="go" id="bSend">Send to everyone</button>
+      <button class="go" id="dmCancel">Stop the send</button>
+    </div>
     <div class="dim" id="bOut" style="margin-top:6px"></div>
+    <h2 style="margin-top:16px">Paid DM blasts</h2>
+    <div class="dim" style="margin-bottom:6px">Bought in the bot's shop. Nothing goes out until you approve it — decline anything you would not put your name on, and refund the payer.</div>
+    <div id="dmReviews"></div>
   </div>
 
   <div id="msg"></div>
@@ -289,28 +300,35 @@ async function api(action,body){
   if(!j.ok)throw new Error(j.error||'failed');
   return j;
 }
-let bReady=null;
-$('bCount').onclick=async()=>{
+/* Mass DM: the send runs in the bot's own Durable Object at Telegram's rate,
+   so this page only starts it and watches — closing the tab stops nothing. */
+let DM={count:0};
+const jobLine=j=>!j?'':(j.status==='sending'?'sending '+(j.label||'')+': ':j.status+' '+(j.label||'')+': ')
+  +j.sent+' sent of '+j.total+(j.gone?' · '+j.gone+' had blocked the bot and were removed':'')+(j.failed?' · '+j.failed+' failed':'');
+async function dmLoad(){
   try{
-    const r=await api('tg.broadcast',{audience:$('bAud').value,text:$('bText').value||'x',dry:true});
-    let eligible=r.eligible,after=r.after;
-    while(!r.done&&after<r.total){const n=await api('tg.broadcast',{audience:$('bAud').value,text:'x',dry:true,after});eligible+=n.eligible;after=n.after;if(n.done)break}
-    bReady={audience:$('bAud').value,eligible};
-    $('bOut').textContent=eligible+' would receive this';
-    $('bSend').disabled=!(eligible>0&&$('bText').value.trim());
-  }catch(e){say(e.message,true)}
-};
-$('bText').oninput=()=>{$('bSend').disabled=true;bReady=null;$('bOut').textContent=''};
-$('bAud').onchange=()=>{$('bSend').disabled=true;bReady=null;$('bOut').textContent=''};
+    const r=await api('dm.status');DM=r;
+    $('dmCount').textContent=(r.count||0).toLocaleString()+' people on the list (everyone who pressed Start)';
+    $('bOut').textContent=jobLine(r.job);
+    $('dmReviews').innerHTML=(r.reviews||[]).slice().reverse().map(a=>'<div class="row" style="justify-content:space-between;border-top:1px solid var(--line);padding:6px 0">'
+      +'<span><b>'+esc(a.title)+'</b> '+esc(a.name||'')+' · $'+esc(a.usd)+' · '+esc((+a.sol||0).toFixed(4))+' SOL from '+esc(String(a.payer||'').slice(0,6))+'… · <a href="'+esc(a.url)+'" target="_blank" rel="noopener">token</a></span>'
+      +(a.status==='review'?'<span><button class="go" data-dmok="'+esc(a.id)+'">Approve &amp; send</button> <button class="go" data-dmno="'+esc(a.id)+'">Decline</button></span>':'<span class="dim">'+esc(a.status)+'</span>')
+      +'</div>').join('')||'<span class="dim">none yet</span>';
+    if(r.job&&r.job.status==='sending')setTimeout(dmLoad,3000);
+  }catch(e){$('dmCount').textContent=e.message}
+}
 $('bSend').onclick=async()=>{
-  if(!bReady||!confirm('Send to '+bReady.eligible+' subscribers?'))return;
-  $('bSend').disabled=true;
-  try{
-    let after=0,sent=0,gone=0;
-    for(;;){const r=await api('tg.broadcast',{audience:bReady.audience,text:$('bText').value,dry:false,after});sent+=r.sent;gone+=r.gone;after=r.after;if(r.done)break}
-    $('bOut').textContent='sent '+sent+(gone?' · '+gone+' had blocked the bot and were removed':'');
-    bReady=null;
-  }catch(e){say(e.message,true)}
+  const text=$('bText').value.trim();if(!text){say('write the message first',true);return}
+  if(!confirm('Send this to '+(DM.count||0)+' people?'))return;
+  try{ await api('dm.send',{text,buttonText:$('dmBtnText').value,buttonUrl:$('dmBtnUrl').value}); say('sending'); dmLoad(); }
+  catch(e){say(e.message,true)}
+};
+$('dmCancel').onclick=async()=>{try{await api('dm.cancel');say('stopped');dmLoad()}catch(e){say(e.message,true)}};
+$('dmReviews').onclick=async e=>{
+  const ok=e.target.dataset.dmok,no=e.target.dataset.dmno;if(!ok&&!no)return;
+  if(ok&&!confirm('Send this sponsored DM to '+(DM.count||0)+' people?'))return;
+  try{ await api(ok?'dm.approve':'dm.reject',{id:ok||no}); say(ok?'approved — sending':'declined — refund the payer'); dmLoad(); }
+  catch(err){say(err.message,true)}
 };
 
 function say(t,bad){const m=$('msg');m.textContent=t;m.style.color=bad?'#ff9aa4':'#8b98a8';
@@ -410,7 +428,7 @@ document.addEventListener('click',async e=>{
 
 $('in').onclick=async()=>{
   PW=$('pw').value;
-  try{ await load(); $('login').classList.add('hide'); $('app').classList.remove('hide');
+  try{ await load(); dmLoad(); $('login').classList.add('hide'); $('app').classList.remove('hide');
     /* unlock ready posts on the map, in this browser */
     try{localStorage.setItem('pb_op','1')}catch(_){}
     opState(); }

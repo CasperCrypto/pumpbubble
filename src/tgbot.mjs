@@ -36,6 +36,11 @@ import { buysFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
+import { UNSUB } from './audience.mjs';
+
+/* Said at every Start, because pressing Start is what puts somebody on the
+   list the operator can DM (src/audience.mjs). */
+export const DISCLOSURE = 'Starting me adds you to pumpbubble updates — new launches, trending tokens and sponsored drops. /stop or 🔕 any time.';
 
 export const SITE = 'https://pumpbubble.fun';
 const DEXS = 'https://api.dexscreener.com';
@@ -790,7 +795,7 @@ async function askForToken(ctx, chatId, what) {
 
 export function shopKeyboard(ca, what = '') {
   const b = Object.values(BOOST_TIERS).map(t => ({ text: `⚡ ${t.label} $${t.usd} · ×${t.mult} · ${t.hours}h`, callback_data: `buy:b:${t.id}:${ca}` }));
-  const a = Object.values(AD_TIERS).map(t => ({ text: `📣 ${t.label} $${t.usd} · ${t.hours}h`, callback_data: `buy:a:${t.id}:${ca}` }));
+  const a = Object.values(AD_TIERS).map(t => ({ text: t.review ? `📨 ${t.label} $${t.usd} · to everyone on my list` : `📣 ${t.label} $${t.usd} · ${t.hours}h`, callback_data: `buy:a:${t.id}:${ca}` }));
   return what === 'ad' ? [...a.map(x => [x]), ...b.map(x => [x])] : [...b.map(x => [x]), ...a.map(x => [x])];
 }
 
@@ -803,7 +808,8 @@ async function shopFor(ctx, chatId, ca, what = '') {
     `<b>$${tgEsc(t.sym)}</b> — ${tgEsc(t.name)} · ${tgEsc(chain)}${t.mcap ? ' · MCap ' + fmtUsd(t.mcap) : ''}\n\n`
     + '⚡ <b>Boost</b>: a golden bubble on the map, sized by what was paid, fading over its hours.\n'
     + '📣 <b>Map ad</b>: a slot on the moving rail above the map.\n'
-    + '📣 <b>Buy-alert ad</b>: your token on a line under every buy alert, in every group I post in.\n\n'
+    + '📣 <b>Buy-alert ad</b>: your token on a line under every buy alert, in every group I post in.\n'
+    + '📨 <b>DM blast</b>: your token in a sponsored DM to everyone on my list' + (await audienceLine(ctx)) + ', sent after review.\n\n'
     + 'Paid in SOL. Pick one:',
     { reply_markup: { inline_keyboard: shopKeyboard(isEvmAddr(ca) ? ca.toLowerCase() : ca, what) } });
 }
@@ -825,7 +831,9 @@ async function onShop(ctx, q, data) {
     }, String(q.from.id)).catch(() => null);
     if (!r || !r.ok) return say(env, chatId, '⚠️ ' + tgEsc((r && r.error) || 'Could not make a quote right now — try again in a minute.'));
     const o = r.order;
-    const head = o.kind === 'ad'
+    const head = o.kind === 'ad' && o.tier === 'dm'
+      ? `📨 <b>DM blast for $${tgEsc(o.sym)}</b> — one sponsored DM to everyone on my list${await audienceLine(ctx)}, sent once it is reviewed`
+      : o.kind === 'ad'
       ? `📣 <b>${tgEsc(AD_TIERS[o.tier] ? AD_TIERS[o.tier].label : 'Ad')} for $${tgEsc(o.sym)}</b> — ${o.hours}h, `
         + (o.startsAt && o.startsAt > Date.now() + 60_000 ? 'starts ' + when(o.startsAt) : 'starts as soon as it is paid')
       : `⚡ <b>Boost $${tgEsc(o.sym)}</b> — ${tgEsc(o.tier)} ×${o.projection ? o.projection.to : o.mult} for ${o.hours}h`;
@@ -851,8 +859,13 @@ async function onShop(ctx, q, data) {
   return ack();
 }
 
+async function audienceLine(ctx) {
+  const r = ctx.audience ? await ctx.audience('count').catch(() => null) : null;
+  return r && r.count ? ` (${r.count.toLocaleString('en-US')} people now)` : '';
+}
+
 async function paidById(store, id) {
-  for (const key of ['boosts', 'ads', 'alertads']) {
+  for (const key of ['boosts', 'ads', 'alertads', 'dmads']) {
     let list = [];
     try { list = (await store.get(key)) || []; } catch {}
     const hit = list.find(x => x && x.id === id);
@@ -867,7 +880,9 @@ export async function notifyPaid(env, b) {
   if (!chat) return null;
   const origin = site(env);
   let text;
-  if (b.kind === 'ad') {
+  if (b.kind === 'ad' && b.slot === 'dm') {
+    text = `✅ <b>Payment received</b> — your DM blast for ${tgEsc(b.title)} is in review and goes out once approved. I will not charge twice if it is declined: the operator refunds it.`;
+  } else if (b.kind === 'ad') {
     const t = AD_TIERS[b.slot];
     text = `✅ <b>Payment received</b> — your ${tgEsc(t ? t.label : 'ad')} for ${tgEsc(b.title)} `
       + (b.from > Date.now() + 60_000 ? `starts ${when(b.from)}` : 'is live now') + `, until ${when(b.until)}.`;
@@ -948,12 +963,14 @@ export function settingsView(g, page = 'main') {
       text: `🛡 <b>Guard</b> for this group\n\n`
         + `<b>Join captcha</b> ${on(gd.captcha)} — new members are muted until they tap the emoji I name; `
         + `${ttl} min to answer, then they are removed and can rejoin\n`
+        + `<b>Verify in private chat</b> ${on(gd.dm)} — the captcha opens in a chat with me; everyone who verifies can get pumpbubble DMs\n`
         + `<b>Welcome message</b> ${on(gd.welcome)} — the previous one is deleted when someone new arrives\n`
         + `<b>Clean joins</b> ${on(gd.clean)} — deletes the "joined" and "left" lines\n\n`
         + 'Your own welcome: <code>/welcome Hi {name}, welcome to {group}!</code>\n\n'
         + 'I need to be an admin with <b>Ban users</b> and <b>Delete messages</b>.',
       kb: [
         [{ text: (gd.captcha ? '✅' : '⬜') + ' Join captcha', callback_data: 'cfg:gcap' }],
+        [{ text: (gd.dm ? '✅' : '⬜') + ' Verify in private chat', callback_data: 'cfg:gdm' }],
         [{ text: (gd.welcome ? '✅' : '⬜') + ' Welcome message', callback_data: 'cfg:gwel' }],
         [{ text: (gd.clean ? '✅' : '⬜') + ' Clean joins', callback_data: 'cfg:gcln' }],
         TTLS.map((m, i) => ({ text: (m === ttl ? '✅ ' : '') + m + ' min', callback_data: 'cfg:gttl:' + i })),
@@ -1005,7 +1022,7 @@ async function onSettings(ctx, q, act) {
 
   const [what, val] = act.split(':');
   const i = Math.floor(num(val));
-  const GKEY = { gcap: 'captcha', gwel: 'welcome', gcln: 'clean' };
+  const GKEY = { gcap: 'captcha', gwel: 'welcome', gcln: 'clean', gdm: 'dm' };
   if (GKEY[what] || (what === 'gttl' && TTLS[i])) {
     const gd = { ttl: 5, ...(g.guard || {}) };
     let note;
@@ -1014,12 +1031,13 @@ async function onSettings(ctx, q, act) {
       const key = GKEY[what], turnOn = !gd[key];
       /* Say so now, not on the first join: a captcha the bot cannot enforce
          mutes nobody and deletes nothing. */
-      if (turnOn && key !== 'welcome') {
+      if (turnOn && key !== 'welcome' && key !== 'dm') {
         const why = await missingRights(ctx, chat.id);
         if (why) return ack(why, true);
       }
       gd[key] = turnOn;
-      note = { captcha: 'Join captcha', welcome: 'Welcome message', clean: 'Clean joins' }[key] + (turnOn ? ' on' : ' off');
+      note = { captcha: 'Join captcha', welcome: 'Welcome message', clean: 'Clean joins', dm: 'Verify in private chat' }[key] + (turnOn ? ' on' : ' off')
+        + (key === 'dm' && turnOn && !gd.captcha ? ' — switch the join captcha on too' : '');
     }
     g = { ...g, guard: gd };
     await putGroup(store, chat.id, g);
@@ -1109,6 +1127,20 @@ async function onJoin(ctx, chat, u, g) {
     const muted = await tg(env, 'restrictChatMember', {
       chat_id: chat.id, user_id: u.id, permissions: perms(false), use_independent_chat_permissions: true,
     }).then(() => true).catch(() => false);
+    if (muted && gd.dm) {
+      /* verify in private: the button opens a chat with the bot, and that
+         Start is what puts the member on the list */
+      const bot = await me(env, ctx.store).catch(() => null);
+      if (bot && bot.username) {
+        const code = 'v_' + (chat.id < 0 ? 'm' + (-chat.id) : String(chat.id));
+        const m = await say(env, chat.id,
+          `👋 ${mention(u)}, welcome to <b>${tgEsc(chat.title || 'the group')}</b>!\n\n`
+          + `Tap below to verify — it opens a private chat with me. You have ${j.ttl} min.`,
+          { reply_markup: { inline_keyboard: [[{ text: '✅ Verify', url: 'https://t.me/' + bot.username + '?start=' + code }]] } });
+        if (m) await ctx.guard(chat.id, 'msg', { uid: u.id, msg: m.message_id }).catch(() => null);
+        return;
+      }
+    }
     if (muted) {
       const kb = [];
       j.options.forEach((e, i) => { if (i % 4 === 0) kb.push([]); kb[kb.length - 1].push({ text: e, callback_data: `cap:${u.id}:${i}` }); });
@@ -1177,6 +1209,70 @@ async function onCaptcha(ctx, q, rest) {
   if (g && g.guard && g.guard.welcome) await postWelcome(ctx, chat, q.from, g);
 }
 
+const chatFromCode = code => { const s = String(code || ''); return s.startsWith('m') ? -Number(s.slice(1)) : Number(s); };
+
+async function verifyStart(ctx, msg, arg) {
+  const { env } = ctx;
+  const code = arg.slice(2);
+  const chatId = chatFromCode(code);
+  const uid = msg.from.id;
+  const p = ctx.guard ? await ctx.guard(chatId, 'peek', { uid }).catch(() => null) : null;
+  if (!p || !p.ok) return say(env, msg.chat.id, 'Nothing to verify right now. If you just joined a group, tap its ✅ Verify button again — or rejoin if the time ran out.');
+  let title = 'the group';
+  try { const ch = await tg(env, 'getChat', { chat_id: chatId }); if (ch && ch.title) title = ch.title; } catch {}
+  const kb = [];
+  p.options.forEach((e, i) => { if (i % 4 === 0) kb.push([]); kb[kb.length - 1].push({ text: e, callback_data: `vcap:${code}:${i}` }); });
+  return say(env, msg.chat.id,
+    `🛡 Verify to chat in <b>${tgEsc(title)}</b>\n\nTap the ${p.target} below.\n\n<i>${DISCLOSURE}</i>`,
+    { reply_markup: { inline_keyboard: kb } });
+}
+
+async function onVerifyAnswer(ctx, q, rest) {
+  const { env, store } = ctx;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery',
+    { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  const [code, iS] = rest.split(':');
+  const chatId = chatFromCode(code);
+  const uid = q.from.id;
+  const dm = q.message && q.message.chat && q.message.chat.id;
+  const edit = text => tg(env, 'editMessageText', { chat_id: dm, message_id: q.message.message_id, text, parse_mode: 'HTML' }).catch(() => null);
+  if (!ctx.guard || !chatId) return ack();
+  const r = await ctx.guard(chatId, 'answer', { uid, i: Math.floor(num(iS)) }).catch(() => null);
+  if (!r || r.result === 'none' || r.result === 'expired') { await ack(); return edit('This check has expired — rejoin the group to get a new one.'); }
+  if (r.result === 'wrong') return ack(`❌ Not that one — ${r.left} ${r.left === 1 ? 'try' : 'tries'} left.`, true);
+  if (r.result === 'fail') {
+    await ack();
+    await kick(env, chatId, uid);
+    await del(env, chatId, r.msg);
+    return edit('❌ Wrong. You can rejoin the group in a minute and try again.');
+  }
+  await tg(env, 'restrictChatMember', { chat_id: chatId, user_id: uid, permissions: perms(true) }).catch(() => null);
+  await ack('✅ Verified');
+  await del(env, chatId, r.msg);
+  await edit('✅ Verified — you can chat in the group now.');
+  const g = await getGroup(store, chatId);
+  if (g && g.guard && g.guard.welcome) {
+    let chat = { id: chatId, title: '' };
+    try { const ch = await tg(env, 'getChat', { chat_id: chatId }); if (ch) chat = ch; } catch {}
+    await postWelcome(ctx, chat, q.from, g);
+  }
+}
+
+/* One DM from the list (the AudienceDO's sender). Every message carries the
+   way out; 'gone' means blocked or deleted, and the list forgets them. */
+export async function sendDm(env, id, html, buttons = []) {
+  try {
+    await tg(env, 'sendMessage', {
+      chat_id: id, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: false },
+      reply_markup: { inline_keyboard: [...(Array.isArray(buttons) ? buttons : []), [UNSUB]] },
+    });
+    return 'ok';
+  } catch (e) {
+    const d = String(e.description || e.message || '');
+    return /blocked|deactivated|chat not found|user not found|PEER_ID_INVALID/i.test(d) ? 'gone' : 'fail';
+  }
+}
+
 /* A ban this short lifts itself: removed now, free to rejoin in a minute. */
 const kick = (env, chatId, uid) => tg(env, 'banChatMember', {
   chat_id: chatId, user_id: uid, until_date: Math.floor(Date.now() / 1000) + KICK_S,
@@ -1197,6 +1293,16 @@ async function onPrivate(ctx, msg) {
   const c = command(msg.text || '');
   const uid = msg.from && msg.from.id;
   if (!uid) return;
+  if (c && c.cmd === 'stop') {
+    await forgetUser(store, uid);
+    if (ctx.audience) await ctx.audience('remove', { id: uid }).catch(() => null);
+    return say(env, msg.chat.id, 'Done — nothing more from me. /start any time.');
+  }
+  /* anyone talking to the bot in private has pressed Start: on the list */
+  if (ctx.audience && !(msg.from && msg.from.is_bot)) {
+    await ctx.audience('add', { id: uid, src: c && c.cmd === 'start' ? (c.arg || 'start').split('_')[0] : 'chat' }).catch(() => null);
+  }
+  if (c && c.cmd === 'start' && /^v_m?\d{1,20}$/.test(c.arg || '')) return verifyStart(ctx, msg, c.arg);
   /* a pasted contract address is the start of a purchase */
   const pasted = String(msg.text || '').trim();
   if (!c && isCA(pasted)) return shopFor(ctx, msg.chat.id, pasted);
@@ -1211,17 +1317,12 @@ async function onPrivate(ctx, msg) {
     return say(env, msg.chat.id,
       '🫧 <b>pumpbubble</b> — the live bubble map for pump.fun, Base, Robinhood Chain and the market.\n\n'
       + 'To add buy alerts to your group: add me there and run <code>/setup &lt;contract address&gt;</code>.\n\n'
-      + 'Promote a token right here, or pick what you would like from me — nothing is sent otherwise.',
+      + 'Promote a token right here: a golden bubble, an ad on the map or under every buy alert, or a DM to everyone on my list.\n\n'
+      + '<i>' + DISCLOSURE + '</i>',
       { reply_markup: { inline_keyboard: [
         [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
-        [{ text: '🫧 Daily Bubble Index', callback_data: 'sub:index' }],
-        [{ text: '🔥 Trending tokens', callback_data: 'sub:trend' }],
-        [{ text: 'No thanks', callback_data: 'sub:none' }],
+        [UNSUB],
       ] } });
-  }
-  if (c.cmd === 'stop') {
-    await forgetUser(store, uid);
-    return say(env, msg.chat.id, 'Done — nothing more from me. /start any time.');
   }
 }
 
@@ -1230,6 +1331,14 @@ async function onCallback(ctx, q) {
   const data = String(q.data || '');
   const uid = q.from && q.from.id;
   const chatId = q.message && q.message.chat && q.message.chat.id;
+  if (uid && data === 'unsub') {
+    await forgetUser(store, uid);
+    if (ctx.audience) await ctx.audience('remove', { id: uid }).catch(() => null);
+    await tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Unsubscribed — nothing more from me. /start to come back.', show_alert: true }).catch(() => {});
+    if (chatId) await tg(env, 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    return;
+  }
+  if (uid && data.startsWith('vcap:')) return onVerifyAnswer(ctx, q, data.slice(5));
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
   if (uid && (data.startsWith('shop:') || data.startsWith('buy:') || data.startsWith('chk:'))) return onShop(ctx, q, data);
   if (uid && data.startsWith('cap:')) return onCaptcha(ctx, q, data.slice(4));
@@ -1237,6 +1346,7 @@ async function onCallback(ctx, q) {
   const pick = data.slice(4);
   if (pick === 'none') {
     await forgetUser(store, uid);
+    if (ctx.audience) await ctx.audience('remove', { id: uid }).catch(() => null);
     await tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Nothing will be sent.' }).catch(() => {});
     if (chatId) await tg(env, 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
     return;

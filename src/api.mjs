@@ -4,6 +4,7 @@
    both provide, so there is exactly one implementation of every route.
    ========================================================================== */
 
+import { sponsoredDm } from './audience.mjs';
 import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
          signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
@@ -16,7 +17,7 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
-  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid,
+  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks,
 } from './tgbot.mjs';
 import { deliveryAuth as heliusAuth } from './helius.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
@@ -1995,6 +1996,50 @@ export async function handle(req, ctx) {
            which is the button to press first. */
         if (action === 'tg.status') {
           return json({ ok: true, tg: await tgStatus(ctx.env, ctx.store) });
+        }
+        /* The mass DM (src/audience.mjs). `dm.status` also carries anyone the
+           old KV opt-in list had, once, so nobody who opted in before is lost. */
+        if (action === 'dm.status') {
+          if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
+          let st = await ctx.audience('status');
+          if (!st.count) {
+            let ids = [];
+            try { ids = (await ctx.store.get('tg:users')) || []; } catch {}
+            for (const id of ids.slice(0, 5000)) await ctx.audience('add', { id, src: 'optin' }).catch(() => null);
+            if (ids.length) st = await ctx.audience('status');
+          }
+          const reviews = ((await ctx.store.get('dmads')) || []).filter(a => a.status === 'review' || a.status === 'sent' || a.status === 'rejected').slice(-20);
+          return json({ ok: true, count: st.count || 0, job: st.job || null, reviews });
+        }
+        if (action === 'dm.send') {
+          if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
+          const html = String(body.text || '').slice(0, 3500);
+          const bt = String(body.buttonText || '').trim().slice(0, 40), bu = String(body.buttonUrl || '').trim();
+          const buttons = bt && /^https:\/\/[^\s"'<>]{4,300}$/i.test(bu) ? [[{ text: bt, url: bu }]] : [];
+          return json(await ctx.audience('start', { html, buttons, label: 'console' }));
+        }
+        if (action === 'dm.cancel') {
+          if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
+          return json(await ctx.audience('cancel'));
+        }
+        if (action === 'dm.approve' || action === 'dm.reject') {
+          const list = (await ctx.store.get('dmads')) || [];
+          const ad = list.find(a => a.id === String(body.id || ''));
+          if (!ad || ad.status !== 'review') return json({ ok: false, error: 'no paid DM waiting with that id' }, 404);
+          if (action === 'dm.reject') {
+            ad.status = 'rejected'; ad.decidedAt = Date.now();
+            await ctx.store.put('dmads', list);
+            return json({ ok: true, ad });
+          }
+          if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
+          const evm = isEvmAddr(ad.mint);
+          const g = evm ? { chain: ad.chain, token: ad.mint, sym: String(ad.title || '').replace(/^\$/, '') } : { chain: 'solana', mint: ad.mint, sym: String(ad.title || '').replace(/^\$/, '') };
+          const { html, buttons } = sponsoredDm(ad, tgTokenLinks(ctx.env, g));
+          const r = await ctx.audience('start', { html, buttons, label: 'sponsored ' + ad.title });
+          if (!r.ok) return json(r, 409);
+          ad.status = 'sent'; ad.decidedAt = Date.now(); ad.jobId = r.job.id;
+          await ctx.store.put('dmads', list);
+          return json({ ok: true, ad, job: r.job });
         }
         if (action === 'tg.broadcast') {
           if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);

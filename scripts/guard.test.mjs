@@ -71,6 +71,10 @@ console.log('\njoins');
   is('after the window it is a new join', !!g.join(5, T + DUP_MS + 1).dup, false);
   g.join(6, T, { captcha: true, rnd });
   is('a member with a captcha pending is not challenged twice', g.join(6, T + DUP_MS * 2, { captcha: true, rnd }).dup, true);
+  const pk = g.peek(6, T + 1000);
+  is('peek shows the options for private-chat verification', pk.ok && pk.options.length === OPTIONS, true);
+  is('and the target, never the index', pk.options.includes(pk.target) && !('answer' in pk), true);
+  is('peek after the clock shows nothing', g.peek(6, T + 11 * 60_000).ok, false);
   is('drop forgets a challenge the bot could not enforce', g.drop(6).ok, true);
 }
 
@@ -108,8 +112,9 @@ console.log('\nsettings');
   const g = { sym: 'X', guard: { captcha: true, ttl: 10 } };
   const v = settingsView(g, 'guard');
   is('the guard page shows the captcha on', v.kb[0][0].text.startsWith('✅'), true);
-  is('and the welcome off', v.kb[1][0].text.startsWith('⬜'), true);
-  is('ten minutes is ticked', v.kb[3].find(b => b.text.startsWith('✅')).text, '✅ 10 min');
+  is('private-chat verification off by default', v.kb[1][0].text.startsWith('⬜') && v.kb[1][0].callback_data === 'cfg:gdm', true);
+  is('and the welcome off', v.kb[2][0].text.startsWith('⬜'), true);
+  is('ten minutes is ticked', v.kb[4].find(b => b.text.startsWith('✅')).text, '✅ 10 min');
   is('the main page has a Guard button', settingsView(g).kb.flat().some(b => b.callback_data === 'cfg:guard'), true);
 }
 
