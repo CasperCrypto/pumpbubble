@@ -596,6 +596,38 @@ export async function activateBoost(store, order, payment) {
   return boost;
 }
 
+/* The welcome gift: a token whose group installs the buybot turns gold on the
+   map for an hour, once. It is the one-line reason for a project to pick this
+   bot ("add it and your token is gold on the map for an hour"), paid for with
+   inventory that is not selling yet. A house boost, so never counted as
+   revenue; never over a token that is already gold (the console's house path
+   replaces a token's boosts, which here would erase a paid one); at most
+   WELCOME_MAX at a time, so paid gold stays the headline. */
+export const WELCOME_MAX = 5;
+export async function welcomeGold(store, tok, { hours = 1, size = 1.5, now = Date.now() } = {}) {
+  const evm = /^0x[0-9a-f]{40}$/i.test(String(tok.addr || tok.mint || ''));
+  const key = evm ? String(tok.addr || tok.mint).toLowerCase() : String(tok.mint || '');
+  if (!key) return { ok: false, reason: 'no token' };
+  let welcomed = [];
+  try { welcomed = (await store.get('welcomed')) || []; } catch {}
+  if (welcomed.includes(key)) return { ok: false, reason: 'once per token' };
+  const list = (await store.get('boosts')) || [];
+  const live = list.filter(b => (b.house && !b.until) || b.until > now);
+  if (live.some(b => b.mint === key)) return { ok: false, reason: 'already gold' };
+  if (live.filter(b => b.welcome).length >= WELCOME_MAX) return { ok: false, reason: 'welcome slots full' };
+  const usd = Math.max(1, Math.round(spendForBonus(size - 1) * 100) / 100);
+  list.push({
+    mint: key, sym: String(tok.sym || '').slice(0, 12), name: String(tok.name || '').slice(0, 48),
+    img: typeof tok.img === 'string' ? tok.img : '', mcap: +tok.mcap || 0,
+    ...(evm && tok.chain ? { chain: tok.chain } : {}),
+    usd, spentUsd: usd, tier: 'house', mult: 0, size,
+    at: now, until: now + hours * 36e5, house: true, welcome: true,
+  });
+  await store.put('boosts', list);
+  await store.put('welcomed', welcomed.concat(key).slice(-3000));
+  return { ok: true, until: now + hours * 36e5, size };
+}
+
 /* A paid ad lands in the list its slot is served from: `ads` for the rail
    (the same list the console writes, so /api/ads needs nothing new beyond
    honouring `from`), `alertads` for the line under buy alerts. Idempotent on

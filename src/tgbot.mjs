@@ -35,7 +35,7 @@ import { buyUrl } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
-import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
+import { TIERS as BOOST_TIERS, AD_TIERS, welcomeGold } from './boosts.mjs';
 import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
 import { smartWallets, topSmart, smartSignal } from './smartset.mjs';
 import { BOT_BONUS } from './taps.mjs';
@@ -613,7 +613,8 @@ async function onGroup(ctx, msg) {
     await putGroup(store, chatId, cfg);
     await addTracking(store, addr, pool, chatId);
     const sync = await resync(ctx);
-    const head = await tapHeadStart(ctx, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 });
+    const head = await tapHeadStart(ctx, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 })
+      + await welcomeLine(ctx, cfg, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 });
     const warn = sync && sync.ok ? '' : `\n\n⚠️ Saved, but the buy feed could not be registered: ${tgEsc(sync && sync.error || 'unknown')}`;
     /* graduation comes from pump.fun's own flag, not from whether a pool
        lookup happened to answer */
@@ -756,7 +757,8 @@ async function setupEvm(ctx, msg, addr, want) {
   const r = await ctx.evm(chain, 'track', { token: addr, chatId, meta: { sym: cfg.sym, dec: facts.dec, supply: facts.supply, pools } })
     .catch(e => ({ ok: false, error: String(e && e.message || e) }));
   const warn = r && r.ok ? '' : `\n\n⚠️ Saved, but the ${CHAINS[chain].name} watcher did not answer: ${tgEsc(r && r.error || 'unknown')}`;
-  const head = await tapHeadStart(ctx, { addr, chain, sym: cfg.sym, name: cfg.name, mcap: num(top.marketCap) || num(top.fdv) });
+  const head = await tapHeadStart(ctx, { addr, chain, sym: cfg.sym, name: cfg.name, mcap: num(top.marketCap) || num(top.fdv) })
+    + await welcomeLine(ctx, cfg, { addr, chain, sym: cfg.sym, name: cfg.name, img: okUrl(info.imageUrl) || '', mcap: num(top.marketCap) || num(top.fdv) });
   const dexes = [...new Set(pools.map(p => p.dex).filter(Boolean))].join(', ');
   return say(env, chatId,
     `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)} on ${CHAINS[chain].name}\n`
@@ -775,6 +777,19 @@ async function tapHeadStart(ctx, tok) {
   return `🫧 <b>Entered Tap wars</b> on pumpbubble.fun with a ${r.granted.toLocaleString('en-US')}-tap head start — `
     + `get your community tapping: 1,000 taps wins a free ad slot, 5,000 a golden bubble.\n`
     + `<a href="${site(ctx.env)}/?source=taps">Tap for ${tgEsc(tok.sym)}</a>\n\n`;
+}
+
+/* The welcome gift (boosts.mjs welcomeGold): gold on the map for an hour,
+   once per token — the line in the setup reply a project screenshots. */
+async function welcomeLine(ctx, g, tok) {
+  let r = null;
+  try { r = await welcomeGold(ctx.store, tok); } catch { r = null; }
+  if (!r || !r.ok) return '';
+  const L = tokenLinks(ctx.env, g, tok);
+  return `✨ <b>Welcome gift</b>: $${tgEsc(tok.sym)} is gold on pumpbubble.fun for the next hour. `
+    + `<a href="${L.bubble}">See it on the map</a> — screenshot it for your community.
+
+`;
 }
 
 /* Stop following whatever this group followed before, unless it is the same

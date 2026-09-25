@@ -10,7 +10,7 @@
    field whose absence swept closed-tab bids in as zero-hour boosts.
    ========================================================================== */
 
-import { adSchedule, activateAd, addPending, listPending, createOrder, AD_TIERS, activateBoost } from '../src/boosts.mjs';
+import { adSchedule, activateAd, addPending, listPending, createOrder, AD_TIERS, activateBoost, welcomeGold, WELCOME_MAX } from '../src/boosts.mjs';
 import { shopKeyboard } from '../src/tgbot.mjs';
 
 let pass = 0, fail = 0;
@@ -88,6 +88,25 @@ console.log('\nthe DM blast');
   is('a paid DM waits for review', d.status, 'review');
   is('in its own list', ((await store.get('dmads')) || []).length, 1);
   is('never in the alert line', ((await store.get('alertads')) || []).length, 0);
+}
+
+console.log('\nthe welcome gift');
+{
+  const store = memStore();
+  const g1 = await welcomeGold(store, { mint: MINT, sym: 'POK', chain: 'solana' }, { now: NOW });
+  is('installing the bot turns the token gold', g1.ok, true);
+  const b = ((await store.get('boosts')) || [])[0];
+  is('for an hour', b.until - NOW, H);
+  is('as a house boost, never revenue', b.house && b.welcome && b.tier === 'house', true);
+  is('once per token, ever', (await welcomeGold(store, { mint: MINT, sym: 'POK' }, { now: NOW + 5 * H })).reason, 'once per token');
+  const paid = memStore();
+  await paid.put('boosts', [{ mint: MINT, sym: 'POK', usd: 49, until: NOW + H, tier: 'pump' }]);
+  is('never over a token that is already gold', (await welcomeGold(paid, { mint: MINT, sym: 'POK' }, { now: NOW })).reason, 'already gold');
+  is('and the paid boost is untouched', ((await paid.get('boosts')) || []).length, 1);
+  const many = memStore();
+  for (let i = 0; i < WELCOME_MAX; i++) await welcomeGold(many, { addr: '0x' + String(i).repeat(40).slice(0, 40), chain: 'base', sym: 'T' + i }, { now: NOW });
+  is(`at most ${WELCOME_MAX} gifts at once`, (await welcomeGold(many, { addr: '0x' + 'e'.repeat(40), chain: 'base', sym: 'X' }, { now: NOW })).reason, 'welcome slots full');
+  is('EVM gifts key on the lowercase address with their chain', ((await many.get('boosts')) || [])[0].chain, 'base');
 }
 
 console.log('\nbids survive the sweep now');

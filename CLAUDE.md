@@ -1424,6 +1424,12 @@ counted the console's "until removed" ads as over (a paid Map ad became a fifth 
 text used `String.replace` with user text as the replacement (`$'` expanded); removing the bot left
 an EVM watcher polling for nobody; the console's four-slot check counted ended and queued paid ads.
 
+**The welcome gift** (`welcomeGold` in boosts.mjs): the first `/setup` for a token turns it gold on
+the map for an hour, once per token ever (KV `welcomed`), as a house boost (never revenue), never
+over a token already gold, at most five at a time. It is the outreach pitch in one line — "add the
+bot and your token is gold on the map for an hour" — built the night the numbers came in: 22 site
+views in a week, one group, $0. Distribution, not features, is the bottleneck.
+
 **Copy trading and sniping are deep links, not custody — decided, not deferred.** ⚡ Copy buy opens
 the same swap as the Buy button (the referral trading bot when `REF_PROVIDER`/`REF_CODE` are set,
 Jupiter otherwise). Executing trades for users means holding their keys and money in a Worker; one
