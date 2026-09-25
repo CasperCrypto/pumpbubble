@@ -60,6 +60,11 @@ export const MAX_TOKENS = 150;
 export const PRUNE_IDLE_MS = 48 * 36e5;  // untapped this long and near zero → gone when full
 export const PRUNE_SCORE = 25;
 export const MAX_EVENTS = 40;
+/* A token whose group runs @pumpbubblebot enters the arena with a head
+   start: half of what a free rail slot takes. It is a reason to install the
+   bot, and it decays like any tap, so it buys a day's visibility, not a slot
+   for ever. Once per token. */
+export const BOT_BONUS = 500;
 
 const DAY = 864e5;
 
@@ -140,6 +145,34 @@ export class Arena {
     };
     this.updatedAt = now;
     return { ok: true, key, row: this._row(this.tokens[key], now), existed: false };
+  }
+
+  /* The bot's head start: server-side, so no address limits — but once per
+     token, ever, whoever sets it up next. */
+  grant(tok, n, now = Date.now()) {
+    if (!tok || typeof tok !== 'object') return { ok: false, error: 'no token' };
+    const key = String(tok.addr || tok.mint || '');
+    if (!KEY_RE.test(key)) return { ok: false, error: 'not a token address' };
+    if (!this.tokens[key]) {
+      if (Object.keys(this.tokens).length >= MAX_TOKENS) this._prune(now);
+      if (Object.keys(this.tokens).length >= MAX_TOKENS) return { ok: false, error: 'the arena is full' };
+      this.tokens[key] = {
+        key, mint: String(tok.mint || ''), addr: String(tok.addr || ''),
+        chain: String(tok.chain || (tok.mint ? 'solana' : '')),
+        sym: String(tok.sym || '?').slice(0, 12), name: String(tok.name || tok.sym || '').slice(0, 48),
+        img: typeof tok.img === 'string' ? tok.img.slice(0, 400) : '', mcap: +tok.mcap || 0,
+        added: now, score: 0, since: now, total: 0, lastTap: 0, goldSince: 0, adSince: 0,
+      };
+    }
+    const t = this.tokens[key];
+    if (t.bonus) return { ok: true, key, granted: 0, already: true };
+    const give = Math.max(0, Math.min(5000, Math.floor(+n || 0)));
+    t.score = decayed(t.score, t.since, now) + give;
+    t.since = now;
+    t.lastTap = now;
+    t.bonus = give;
+    this.updatedAt = now;
+    return { ok: true, key, granted: give };
   }
 
   /* When the arena is full, drop what nobody is tapping. Never a token that
@@ -307,6 +340,7 @@ export function memoryArena() {
     if (op === 'sweep') { arena.sweep(now); return { ok: true }; }
     if (op === 'remove') return arena.remove(body.key);
     if (op === 'reset') return arena.reset(body.key, now);
+    if (op === 'grant') return arena.grant(body.tok, body.n, now);
     if (op === 'config') return arena.config(body.cfg);
     if (op === 'cfg') return { ok: true, cfg: arena.cfg };
     return arena.state(now);

@@ -9,7 +9,7 @@
    ========================================================================== */
 
 import { Arena, decayed, HALF_LIFE_MS, AD_MIN, GOLD_MIN, AD_SLOTS, GOLD_SLOTS, KEEP,
-         TAP_MAX_PER_REQ, IP_PER_10S, IP_PER_DAY, ADD_PER_IP_DAY, MAX_TOKENS } from '../src/taps.mjs';
+         TAP_MAX_PER_REQ, IP_PER_10S, IP_PER_DAY, ADD_PER_IP_DAY, MAX_TOKENS, BOT_BONUS } from '../src/taps.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
@@ -220,6 +220,23 @@ console.log('\nthe console');
   is('…and the slot with them', a.state(T0).tokens[0].award, '');
   is('remove takes it out', (a.remove(MINT(1)), a.state(T0).tokens.length), 0);
   is('removing what is not there says so', a.remove(MINT(9)).ok, false);
+}
+
+console.log('\nthe buybot head start');
+{
+  const a = new Arena();
+  const T0 = 1_800_000_000_000;
+  const tok = { mint: '7V4vYUApSWg1CWBHSxaEWZ8irJAU4q8pPmpZS3mJpump', sym: 'POK', chain: 'solana' };
+  const g = a.grant(tok, BOT_BONUS, T0);
+  is('a bot token enters the arena with the head start', g.granted, BOT_BONUS);
+  is('and holds it as taps', a.state(T0).tokens.find(t => t.key === tok.mint).taps, BOT_BONUS);
+  is('a second setup grants nothing', a.grant(tok, BOT_BONUS, T0 + 1000).granted, 0);
+  is('it decays like any tap', a.state(T0 + HALF_LIFE_MS).tokens.find(t => t.key === tok.mint).taps, Math.round(BOT_BONUS / 2));
+  const b = new Arena();
+  for (let i = 0; i < ADD_PER_IP_DAY; i++) b.add({ mint: '1111111111111111111111111111111' + String.fromCharCode(65 + i) }, 'ip', T0);
+  is('server-side, so no address limit applies', b.grant({ addr: '0x' + 'ab'.repeat(20), chain: 'base', sym: 'B' }, BOT_BONUS, T0).granted, BOT_BONUS);
+  is('the head start alone is under a rail slot', BOT_BONUS < AD_MIN, true);
+  is('nonsense is refused', a.grant({ mint: 'nope' }, 10, T0).ok, false);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

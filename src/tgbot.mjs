@@ -37,6 +37,8 @@ import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
 import { UNSUB } from './audience.mjs';
+import { smartWallets } from './smartset.mjs';
+import { BOT_BONUS } from './taps.mjs';
 
 /* Said at every Start, because pressing Start is what puts somebody on the
    list the operator can DM (src/audience.mjs). */
@@ -218,7 +220,7 @@ export function tokenLinks(env, g, token = {}) {
   };
 }
 
-export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null }) {
+export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null }) {
   const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
   const sym = clean(token.sym || group.sym || '?', 12);
   const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
@@ -228,6 +230,12 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   const lines = [];
   lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
   if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
+  /* The buyer is one of pump.fun's top traders by realized profit — the
+     line no other buy bot can print (src/smartset.mjs). */
+  if (smart && smart.rank) {
+    const who = smart.xh && /^\w{1,15}$/.test(smart.xh) ? '@' + smart.xh : clean(smart.name || '', 20);
+    lines.push(`🧠 <b>SMART BUY</b> — ${tgEsc(who)}, #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} by profit banked (+${fmtUsd(smart.realized)})`);
+  }
   lines.push('');
   lines.push(emojiRow(usd, group.emoji, group.step));
   lines.push('');
@@ -586,12 +594,14 @@ async function onGroup(ctx, msg) {
     await putGroup(store, chatId, cfg);
     await addTracking(store, addr, pool, chatId);
     const sync = await resync(ctx);
+    const head = await tapHeadStart(ctx, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 });
     const warn = sync && sync.ok ? '' : `\n\n⚠️ Saved, but the buy feed could not be registered: ${tgEsc(sync && sync.error || 'unknown')}`;
     /* graduation comes from pump.fun's own flag, not from whether a pool
        lookup happened to answer */
     return say(env, chatId,
       `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)}\n`
       + `MCap ${fmtUsd(t.mcap)} · ${t.grad === false ? 'bonding curve' : 'graduated'}\n\n`
+      + head
       + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
       settingsMarkup());
   }
@@ -727,12 +737,25 @@ async function setupEvm(ctx, msg, addr, want) {
   const r = await ctx.evm(chain, 'track', { token: addr, chatId, meta: { sym: cfg.sym, dec: facts.dec, supply: facts.supply, pools } })
     .catch(e => ({ ok: false, error: String(e && e.message || e) }));
   const warn = r && r.ok ? '' : `\n\n⚠️ Saved, but the ${CHAINS[chain].name} watcher did not answer: ${tgEsc(r && r.error || 'unknown')}`;
+  const head = await tapHeadStart(ctx, { addr, chain, sym: cfg.sym, name: cfg.name, mcap: num(top.marketCap) || num(top.fdv) });
   const dexes = [...new Set(pools.map(p => p.dex).filter(Boolean))].join(', ');
   return say(env, chatId,
     `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)} on ${CHAINS[chain].name}\n`
     + `MCap ${fmtUsd(num(top.marketCap) || num(top.fdv))} · watching ${pools.length} pool${pools.length > 1 ? 's' : ''}${dexes ? ' (' + tgEsc(dexes) + ')' : ''}\n\n`
+    + head
     + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
     settingsMarkup());
+}
+
+/* Tap wars' head start for a token whose group installed the bot — the
+   reason for a project to pick us over another buy bot. Once per token. */
+async function tapHeadStart(ctx, tok) {
+  if (!ctx.arena) return '';
+  const r = await ctx.arena('grant', { tok, n: BOT_BONUS }).catch(() => null);
+  if (!r || !r.ok || !r.granted) return '';
+  return `🫧 <b>Entered Tap wars</b> on pumpbubble.fun with a ${r.granted.toLocaleString('en-US')}-tap head start — `
+    + `get your community tapping: 1,000 taps wins a free ad slot, 5,000 a golden bubble.\n`
+    + `<a href="${site(ctx.env)}/?source=taps">Tap for ${tgEsc(tok.sym)}</a>\n\n`;
 }
 
 /* Stop following whatever this group followed before, unless it is the same
@@ -1472,12 +1495,13 @@ export async function onTrade(ctx, payload, solUsd) {
     if (!chats.length) continue;
     const token = (await tokenInfo(env, buy.mint)) || { mint: buy.mint };
     const usd = buy.sol * num(solUsd);
+    const smart = (await smartWallets().catch(() => null))?.get(buy.buyer) || null;
     for (const chatId of chats) {
       const g = await getGroup(store, chatId);
       if (!g || g.mint !== buy.mint) continue;
       if (num(g.minBuy) > 0 && usd < num(g.minBuy)) { skipped++; continue; }
       if (!allowed(chatId)) { skipped++; continue; }
-      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store) });
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart });
       if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides

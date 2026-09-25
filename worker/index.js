@@ -219,6 +219,7 @@ export class TapArena {
       case 'sweep': this.arena.sweep(now); out = { ok: true }; break;
       case 'remove': out = this.arena.remove(body.key); break;
       case 'reset': out = this.arena.reset(body.key, now); break;
+      case 'grant': out = this.arena.grant(body.tok, body.n, now); break;
       case 'config': out = this.arena.config(body.cfg); break;
       case 'cfg': out = { ok: true, cfg: this.arena.cfg }; break;
       default: out = this.arena.state(now);

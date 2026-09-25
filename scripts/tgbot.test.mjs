@@ -188,6 +188,13 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
     botName: 'pumpbubblebot', ad: { title: '$<b>ZCAT</b>', name: 'Anon <i>Cat</i>', url: 'https://pumpbubble.fun/s/' + MINT } });
   is('a paid sponsor line links the token', paid.caption.includes('📣 <b>Ad:</b> <a href="https://pumpbubble.fun/s/' + MINT + '">'), true);
   is('its ticker and name are escaped', paid.caption.includes('<b>ZCAT</b>') || paid.caption.includes('<i>Cat</i>'), false);
+  const sm = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    smart: { rank: 3, when: 'this week', realized: 74400, xh: 'CookerFlips', name: 'cooker' } }).caption;
+  is('a top trader’s buy is tagged', sm.includes('🧠 <b>SMART BUY</b> — @CookerFlips, #3 on pump.fun this week by profit banked (+$74,400)'), true);
+  const sm2 = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    smart: { rank: 7, when: 'today', realized: 1000, xh: 'not a handle!', name: '<b>x</b>' } }).caption;
+  is('no @ on an illegal handle, and the name is escaped', sm2.includes('@not') || sm2.includes('<b>x</b>'), false);
+  is('no tag for an ordinary buyer', formatBuy({ buy: { sol: 1, tokens: 1 }, token: { mint: MINT }, group: { mint: MINT }, solUsd: 1 }).caption.includes('SMART'), false);
   const bad = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
     ad: { title: '$X', url: 'javascript:alert(1)' } });
   is('an ad with a non-http link is not printed', bad.caption.includes('javascript:'), false);
