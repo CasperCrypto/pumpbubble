@@ -503,14 +503,20 @@ async function onGroup(ctx, msg) {
     const { pool, socials } = await poolAndSocials(addr);
     const prev = await getGroup(store, chatId);
     if (prev && prev.mint && prev.mint !== addr) await dropTracking(store, prev.mint, chatId);
+    /* Switching to a different token keeps the group's own choices (emoji,
+       step, minimum, the guard) and drops what belonged to the old token —
+       its links and its picture — or the new token's buys would link to the
+       old one's X account. Re-running /setup on the same token keeps it all. */
+    const same = !!(prev && prev.mint === addr);
     const cfg = {
       chatId, mint: addr, pool, chain: 'solana',
       sym: clean(t.sym, 12), name: clean(t.name, 48),
-      socials: { ...(prev && prev.socials || {}), ...socials },
+      socials: { ...(same && prev.socials || {}), ...socials },
       emoji: (prev && prev.emoji) || '🟢',
       step: (prev && prev.step) || 20,
       minBuy: (prev && prev.minBuy) || 0,
-      media: (prev && prev.media) || null,
+      media: (same && prev.media) || null,
+      ...(prev && prev.guard ? { guard: prev.guard } : {}),
       by: msg.from && msg.from.id, at: Date.now(),
     };
     await putGroup(store, chatId, cfg);
@@ -532,7 +538,7 @@ async function onGroup(ctx, msg) {
   if (c.cmd === 'stop') {
     await removeGroup(store, chatId);
     await resync(ctx);
-    return say(env, chatId, 'Stopped. /setup to start again.');
+    return say(env, chatId, 'Stopped — no more buy alerts here, and the guard is off. /setup <code>&lt;contract address&gt;</code> to start again.');
   }
   if (c.cmd === 'welcome') {
     /* Plain text: escaped when sent, so an admin cannot break the caption,
@@ -660,7 +666,9 @@ export function settingsView(g, page = 'main') {
     };
   }
   if (page === 'stop') return {
-    text: `⏹ Stop posting ${sym} buys here?`,
+    text: `⏹ Stop posting ${sym} buys here?
+
+This also switches the 🛡 Guard off. To track a different token instead, just send <code>/setup &lt;new contract address&gt;</code> — the guard and your emoji stay.`,
     kb: [[{ text: 'Yes, stop', callback_data: 'cfg:stop:yes' }, { text: 'Cancel', callback_data: 'cfg:main' }]],
   };
   return {
@@ -740,7 +748,7 @@ async function onSettings(ctx, q, act) {
     await resync(ctx);
     await ack('Stopped');
     return tg(env, 'editMessageText', { chat_id: chat.id, message_id: q.message.message_id,
-      text: 'Stopped. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
+      text: 'Stopped — no more buy alerts here, and the guard is off. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
   }
   await ack();
   return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard'].includes(what) ? what : 'main'));
