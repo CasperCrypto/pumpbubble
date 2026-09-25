@@ -167,6 +167,34 @@ export class Audience {
     await this.s.put('job', j);
     return { more: j.status === 'sending', job: j };
   }
+
+  /* ------------------------------------------------------- the fan-out queue */
+  /* One message to a list of people — a top trader's entry to everyone who
+     follows the top traders. Sending that inline from the Helius webhook
+     looped over every follower inside one request, past the per-request
+     subrequest limit once a few dozen people followed; here it is paced by
+     the same alarm as the mass DM, a batch per tick, in arrival order. */
+  async enqueue({ uids, html, buttons = [] }) {
+    const list = [...new Set((uids || []).map(x => Math.floor(+x)).filter(x => x > 0))];
+    if (!list.length || !String(html || '').trim()) return { ok: false, queued: 0 };
+    const k = 'q:' + String(Date.now()).padStart(15, '0') + ':' + Math.random().toString(36).slice(2, 8);
+    await this.s.put(k, { uids: list, html: String(html).slice(0, 3500), buttons, i: 0 });
+    return { ok: true, queued: list.length };
+  }
+
+  async hasQueue() { return (await this.s.list({ prefix: 'q:', limit: 1 })).size > 0; }
+
+  async drain(send) {
+    const [entry] = [...(await this.s.list({ prefix: 'q:', limit: 1 })).entries()];
+    if (!entry) return { more: false };
+    const [k, q] = entry;
+    const batch = q.uids.slice(q.i, q.i + BATCH);
+    const res = await Promise.all(batch.map(id => send(id, q.html, q.buttons).catch(() => 'fail')));
+    for (let n = 0; n < batch.length; n++) if (res[n] === 'gone') await this.purge(batch[n]);
+    q.i += batch.length;
+    if (q.i >= q.uids.length) await this.s.delete(k); else await this.s.put(k, q);
+    return { more: await this.hasQueue() };
+  }
 }
 
 /* The sponsored DM a project bought: its token and nothing it typed, marked

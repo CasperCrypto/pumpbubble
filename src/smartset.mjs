@@ -40,6 +40,21 @@ export async function smartWallets(now = Date.now()) {
   return mem.v;
 }
 
+/* The ones the Helius webhook watches: the best-ranked hundred, not all three
+   hundred. These wallets trade all day and every transaction is a billed
+   webhook delivery on the same webhook as every group's buy alerts — running
+   the plan out of credits would silence the buybot everywhere. */
+export const SMART_WATCH = 100;
+export function topSmart(map, n = SMART_WATCH) {
+  return new Map([...(map || new Map()).entries()].sort((a, b) => a[1].rank - b[1].rank).slice(0, n));
+}
+
+/* What a follower of the top traders hears about: a new position of a
+   meaningful size, or a full exit — not every add and trim, which from a
+   hundred busy wallets is thousands of messages a day. */
+export const SMART_MIN_SOL = 1;
+export const smartSignal = s => s && s.sol >= SMART_MIN_SOL && ((s.side === 'buy' && s.newHolder) || (s.side === 'sell' && s.closed));
+
 export function _setSmartForTests(list) {
   mem = { at: Date.now(), v: new Map((list || []).map(t => [t.wallet, t])) };
 }

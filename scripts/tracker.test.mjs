@@ -13,6 +13,7 @@
 import { parseWalletSwaps } from '../src/solbuy.mjs';
 import { Audience, memoryStorage, MAX_FOLLOWS } from '../src/audience.mjs';
 import { formatSwap } from '../src/tgbot.mjs';
+import { smartSignal, topSmart, SMART_MIN_SOL } from '../src/smartset.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
@@ -88,6 +89,18 @@ console.log('\nthe alert');
   const sm = formatSwap({ s: { ...s, side: 'sell', closed: true }, token: { sym: 'POK', mint: MINT }, smart: { rank: 3, when: 'this week', xh: 'CookerFlips', name: 'cooker' }, solUsd: 150 }).text;
   is('a top trader is named with their rank', sm.includes('🧠 @CookerFlips · #3 on pump.fun this week'), true);
   is('a full exit says so', sm.startsWith('🔴 <b>SELL</b>') && sm.includes('sold all'), true);
+}
+
+console.log('\nwhat top-trader followers hear');
+{
+  is('a new position of size', smartSignal({ side: 'buy', newHolder: true, sol: SMART_MIN_SOL }), true);
+  is('not an add to one they hold', smartSignal({ side: 'buy', newHolder: false, sol: 5 }), false);
+  is('not a small entry', smartSignal({ side: 'buy', newHolder: true, sol: 0.2 }), false);
+  is('a full exit', smartSignal({ side: 'sell', closed: true, sol: 3 }), true);
+  is('not a trim', smartSignal({ side: 'sell', closed: false, sol: 3 }), false);
+  const m = new Map(Array.from({ length: 300 }, (_, i) => ['w' + i, { rank: 300 - i }]));
+  const t = topSmart(m, 100);
+  is('the webhook watches the best hundred', t.size === 100 && Math.max(...[...t.values()].map(x => x.rank)), 100);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

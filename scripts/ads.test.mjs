@@ -34,6 +34,18 @@ console.log('\nqueue');
   is('ended ads do not count', adSchedule([{ from: NOW - 48 * H, until: NOW - H }], NOW, 24 * H, 1), NOW);
 }
 
+console.log('\npermanent console ads');
+{
+  const four = [1, 2, 3, 4].map(i => ({ title: 'S' + i, until: 0 }));
+  is('four ads "until removed" fill the rail', adSchedule(four, NOW, 24 * H, 4), Infinity);
+  is('three leave a slot now', adSchedule(four.slice(1), NOW, 24 * H, 4), NOW);
+  const store = memStore();
+  await store.put('ads', four);
+  const o = await createOrder({ mint: MINT, sym: 'POK', tierId: 'rail', kind: 'ad', solPrice: 150, treasury: TREASURY });
+  const a = await activateAd(store, o, { signature: 'sx', received: 1 });
+  is('paid anyway while full: it runs now rather than never', a.from <= Date.now() && Number.isFinite(a.until), true);
+}
+
 console.log('\nactivation');
 {
   const store = memStore();

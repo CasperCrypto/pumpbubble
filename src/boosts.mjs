@@ -40,14 +40,18 @@ export const AD_QUEUE_DAYS = 7;
 
 /* The first start time at or after `now` at which one more ad of `ms` fits
    under `max` overlapping ads. Candidates are now and every existing end. */
+/* `until: 0` is the console's "until removed": it holds its slot for ever,
+   and counting it as over put a paid ad on the rail as a fifth. Returns
+   Infinity when permanent ads fill every slot. */
 export function adSchedule(list, now, ms, max) {
-  const live = (list || []).filter(a => (a.until || 0) > now);
-  const starts = [now, ...live.map(a => a.until).filter(t => t > now)].sort((a, b) => a - b);
+  const end = a => (a.until > 0 ? a.until : Infinity);
+  const live = (list || []).filter(a => end(a) > now);
+  const starts = [now, ...live.map(end).filter(t => t > now && t < Infinity)].sort((a, b) => a - b);
   for (const t of starts) {
-    const overlap = live.filter(a => (a.from || 0) < t + ms && a.until > t).length;
+    const overlap = live.filter(a => (a.from || 0) < t + ms && end(a) > t).length;
     if (overlap < max) return t;
   }
-  return starts[starts.length - 1];
+  return Infinity;
 }
 
 export const ORDER_TTL_MS = 30 * 60 * 1000;   // a quote is good for 30 minutes
@@ -604,7 +608,9 @@ export async function activateAd(store, order, payment) {
   const dup = list.find(a => a.sig && a.sig === payment.signature);
   if (dup) return { ...dup, kind: 'ad', slot: tier.id };
   const ms = tier.hours * 3600 * 1000;
-  const from = adSchedule(list, now, ms, tier.max);
+  /* paid for although the slots filled meanwhile: run it now rather than never */
+  let from = adSchedule(list, now, ms, tier.max);
+  if (!Number.isFinite(from)) from = now;
   const evm = /^0x[0-9a-f]{40}$/i.test(order.mint || '');
   const ad = {
     id: order.id, paid: true, slot: tier.id,

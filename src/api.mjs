@@ -600,6 +600,8 @@ async function solPriceNow(ctx) {
 }
 
 /* =============================================================== routes */
+let tgStatusMem = { at: 0, v: null };
+
 /* after a tracker-wide change made from the console */
 async function tgEnsureAudience(ctx) {
   return heliusSync(ctx.env, ctx.store, (ctx.env.PUBLIC_ORIGIN || 'https://pumpbubble.fun').replace(/\/+$/, ''), await tgWatch(ctx.store, ctx.audience));
@@ -1544,7 +1546,7 @@ export async function handle(req, ctx) {
            adding the tier's headline multiplier here would over-estimate the
            new gold and refuse sales that are in fact within the cap. */
         if (target) {
-          const cur = byMint.get(body.mint);
+          const cur = byMint.get(caId);
           target.boost = bonusFromSpend((cur ? cur.liveUsd : 0) + tierOf(body.tier).usd);
         }
         if (goldShare(projected) > GOLD_CAP) {
@@ -1606,7 +1608,7 @@ export async function handle(req, ctx) {
          the curve flattens, so the tenth buyer on a token genuinely gets less
          than the first — which is only fair if they can see it before paying. */
       const { byMint: liveNow } = await activeBoosts(ctx.store);
-      const already = liveNow.get(body.mint);
+      const already = liveNow.get(caId);
       const beforeUsd = already ? already.liveUsd : 0;
       const before = bonusFromSpend(beforeUsd);
       const after = bonusFromSpend(beforeUsd + order.usd);
@@ -1842,7 +1844,10 @@ export async function handle(req, ctx) {
             const t = (a.title || '').toUpperCase();
             return t !== title.toUpperCase() && (!prev || t !== prev);
           });
-          if (ads.length >= 4) return json({ ok: false, error: 'the rail has four slots — remove one first' }, 400);
+          /* the four slots are the ads showing now — paid Map ads that have
+             ended or are queued for later do not hold one */
+          const showing = ads.filter(a => !(a.until > 0 && a.until < Date.now()) && !(a.from > Date.now()));
+          if (showing.length >= 4) return json({ ok: false, error: 'the rail has four slots — remove one first' }, 400);
           ads.push({ title, sub: String(body.sub || 'sponsored').slice(0, 40), img, url,
                      at: Date.now(), until: hours ? Date.now() + hours * 36e5 : 0 });
           await ctx.store.put('ads', ads);
@@ -2215,6 +2220,11 @@ export async function handle(req, ctx) {
     }
 
     if (path === '/api/tg/status') {
+      /* Public, so throttled and cached: every uncached call asks Telegram,
+         asks Helius (billed in credits) and wakes three chain watchers. */
+      const limitedS = rateLimit(req, 'tgstatus', 30, 60_000);
+      if (limitedS) return limitedS;
+      if (tgStatusMem.v && Date.now() - tgStatusMem.at < 60_000) return json(tgStatusMem.v);
       const st = await tgStatus(ctx.env, ctx.store).catch(e => ({ enabled: tgEnabled(ctx.env), error: String(e.message) }));
       /* Public: counts and whether it is on, never ids, never tokens. */
       /* each EVM watcher: how many tokens, when it last read the chain, its
@@ -2227,7 +2237,8 @@ export async function handle(req, ctx) {
             polls: s.polls, buys: s.buys, sent: s.sent, error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
         }
       }
-      return json({ ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm });
+      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm } };
+      return json(tgStatusMem.v);
     }
 
     if (path === '/api/xbot/status') {

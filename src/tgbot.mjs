@@ -37,7 +37,7 @@ import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
 import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
-import { smartWallets } from './smartset.mjs';
+import { smartWallets, topSmart, smartSignal } from './smartset.mjs';
 import { BOT_BONUS } from './taps.mjs';
 
 /* Said at every Start, because pressing Start is what puts somebody on the
@@ -369,7 +369,7 @@ export async function watchAddresses(store, audience = null) {
       const fans = (await audience('smartFans')).list || [];
       let channel = null;
       try { channel = await store.get(K.channel); } catch {}
-      if (fans.length || channel) out.push(...(await smartWallets()).keys());
+      if (fans.length || channel) out.push(...topSmart(await smartWallets()).keys());
     } catch {}
   }
   return [...new Set(out)];
@@ -517,6 +517,9 @@ async function onMembership(ctx, m) {
   const chat = m.chat;
   if (!chat || chat.type === 'private') return;
   if (status === 'left' || status === 'kicked') {
+    /* an EVM token's watcher only notices a gone group when a buy happens —
+       a quiet token was polled every few seconds for nobody */
+    await untrackOld(ctx, chat.id, await getGroup(store, chat.id), '');
     await removeGroup(store, chat.id);
     await resync(ctx);
     return;
@@ -1003,6 +1006,11 @@ async function onTracker(ctx, q, act) {
     await ack(now ? '🧠 Following pump.fun\u2019s top traders — their buys and sells arrive here.' : 'Stopped following the top traders.', true);
     return trackerMenu(ctx, chatId, uid, q.message.chat.type === 'private' && q.message.text && q.message.text.startsWith('👛') ? q.message.message_id : 0);
   }
+  if (act === 'smartoff') {
+    await ctx.audience('smart', { id: uid, on: false });
+    await resync(ctx);
+    return ack('Stopped the top-trader alerts. /wallets to turn them back on.', true);
+  }
   if (act.startsWith('rm:')) {
     await ctx.audience('unfollow', { id: uid, wallet: act.slice(3) });
     await resync(ctx);
@@ -1064,7 +1072,7 @@ async function onWalletTrades(ctx, payload, solUsd) {
   const route = await trackerRoute(ctx);
   let channel = null;
   try { channel = await store.get(K.channel); } catch {}
-  const smartMap = (route.fans.length || channel) ? await smartWallets().catch(() => new Map()) : new Map();
+  const smartMap = (route.fans.length || channel) ? topSmart(await smartWallets().catch(() => new Map())) : new Map();
   const watch = new Set([...route.wallets, ...smartMap.keys()]);
   if (!watch.size) return { swaps: 0, dms: 0 };
   const swaps = walletSwapsFromPayload(payload, watch);
@@ -1073,25 +1081,38 @@ async function onWalletTrades(ctx, payload, solUsd) {
     if (!fresh('w:' + s.sig + ':' + s.wallet)) continue;
     const token = (await tokenInfo(env, s.mint)) || { mint: s.mint };
     const smart = smartMap.get(s.wallet) || null;
-    const targets = new Map();                        // uid → label
+    /* a wallet someone tracks by name: every trade, to them — a handful of
+       people, sent here; capped per person like the groups' feed */
+    const named = new Set();
     if (route.wallets.has(s.wallet)) {
       const r = await ctx.audience('route', { wallets: [s.wallet] }).catch(() => null);
-      for (const x of (r && r.by && r.by[s.wallet]) || []) targets.set(x.uid, x.label);
-    }
-    if (smart) for (const uid of route.fans) if (!targets.has(uid)) targets.set(uid, '');
-    for (const [uid, label] of targets) {
-      if (!allowedUser(uid)) continue;
-      const { text, keyboard } = formatSwap({ s, token, who: label, smart: label ? null : smart, env, solUsd });
-      try {
-        await tg(env, 'sendMessage', { chat_id: uid, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: keyboard });
-        dms++;
-      } catch (e) {
-        if (/blocked|deactivated|chat not found/i.test(String(e.description || e.message))) await ctx.audience('purge', { id: uid }).catch(() => null);
+      for (const x of ((r && r.by && r.by[s.wallet]) || []).slice(0, 25)) {
+        named.add(x.uid);
+        if (!allowedUser(x.uid)) continue;
+        const { text, keyboard } = formatSwap({ s, token, who: x.label, smart: x.label ? null : smart, env, solUsd });
+        try {
+          await tg(env, 'sendMessage', { chat_id: x.uid, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: keyboard });
+          dms++;
+        } catch (e) {
+          if (/blocked|deactivated|chat not found/i.test(String(e.description || e.message))) await ctx.audience('purge', { id: x.uid }).catch(() => null);
+        }
       }
     }
-    /* the public channel: top traders' buys of half a SOL or more — the
-       free alpha feed that brings people to the bot */
-    if (channel && smart && s.side === 'buy' && s.sol >= 0.5 && allowedUser('ch')) {
+    /* followers of the top traders: entries and full exits only, handed to
+       the audience object's paced queue — never a loop over every follower
+       inside this request */
+    if (smart && smartSignal(s)) {
+      const uids = route.fans.filter(u => !named.has(u));
+      if (uids.length) {
+        const { text, keyboard } = formatSwap({ s, token, smart, env, solUsd });
+        const buttons = [...keyboard.inline_keyboard, [{ text: '🔕 Stop top-trader alerts', callback_data: 'trk:smartoff' }]];
+        const q = await ctx.audience('fanout', { uids, html: text, buttons }).catch(() => null);
+        if (q && q.ok) dms += q.queued;
+      }
+    }
+    /* the public channel: top traders' new positions — the free alpha feed
+       that brings people to the bot */
+    if (channel && smart && s.side === 'buy' && smartSignal(s) && allowedUser('ch')) {
       const { text, keyboard } = formatSwap({ s, token, smart, env, solUsd });
       await tg(env, 'sendMessage', { chat_id: channel.id, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: keyboard }).catch(() => null);
     }
@@ -1372,10 +1393,13 @@ async function onJoin(ctx, chat, u, g) {
 export function welcomeText(g, chat, u) {
   const gd = g.guard || {};
   const tpl = gd.text || '👋 Welcome {name} to {group}!\n\n🫧 ${sym} is live on the bubble map — buys post here as they happen.';
+  /* function replacers: a name, title or ticker containing "$&" or "$'"
+     would otherwise be expanded by replace() into pieces of the message */
+  const name = mention(u), group = '<b>' + tgEsc((chat && chat.title) || 'the group') + '</b>', sym = tgEsc(g.sym || '');
   return tgEsc(tpl)
-    .replace(/\{name\}/g, mention(u))
-    .replace(/\{group\}/g, '<b>' + tgEsc((chat && chat.title) || 'the group') + '</b>')
-    .replace(/\{sym\}/g, tgEsc(g.sym || ''));
+    .replace(/\{name\}/g, () => name)
+    .replace(/\{group\}/g, () => group)
+    .replace(/\{sym\}/g, () => sym);
 }
 
 async function postWelcome(ctx, chat, u, g) {
@@ -1471,11 +1495,12 @@ async function onVerifyAnswer(ctx, q, rest) {
 
 /* One DM from the list (the AudienceDO's sender). Every message carries the
    way out; 'gone' means blocked or deleted, and the list forgets them. */
-export async function sendDm(env, id, html, buttons = []) {
+export async function sendDm(env, id, html, buttons = [], { unsub = true } = {}) {
   try {
     await tg(env, 'sendMessage', {
-      chat_id: id, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: false },
-      reply_markup: { inline_keyboard: [...(Array.isArray(buttons) ? buttons : []), [UNSUB]] },
+      chat_id: id, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: !unsub },
+      /* a mass DM carries Unsubscribe; a tracker alert carries its own way out */
+      reply_markup: { inline_keyboard: [...(Array.isArray(buttons) ? buttons : []), ...(unsub ? [[UNSUB]] : [])] },
     });
     return 'ok';
   } catch (e) {

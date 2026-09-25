@@ -55,6 +55,24 @@ console.log('\nthe send');
   is('a cancelled send does no more', (await a.step(send)).more, false);
 }
 
+console.log('\nthe fan-out queue');
+{
+  const a = new Audience(memoryStorage());
+  for (let i = 1; i <= 30; i++) await a.add(i);
+  const uids = Array.from({ length: BATCH + 5 }, (_, i) => i + 1);
+  is('a message for many is queued, not sent inline', (await a.enqueue({ uids: [...uids, 3], html: 'entry' })).queued, uids.length);
+  const got = [];
+  const send = async (id, html) => { got.push(id + ':' + html); return id === 2 ? 'gone' : 'ok'; };
+  let r = await a.drain(send);
+  is('one batch per tick', got.length, BATCH);
+  is('more to come', r.more, true);
+  r = await a.drain(send);
+  is('everyone once', got.length, uids.length);
+  is('the queue empties', r.more, false);
+  is('a blocked account is forgotten', await a.count(), 29);
+  is('nothing to queue is refused', (await a.enqueue({ uids: [], html: 'x' })).ok, false);
+}
+
 console.log('\nsponsored');
 {
   const { html, buttons } = sponsoredDm({ title: '$<b>X</b>', name: '<script>' }, { chart: 'https://dexscreener.com/solana/x', bubble: 'https://pumpbubble.fun/s/x' });

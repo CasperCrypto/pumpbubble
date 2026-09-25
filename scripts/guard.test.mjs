@@ -78,6 +78,19 @@ console.log('\njoins');
   is('drop forgets a challenge the bot could not enforce', g.drop(6).ok, true);
 }
 
+console.log('\nrejoin after removal');
+{
+  const g = new Guard();
+  const c = g.join(77, T, { captcha: true, rnd });
+  const wrong = (c.options.indexOf(c.target) + 1) % OPTIONS;
+  g.answer(77, wrong, T + 1); g.answer(77, wrong, T + 2);
+  is('removed after two misses, back after the 60 s ban: a new captcha', g.join(77, T + 70_000, { captcha: true, rnd }).captcha, true);
+  const h = new Guard();
+  h.join(78, T, { captcha: true, ttlMin: 2, rnd });
+  h.expired(T + 2 * 60_000 + 1);
+  is('removed by the clock, back at once: a new captcha', h.join(78, T + 2 * 60_000 + 5_000, { captcha: true, rnd }).captcha, true);
+}
+
 console.log('\nwelcome and storage');
 {
   const g = new Guard();
@@ -105,6 +118,8 @@ console.log('\nwelcome text');
   is('the group title is escaped', t.includes('&lt;Cats &amp; co&gt;'), true);
   const d = welcomeText({ sym: 'ZCAT' }, { title: 'G' }, { id: 1, first_name: 'Ann' });
   is('the default names the token as a cashtag', d.includes('$ZCAT'), true);
+  const dollar = welcomeText({ sym: 'Z' }, { title: 'G' }, { id: 2, first_name: "$'x" });
+  is('a $ pattern in a name is printed, not expanded', dollar.includes("$'x") && (dollar.match(/Welcome/g) || []).length === 1, true);
 }
 
 console.log('\nsettings');

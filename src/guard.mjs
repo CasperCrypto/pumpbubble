@@ -94,10 +94,13 @@ export class Guard {
     uid = String(uid);
     const p = this.pending[uid];
     if (!p) return { result: 'none' };
-    if (now > p.until) { delete this.pending[uid]; return { result: 'expired', msg: p.msg }; }
+    /* a member removed by the captcha must meet a new one when they come back,
+       so the dedupe window goes with them — a rejoin between the 60 s ban and
+       the 90 s window was otherwise waved through unmuted */
+    if (now > p.until) { delete this.pending[uid]; delete this.recent[uid]; return { result: 'expired', msg: p.msg }; }
     if (+i === p.answer) { delete this.pending[uid]; return { result: 'ok', msg: p.msg }; }
     p.tries++;
-    if (p.tries >= TRIES) { delete this.pending[uid]; return { result: 'fail', msg: p.msg }; }
+    if (p.tries >= TRIES) { delete this.pending[uid]; delete this.recent[uid]; return { result: 'fail', msg: p.msg }; }
     return { result: 'wrong', left: TRIES - p.tries };
   }
 
@@ -105,7 +108,7 @@ export class Guard {
   expired(now) {
     const out = [];
     for (const [uid, p] of Object.entries(this.pending)) {
-      if (now > p.until) { out.push({ uid: +uid, msg: p.msg }); delete this.pending[uid]; }
+      if (now > p.until) { out.push({ uid: +uid, msg: p.msg }); delete this.pending[uid]; delete this.recent[uid]; }
     }
     return out;
   }

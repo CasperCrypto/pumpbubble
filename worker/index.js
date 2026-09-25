@@ -124,9 +124,12 @@ export class EvmWatch {
         const r = await onEvmBuys({ env: this.env, store: makeStore(this.env) }, this.chain, buys, chats, this.eth.v);
         this.stat.sent += r.sent;
         for (const s of r.stale || []) this.drop(s.token, s.chatId);
-        if ((r.stale || []).length) await this.save(true);
       }
-      await this.save(false);
+      /* A poll that posted buys saves its block at once: a restart (every
+         deploy restarts this object) resumed from a minute-old block and
+         posted the same buys to the groups a second time. Quiet polls still
+         save at most once a minute. */
+      await this.save(buys.length > 0);
     } catch (e) {
       this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
       /* a rate limit backs off; anything else retries at the normal pace */
@@ -162,14 +165,22 @@ export class AudienceDO {
       case 'smartFans': out = { ok: true, list: await this.a.smartFans() }; break;
       case 'wallets': out = { ok: true, list: await this.a.wallets() }; break;
       case 'route': out = await this.a.route(b.wallets); break;
+      case 'fanout':
+        out = await this.a.enqueue({ uids: b.uids, html: b.html, buttons: b.buttons });
+        if (out.ok && !(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 200);
+        break;
       default: out = { ok: true, count: await this.a.count(), job: await this.a.job() };
     }
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
   }
   async alarm() {
     if (!this.env.TG_BOT_TOKEN) return;
-    const r = await this.a.step((id, html, buttons) => sendDm(this.env, id, html, buttons));
-    if (r.more) await this.state.storage.setAlarm(Date.now() + TICK_MS);
+    /* a mass DM first; the fan-out queue (tracker alerts) between sends */
+    const j = await this.a.job();
+    const more = j && j.status === 'sending'
+      ? (await this.a.step((id, html, buttons) => sendDm(this.env, id, html, buttons))).more || await this.a.hasQueue()
+      : (await this.a.drain((id, html, buttons) => sendDm(this.env, id, html, buttons, { unsub: false }))).more;
+    if (more) await this.state.storage.setAlarm(Date.now() + TICK_MS);
   }
 }
 

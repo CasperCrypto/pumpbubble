@@ -1410,6 +1410,20 @@ they can't copy them inside the pump.fun app"):
   or more, posted with Copy buy — the free alpha feed that brings people to the bot. The console
   checks the bot is an admin there before saving.
 
+**What the full-code review of 2026-09-25 fixed** (ten findings, each with a test):
+the captcha let a removed member back in unmuted if they rejoined between the 60 s ban and the 90 s
+dedupe window (a removal now clears the window); the EVM watcher re-posted up to a minute of buys
+after every deploy (it saves its block whenever a poll posted buys); top-trader follows looped over
+every follower inside the Helius request and would have sent every add and trim — now entries and
+full exits of ≥1 SOL only (`smartSignal`), through the AudienceDO's paced queue (`enqueue`/`drain`),
+and only the best 100 (`SMART_WATCH`) ride the webhook, because every one of their transactions is a
+billed delivery on the same webhook as every group's buy alerts; the public `/api/tg/status` is
+throttled and cached (it asked Telegram and Helius and woke three watchers per hit); the boost quote
+looked up existing EVM boosts by the raw pasted address, not the lowercased one; `adSchedule`
+counted the console's "until removed" ads as over (a paid Map ad became a fifth slot); the welcome
+text used `String.replace` with user text as the replacement (`$'` expanded); removing the bot left
+an EVM watcher polling for nobody; the console's four-slot check counted ended and queued paid ads.
+
 **Copy trading and sniping are deep links, not custody — decided, not deferred.** ⚡ Copy buy opens
 the same swap as the Buy button (the referral trading bot when `REF_PROVIDER`/`REF_CODE` are set,
 Jupiter otherwise). Executing trades for users means holding their keys and money in a Worker; one
