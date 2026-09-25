@@ -1286,6 +1286,31 @@ indexes into fixed lists, never free text. Media is set by replying to the bot's
 does not open for the whole group); the `/media` caption still works. Links stay typed commands —
 a button cannot collect a URL.
 
+**The guard: join captcha, welcome, clean joins** (`src/guard.mjs`, the `GroupGuard` Durable
+Object, ⚙️ Settings → 🛡 Guard). Asked for so a group running the buybot does not also need
+Safeguard. It is Safeguard's *join captcha*, not its portal — their own docs call that mode "not
+as secure as a portal, however it can stop spam", and that is the claim here too: a new member is
+muted on arrival (`restrictChatMember`, all false) and unmuted by tapping the emoji the message
+names, out of eight; two wrong taps or the clock (2 / 5 / 10 min) remove them with a 60-second ban
+that lifts itself, so a real person can rejoin. The answer index never travels in a button.
+Passing lifts the mute with all permissions true, which Telegram defines as "back to the group's
+defaults", not more. The welcome replaces the previous one (the DO returns the id to delete), and
+clean joins deletes the "joined"/"left" lines. Joins arrive twice — the service message and a
+`chat_member` update, the only signal in groups that hide join messages — so the DO ignores a
+repeat inside 90 seconds; `ensureWebhook` re-registers the webhook when `chat_member` is missing
+from its `allowed_updates`, because Telegram only delivers it when asked for by name.
+
+**Why a Durable Object, again:** a pending captcha needs a clock (the alarm removes whoever let it
+expire) and a raid is a hundred joins a minute, which KV's free writes cannot take. One DO per group
+(`idFromName(chatId)`), SQLite-backed like the arena, migration `v2-guard`. **Nobody is stored who
+did not stay**: a pending entry lives until it is answered or expires; there is no member list.
+Switching the captcha or the cleaner on checks the bot's own rights first (`missingRights`) and
+says what is missing — a captcha the bot cannot enforce mutes nobody.
+
+**Latency is measured, not claimed.** Each posted buy logs `{ev:'buy-alert', latencyS}` — block
+time to message sent — and `/status` in the console carries the median and p90 of the isolate's
+last hundred. Read it with `wrangler tail` before comparing the bot to Bobby.
+
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate

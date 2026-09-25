@@ -264,7 +264,7 @@ is('no key from a non-Helius RPC', heliusKey({ SOLANA_RPC: 'https://api.mainnet-
   is('every settings button fits Telegram’s 64-byte callback limit', all.every(b => enc.encode(b.callback_data).length <= 64), true);
   is('every settings button is a cfg: action', all.every(b => /^cfg:[a-z]+(:[a-z0-9]+)?$/.test(b.callback_data)), true);
   is('a hostile ticker is escaped on every page', pages.every(p => !settingsView(g, p).text.includes('<b>X&Y</b>')), true);
-  is('main page: media, emoji, min, step, test, links, stop', settingsView(g).kb.flat().length, 7);
+  is('main page: media, emoji, min, step, test, links, guard, stop', settingsView(g).kb.flat().length, 8);
   is('the current emoji is ticked', settingsView(g, 'emoji').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:emoji:' + EMOJIS.indexOf('🔥'));
   is('the current minimum is ticked', settingsView(g, 'min').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:min:' + MINBUYS.indexOf(25));
   is('the current step is ticked', settingsView(g, 'step').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:step:' + STEPS.indexOf(50));

@@ -9,6 +9,8 @@
    Static files are served by Workers Assets; anything under /api is ours.
    ========================================================================== */
 
+import { Guard, runGuard } from '../src/guard.mjs';
+import { guardExpire } from '../src/tgbot.mjs';
 import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
@@ -24,6 +26,48 @@ import { Arena } from '../src/taps.mjs';
    at most one storage write every five seconds while people are tapping,
    none while they are not. The class in src/taps.mjs is the whole logic;
    this is only the box it lives in. */
+/* One per Telegram group: pending captchas and the last welcome message.
+   The alarm removes whoever let their captcha run out. src/guard.mjs has the
+   logic and the why; this is only the box and the clock. */
+export class GroupGuard {
+  constructor(state, env) { this.state = state; this.env = env; this.g = null; }
+  async load() {
+    if (!this.g) this.g = Guard.from(await this.state.storage.get('g'));
+  }
+  async schedule() {
+    const due = this.g.nextDue();
+    if (due) await this.state.storage.setAlarm(due + 1000);
+  }
+  async fetch(req) {
+    await this.load();
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    const out = runGuard(this.g, b.op, b, Date.now());
+    await this.state.storage.put('g', this.g.toJSON());
+    await this.schedule();
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async alarm() {
+    await this.load();
+    const list = this.g.expired(Date.now());
+    await this.state.storage.put('g', this.g.toJSON());
+    if (list.length && this.g.chatId && this.env.TG_BOT_TOKEN) await guardExpire(this.env, this.g.chatId, list);
+    await this.schedule();
+  }
+}
+
+function guardClient(env) {
+  if (!env.GUARD) return null;
+  return async (chatId, op, body = {}) => {
+    const stub = env.GUARD.get(env.GUARD.idFromName(String(chatId)));
+    const r = await stub.fetch('https://guard/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, chatId, ...body }),
+    });
+    return r.json();
+  };
+}
+
 export class TapArena {
   constructor(state) { this.state = state; this.arena = null; this.dirty = false; }
   async load() {
@@ -207,6 +251,7 @@ async function makeCtx(env, execCtx) {
     store: makeStore(env),
     hist: await loadHist(env),
     arena: arenaClient(env),
+    guard: guardClient(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),

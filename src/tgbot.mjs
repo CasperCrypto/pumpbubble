@@ -33,6 +33,7 @@ import { resolveAnyToken, isCA, isMint, clean, PUMP } from './core.mjs';
 import { buyUrl } from './refs.mjs';
 import { buysFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
+import { TTLS, KICK_S } from './guard.mjs';
 
 export const SITE = 'https://pumpbubble.fun';
 const DEXS = 'https://api.dexscreener.com';
@@ -120,12 +121,17 @@ export async function ensureWebhook(env, store) {
   const want = site(env) + '/tg/webhook';
   const info = await tg(env, 'getWebhookInfo');
   let out;
-  if (info && info.url === want) out = { enabled: true, ok: true, url: want, pending: info.pending_update_count };
+  /* chat_member carries joins in groups that hide the join message; it is
+     only delivered when asked for by name, so an older registration without
+     it is redone */
+  const upd = ['message', 'my_chat_member', 'chat_member', 'callback_query'];
+  const have = (info && info.allowed_updates) || [];
+  if (info && info.url === want && upd.every(u => have.includes(u))) out = { enabled: true, ok: true, url: want, pending: info.pending_update_count };
   else {
     await tg(env, 'setWebhook', {
       url: want,
       secret_token: await webhookSecret(env),
-      allowed_updates: ['message', 'my_chat_member', 'callback_query'],
+      allowed_updates: upd,
     });
     out = { enabled: true, ok: true, url: want, set: true };
   }
@@ -371,7 +377,8 @@ const HELP = [
   '/step 20 — dollars per emoji',
   '/minbuy 0 — hide buys under this many dollars',
   '/web, /x, /tg <code>&lt;url&gt;</code> — links under each buy',
-  '/settings — buttons for all of the above',
+  '/settings — buttons for all of the above, and 🛡 Guard: join captcha, welcome, clean joins',
+  '/welcome <code>text</code> — the welcome message; {name}, {group}, {sym} fill in',
   '/test — post a sample alert',
   '/status — what this group is tracking',
   '/stop — stop posting here',
@@ -412,6 +419,7 @@ export async function handleUpdate(ctx, update) {
   const { env, store } = ctx;
   if (update.my_chat_member) return onMembership(ctx, update.my_chat_member);
   if (update.callback_query) return onCallback(ctx, update.callback_query);
+  if (update.chat_member) return onChatMember(ctx, update.chat_member);
   const msg = update.message;
   if (!msg || !msg.chat) return;
 
@@ -450,6 +458,7 @@ async function onMembership(ctx, m) {
 async function onGroup(ctx, msg) {
   const { env, store } = ctx;
   const chatId = msg.chat.id;
+  if (msg.new_chat_members || msg.left_chat_member) return onJoinLeave(ctx, msg);
   const text = msg.text || msg.caption || '';
   const c = command(text);
 
@@ -471,7 +480,7 @@ async function onGroup(ctx, msg) {
   }
   if (!c) return;
 
-  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'settings']);
+  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'settings', 'welcome']);
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
   if (c.cmd === 'status') {
     const g = await getGroup(store, chatId);
@@ -524,6 +533,16 @@ async function onGroup(ctx, msg) {
     await removeGroup(store, chatId);
     await resync(ctx);
     return say(env, chatId, 'Stopped. /setup to start again.');
+  }
+  if (c.cmd === 'welcome') {
+    /* Plain text: escaped when sent, so an admin cannot break the caption,
+       and the placeholders are filled after escaping. Empty resets it. */
+    const text = c.arg.slice(0, 600);
+    const guard = { ttl: 5, ...(g.guard || {}), text, welcome: text ? true : !!(g.guard && g.guard.welcome) };
+    await putGroup(store, chatId, { ...g, guard });
+    return say(env, chatId, text
+      ? '✅ Welcome message saved and switched on. It shows once someone new arrives, and replaces the one before.'
+      : 'Welcome message reset to the default.', settingsMarkup());
   }
   if (c.cmd === 'settings') {
     const v = settingsView(g);
@@ -620,6 +639,26 @@ export function settingsView(g, page = 'main') {
       + 'Change with <code>/web url</code>, <code>/x url</code>, <code>/tg url</code> — the command alone removes one.',
     kb: [back],
   };
+  if (page === 'guard') {
+    const gd = g.guard || {}, ttl = TTLS.includes(+gd.ttl) ? +gd.ttl : 5;
+    const on = v => v ? '✅ on' : '⬜ off';
+    return {
+      text: `🛡 <b>Guard</b> for this group\n\n`
+        + `<b>Join captcha</b> ${on(gd.captcha)} — new members are muted until they tap the emoji I name; `
+        + `${ttl} min to answer, then they are removed and can rejoin\n`
+        + `<b>Welcome message</b> ${on(gd.welcome)} — the previous one is deleted when someone new arrives\n`
+        + `<b>Clean joins</b> ${on(gd.clean)} — deletes the "joined" and "left" lines\n\n`
+        + 'Your own welcome: <code>/welcome Hi {name}, welcome to {group}!</code>\n\n'
+        + 'I need to be an admin with <b>Ban users</b> and <b>Delete messages</b>.',
+      kb: [
+        [{ text: (gd.captcha ? '✅' : '⬜') + ' Join captcha', callback_data: 'cfg:gcap' }],
+        [{ text: (gd.welcome ? '✅' : '⬜') + ' Welcome message', callback_data: 'cfg:gwel' }],
+        [{ text: (gd.clean ? '✅' : '⬜') + ' Clean joins', callback_data: 'cfg:gcln' }],
+        TTLS.map((m, i) => ({ text: (m === ttl ? '✅ ' : '') + m + ' min', callback_data: 'cfg:gttl:' + i })),
+        back,
+      ],
+    };
+  }
   if (page === 'stop') return {
     text: `⏹ Stop posting ${sym} buys here?`,
     kb: [[{ text: 'Yes, stop', callback_data: 'cfg:stop:yes' }, { text: 'Cancel', callback_data: 'cfg:main' }]],
@@ -634,7 +673,7 @@ export function settingsView(g, page = 'main') {
       [{ text: '🖼 Media', callback_data: 'cfg:media' }, { text: 'Emoji ' + (g.emoji || '🟢'), callback_data: 'cfg:emoji' }],
       [{ text: '💵 Min buy', callback_data: 'cfg:min' }, { text: '📊 $ per emoji', callback_data: 'cfg:step' }],
       [{ text: '🧪 Test alert', callback_data: 'cfg:test' }, { text: '🔗 Links', callback_data: 'cfg:links' }],
-      [{ text: '⏹ Stop alerts', callback_data: 'cfg:stop' }],
+      [{ text: '🛡 Guard', callback_data: 'cfg:guard' }, { text: '⏹ Stop alerts', callback_data: 'cfg:stop' }],
     ],
   };
 }
@@ -662,6 +701,27 @@ async function onSettings(ctx, q, act) {
 
   const [what, val] = act.split(':');
   const i = Math.floor(num(val));
+  const GKEY = { gcap: 'captcha', gwel: 'welcome', gcln: 'clean' };
+  if (GKEY[what] || (what === 'gttl' && TTLS[i])) {
+    const gd = { ttl: 5, ...(g.guard || {}) };
+    let note;
+    if (what === 'gttl') { gd.ttl = TTLS[i]; note = TTLS[i] + ' minutes to answer'; }
+    else {
+      const key = GKEY[what], turnOn = !gd[key];
+      /* Say so now, not on the first join: a captcha the bot cannot enforce
+         mutes nobody and deletes nothing. */
+      if (turnOn && key !== 'welcome') {
+        const why = await missingRights(ctx, chat.id);
+        if (why) return ack(why, true);
+      }
+      gd[key] = turnOn;
+      note = { captcha: 'Join captcha', welcome: 'Welcome message', clean: 'Clean joins' }[key] + (turnOn ? ' on' : ' off');
+    }
+    g = { ...g, guard: gd };
+    await putGroup(store, chat.id, g);
+    await ack(note);
+    return show(settingsView(g, 'guard'));
+  }
   if (what === 'emoji' && val != null && EMOJIS[i]) return save({ emoji: EMOJIS[i] }, 'Emoji ' + EMOJIS[i]);
   if (what === 'min' && val != null && MINBUYS[i] != null) return save({ minBuy: MINBUYS[i] }, MINBUYS[i] ? 'Hiding buys under $' + MINBUYS[i] : 'Showing every buy');
   if (what === 'step' && val != null && STEPS[i]) return save({ step: STEPS[i] }, 'One emoji per $' + STEPS[i]);
@@ -683,7 +743,148 @@ async function onSettings(ctx, q, act) {
       text: 'Stopped. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
   }
   await ack();
-  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop'].includes(what) ? what : 'main'));
+  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard'].includes(what) ? what : 'main'));
+}
+
+/* ================================================================= guard */
+/* Joins, the captcha and the welcome. State lives in the GroupGuard Durable
+   Object (src/guard.mjs has the why); this is the Telegram side. */
+
+const PERMS = ['can_send_messages', 'can_send_audios', 'can_send_documents', 'can_send_photos',
+  'can_send_videos', 'can_send_video_notes', 'can_send_voice_notes', 'can_send_polls',
+  'can_send_other_messages', 'can_add_web_page_previews', 'can_invite_users'];
+const perms = v => Object.fromEntries(PERMS.map(k => [k, v]));
+const mention = u => `<a href="tg://user?id=${num(u && u.id)}">${tgEsc(String((u && (u.first_name || u.username)) || 'there').slice(0, 32))}</a>`;
+const del = (env, chatId, id) => id ? tg(env, 'deleteMessage', { chat_id: chatId, message_id: id }).catch(() => null) : null;
+
+async function missingRights(ctx, chatId) {
+  const bot = await me(ctx.env, ctx.store).catch(() => null);
+  if (!bot || !bot.id) return 'Could not check my admin rights — try again.';
+  let m = null;
+  try { m = await tg(ctx.env, 'getChatMember', { chat_id: chatId, user_id: bot.id }); } catch {}
+  if (!m || m.status !== 'administrator') return 'Make me an admin first, with Ban users and Delete messages.';
+  if (!m.can_restrict_members) return 'I need the Ban users right to mute new members.';
+  if (!m.can_delete_messages) return 'I need the Delete messages right.';
+  return '';
+}
+
+async function onJoinLeave(ctx, msg) {
+  const { env, store } = ctx;
+  const chat = msg.chat;
+  const g = await getGroup(store, chat.id);
+  const gd = g && g.guard;
+  if (!gd) return;
+  if (gd.clean) await del(env, chat.id, msg.message_id);
+  /* bots are added by admins, not by spammers joining a link */
+  for (const u of msg.new_chat_members || []) if (u && !u.is_bot) await onJoin(ctx, chat, u, g);
+}
+
+/* A join seen as a member update: the only signal in a group that hides its
+   join messages. Muting and unmuting also arrive here and are not joins. */
+async function onChatMember(ctx, cm) {
+  const chat = cm.chat;
+  if (!chat || chat.type === 'private') return;
+  const was = cm.old_chat_member && cm.old_chat_member.status;
+  const now = cm.new_chat_member && cm.new_chat_member.status;
+  const u = cm.new_chat_member && cm.new_chat_member.user;
+  if (!u || u.is_bot) return;
+  const joined = (was === 'left' || was === 'kicked' || !was) && (now === 'member' || (now === 'restricted' && cm.new_chat_member.is_member));
+  if (!joined) return;
+  const g = await getGroup(ctx.store, chat.id);
+  if (g && g.guard) await onJoin(ctx, chat, u, g);
+}
+
+async function onJoin(ctx, chat, u, g) {
+  const { env } = ctx;
+  const gd = g.guard || {};
+  if ((!gd.captcha && !gd.welcome) || !ctx.guard) return;
+  const j = await ctx.guard(chat.id, 'join', { uid: u.id, captcha: !!gd.captcha, ttlMin: gd.ttl }).catch(() => null);
+  if (!j || j.dup) return;
+  if (j.captcha) {
+    const muted = await tg(env, 'restrictChatMember', {
+      chat_id: chat.id, user_id: u.id, permissions: perms(false), use_independent_chat_permissions: true,
+    }).then(() => true).catch(() => false);
+    if (muted) {
+      const kb = [];
+      j.options.forEach((e, i) => { if (i % 4 === 0) kb.push([]); kb[kb.length - 1].push({ text: e, callback_data: `cap:${u.id}:${i}` }); });
+      const m = await say(env, chat.id,
+        `👋 ${mention(u)}, welcome to <b>${tgEsc(chat.title || 'the group')}</b>!\n\n`
+        + `Tap the ${j.target} below to unlock chat. You have ${j.ttl} min.`,
+        { reply_markup: { inline_keyboard: kb } });
+      if (m) await ctx.guard(chat.id, 'msg', { uid: u.id, msg: m.message_id }).catch(() => null);
+      return;
+    }
+    /* could not mute (rights removed since it was switched on): no captcha
+       nobody enforces — forget it and fall through to the welcome */
+    await ctx.guard(chat.id, 'drop', { uid: u.id }).catch(() => null);
+  }
+  if (gd.welcome) await postWelcome(ctx, chat, u, g);
+}
+
+export function welcomeText(g, chat, u) {
+  const gd = g.guard || {};
+  const tpl = gd.text || '👋 Welcome {name} to {group}!\n\n🫧 ${sym} is live on the bubble map — buys post here as they happen.';
+  return tgEsc(tpl)
+    .replace(/\{name\}/g, mention(u))
+    .replace(/\{group\}/g, '<b>' + tgEsc((chat && chat.title) || 'the group') + '</b>')
+    .replace(/\{sym\}/g, tgEsc(g.sym || ''));
+}
+
+async function postWelcome(ctx, chat, u, g) {
+  const { env } = ctx;
+  const origin = site(env);
+  const mint = g.mint;
+  const buttons = mint ? [[
+    { text: '📊 Chart', url: 'https://dexscreener.com/solana/' + encodeURIComponent(mint) },
+    { text: '💲 Buy', url: buyUrl(env, mint) || ('https://jup.ag/swap/SOL-' + encodeURIComponent(mint)) },
+    { text: '🫧 Bubble', url: origin + '/s/' + encodeURIComponent(mint) },
+  ]] : [];
+  const m = await say(env, chat.id, welcomeText(g, chat, u), buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {});
+  if (!m) return;
+  const r = await ctx.guard(chat.id, 'welcome', { msg: m.message_id }).catch(() => null);
+  if (r && r.prev) await del(env, chat.id, r.prev);
+}
+
+async function onCaptcha(ctx, q, rest) {
+  const { env, store } = ctx;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery',
+    { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  const [uidS, iS] = rest.split(':');
+  const uid = Math.floor(num(uidS));
+  const chat = q.message && q.message.chat;
+  if (!chat || !ctx.guard) return ack();
+  if (!q.from || q.from.id !== uid) return ack('This check is for the new member.', true);
+  const r = await ctx.guard(chat.id, 'answer', { uid, i: Math.floor(num(iS)) }).catch(() => null);
+  if (!r || r.result === 'none' || r.result === 'expired') {
+    await ack('This check has expired.', true);
+    return del(env, chat.id, q.message.message_id);
+  }
+  if (r.result === 'wrong') return ack(`❌ Not that one — ${r.left} ${r.left === 1 ? 'try' : 'tries'} left.`, true);
+  if (r.result === 'fail') {
+    await ack('❌ Wrong. You can rejoin in a minute.', true);
+    await kick(env, chat.id, uid);
+    return del(env, chat.id, q.message.message_id);
+  }
+  /* passed: "True for all permissions lifts restrictions" — the member falls
+     back to the group's own defaults, not to more than them */
+  await tg(env, 'restrictChatMember', { chat_id: chat.id, user_id: uid, permissions: perms(true) }).catch(() => null);
+  await ack('✅ Verified — welcome!');
+  await del(env, chat.id, q.message.message_id);
+  const g = await getGroup(store, chat.id);
+  if (g && g.guard && g.guard.welcome) await postWelcome(ctx, chat, q.from, g);
+}
+
+/* A ban this short lifts itself: removed now, free to rejoin in a minute. */
+const kick = (env, chatId, uid) => tg(env, 'banChatMember', {
+  chat_id: chatId, user_id: uid, until_date: Math.floor(Date.now() / 1000) + KICK_S,
+}).catch(() => null);
+
+/* Called by the GroupGuard alarm with whoever let their captcha run out. */
+export async function guardExpire(env, chatId, list) {
+  for (const p of list || []) {
+    await kick(env, chatId, p.uid);
+    await del(env, chatId, p.msg);
+  }
 }
 
 /* Private chat: /start offers the opt-in keyboard and stores nothing until a
@@ -716,6 +917,7 @@ async function onCallback(ctx, q) {
   const uid = q.from && q.from.id;
   const chatId = q.message && q.message.chat && q.message.chat.id;
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
+  if (uid && data.startsWith('cap:')) return onCaptcha(ctx, q, data.slice(4));
   if (!uid || !data.startsWith('sub:')) { await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {}); return; }
   const pick = data.slice(4);
   if (pick === 'none') {
@@ -822,6 +1024,7 @@ async function sendAlert(env, store, chatId, g, caption, keyboard) {
 /* A Helius delivery: every buy of a tracked mint, fanned out to every group
    that asked for it. `solUsd` comes from the caller because the price cache
    lives in api.mjs. Returns counts so the route can report what it did. */
+export const LAT = [];              // seconds, block to posted, this isolate
 export async function onTrade(ctx, payload, solUsd) {
   const { env, store } = ctx;
   const { set } = await tracked(store);
@@ -842,7 +1045,16 @@ export async function onTrade(ctx, payload, solUsd) {
       if (num(g.minBuy) > 0 && usd < num(g.minBuy)) { skipped++; continue; }
       if (!allowed(chatId)) { skipped++; continue; }
       const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env });
-      if (await sendAlert(env, store, chatId, g, caption, keyboard)) sent++;
+      if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
+        sent++;
+        /* block time to alert posted, in seconds — the number that decides
+           whether this feels live next to Bobby; read with wrangler tail */
+        if (buy.blockTime) {
+          const lat = (Date.now() - buy.blockTime * 1000) / 1000;
+          LAT.push(lat); if (LAT.length > 100) LAT.shift();
+          console.log(JSON.stringify({ ev: 'buy-alert', sym: g.sym, latencyS: +lat.toFixed(1) }));
+        }
+      }
     }
   }
   return { buys: buys.length, sent, skipped };
@@ -861,6 +1073,10 @@ export async function status(env, store) {
   try { const info = await tg(env, 'getWebhookInfo'); out.telegram = { url: info.url || '', pending: info.pending_update_count || 0, lastError: info.last_error_message || '' }; }
   catch (e) { out.telegram = { error: String(e.message) }; }
   out.helius = await webhookInfo(env, store);
+  if (LAT.length) {
+    const s = LAT.slice().sort((a, b) => a - b);
+    out.latency = { alerts: s.length, medianS: +s[s.length >> 1].toFixed(1), p90S: +s[Math.floor(s.length * 0.9)].toFixed(1) };
+  }
   return out;
 }
 

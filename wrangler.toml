@@ -76,6 +76,18 @@ class_name = "TapArena"
 tag = "v1-taps"
 new_sqlite_classes = ["TapArena"]
 
+# The group guard: one Durable Object per Telegram group (join captcha and the
+# welcome message — see src/guard.mjs). SQLite-backed, like the arena, and for
+# the same reason: KV's free writes are already spent, and a raid is a hundred
+# joins a minute.
+[[durable_objects.bindings]]
+name = "GUARD"
+class_name = "GroupGuard"
+
+[[migrations]]
+tag = "v2-guard"
+new_sqlite_classes = ["GroupGuard"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"
