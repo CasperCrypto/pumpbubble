@@ -153,6 +153,15 @@ export class AudienceDO {
         if (out.ok) await this.state.storage.setAlarm(Date.now() + 300);
         break;
       case 'cancel': out = await this.a.cancel(); break;
+      case 'purge': out = await this.a.purge(b.id); break;
+      case 'follow': out = await this.a.follow(b.id, b.wallet, b.label); break;
+      case 'unfollow': out = await this.a.unfollow(b.id, b.wallet); break;
+      case 'following': out = { ok: true, list: await this.a.following(b.id) }; break;
+      case 'smart': out = await this.a.smart(b.id, !!b.on); break;
+      case 'isSmart': out = { ok: true, smart: await this.a.isSmart(b.id) }; break;
+      case 'smartFans': out = { ok: true, list: await this.a.smartFans() }; break;
+      case 'wallets': out = { ok: true, list: await this.a.wallets() }; break;
+      case 'route': out = await this.a.route(b.wallets); break;
       default: out = { ok: true, count: await this.a.count(), job: await this.a.job() };
     }
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });

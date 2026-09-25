@@ -32,11 +32,11 @@
 import { resolveAnyToken, isCA, isMint, isEvmAddr, clean, PUMP } from './core.mjs';
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
 import { buyUrl } from './refs.mjs';
-import { buysFromPayload } from './solbuy.mjs';
+import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
-import { UNSUB } from './audience.mjs';
+import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
 import { smartWallets } from './smartset.mjs';
 import { BOT_BONUS } from './taps.mjs';
 
@@ -60,6 +60,7 @@ const K = {
   user: id => 'tg:user:' + id,          // one opted-in user
   users: 'tg:users',                    // [userId] — everyone opted in
   me: 'tg:me',                          // cached getMe
+  channel: 'tg:channel',                // the public smart-money channel, set in the console
 };
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
@@ -123,7 +124,7 @@ export async function me(env, store) {
 /* Called from cron. Points Telegram at /tg/webhook if it is not already, so
    setting TG_BOT_TOKEN is the whole of turning the bot on. */
 let ensuredAt = 0;
-export async function ensureWebhook(env, store) {
+export async function ensureWebhook(env, store, audience = null) {
   if (!enabled(env)) return { enabled: false };
   if (Date.now() - ensuredAt < 3_600_000) return { enabled: true, checked: false };
   ensuredAt = Date.now();
@@ -150,8 +151,12 @@ export async function ensureWebhook(env, store) {
   try {
     let saved = null;
     try { saved = await store.get(HELIUS_KEY); } catch {}
-    const addrs = await watchAddresses(store);
-    if (addrs.length && !(saved && saved.id)) out.helius = await syncWebhook(env, store, site(env), addrs);
+    const addrs = await watchAddresses(store, audience);
+    /* no webhook yet: create it. With followers of the top traders, re-sync
+       hourly anyway — the boards turn over and the watched set with them. */
+    let smartOn = false;
+    if (audience) { try { smartOn = ((await audience('smartFans')).list || []).length > 0 || !!(await store.get(K.channel)); } catch {} }
+    if (addrs.length && (!(saved && saved.id) || smartOn)) out.helius = await syncWebhook(env, store, site(env), addrs);
   } catch (e) { out.helius = { ok: false, error: String(e && e.message || e) }; }
   return out;
 }
@@ -352,11 +357,22 @@ export async function tracked(store) {
   return v;
 }
 
-export async function watchAddresses(store) {
+export async function watchAddresses(store, audience = null) {
   const { list } = await tracked(store);
   const out = [];
   for (const r of list) { out.push(r.mint); if (r.pool) out.push(r.pool); }
-  return out;
+  /* the wallet tracker: every wallet somebody follows, and pump.fun's top
+     traders while anyone follows them as a group or a channel posts them */
+  if (audience) {
+    try { out.push(...((await audience('wallets')).list || [])); } catch {}
+    try {
+      const fans = (await audience('smartFans')).list || [];
+      let channel = null;
+      try { channel = await store.get(K.channel); } catch {}
+      if (fans.length || channel) out.push(...(await smartWallets()).keys());
+    } catch {}
+  }
+  return [...new Set(out)];
 }
 
 /* The pool and the socials. Some routers list only the pool in a swap's
@@ -825,7 +841,11 @@ export function shopKeyboard(ca, what = '') {
 async function shopFor(ctx, chatId, ca, what = '') {
   const { env } = ctx;
   const t = await resolveAnyToken(isEvmAddr(ca) ? ca.toLowerCase() : ca, env.IMG_SECRET).catch(() => null);
-  if (!t) return say(env, chatId, 'No token found at that address. Check it and send it again.');
+  if (!t) {
+    if (isMint(ca)) return say(env, chatId, 'That is not a token I can find — is it a wallet? I can tell you every time it buys or sells.',
+      { reply_markup: { inline_keyboard: [[{ text: '👛 Track this wallet', callback_data: 'trk:add:' + ca }]] } });
+    return say(env, chatId, 'No token found at that address. Check it and send it again.');
+  }
   const chain = (CHAINS[t.chain] && CHAINS[t.chain].name) || (t.chain === 'solana' || !t.chain ? 'Solana' : t.chain);
   return say(env, chatId,
     `<b>$${tgEsc(t.sym)}</b> — ${tgEsc(t.name)} · ${tgEsc(chain)}${t.mcap ? ' · MCap ' + fmtUsd(t.mcap) : ''}\n\n`
@@ -926,6 +946,174 @@ export async function alertAd(store) {
   const v = list.find(a => a && (a.from || 0) <= now && a.until > now) || null;
   adMem = { at: now, v };
   return v;
+}
+
+/* ======================================================== wallet tracker */
+/* Track any Solana wallet, or pump.fun's top traders as one switch, and get
+   every buy and sell in a private chat with ⚡ Copy buy — the trade opens in
+   the trading bot or swap the Buy button already uses, so nothing here ever
+   holds a key or anyone's money. The wallets ride the buybot's Helius webhook
+   (watchAddresses); a swap is read off balances (parseWalletSwaps). */
+
+async function trackerMenu(ctx, chatId, uid, messageId = 0) {
+  const { env } = ctx;
+  if (!ctx.audience) return say(env, chatId, 'The wallet tracker is not switched on in this deployment.');
+  const [f, s] = await Promise.all([ctx.audience('following', { id: uid }), ctx.audience('isSmart', { id: uid })]);
+  const list = (f && f.list) || [];
+  const smart = !!(s && s.smart);
+  const text = '👛 <b>Wallet tracker</b>\n\n'
+    + `🧠 Top traders: ${smart ? '✅ following pump.fun\u2019s top 300 by realized profit' : '⬜ off'}\n`
+    + (list.length ? list.map(x => `• ${tgEsc(x.label || x.wallet.slice(0, 4) + '…' + x.wallet.slice(-4))} <code>${tgEsc(x.wallet)}</code>`).join('\n') : '• no wallets yet')
+    + `\n\nAdd one: <code>/track WALLET name</code> — up to ${MAX_FOLLOWS}. Every buy and sell arrives here with ⚡ Copy buy.`;
+  const kb = [
+    [{ text: (smart ? '✅' : '⬜') + ' Follow top traders', callback_data: 'trk:smart' }],
+    ...list.map(x => [{ text: '✖ ' + (x.label || x.wallet.slice(0, 6) + '…'), callback_data: 'trk:rm:' + x.wallet }]),
+  ];
+  const payload = { chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: kb } };
+  if (messageId) return tg(env, 'editMessageText', { ...payload, message_id: messageId }).catch(() => null);
+  return tg(env, 'sendMessage', payload).catch(() => null);
+}
+
+async function trackWallet(ctx, chatId, uid, wallet, label) {
+  const { env } = ctx;
+  if (!ctx.audience) return say(env, chatId, 'The wallet tracker is not switched on in this deployment.');
+  if (!isMint(wallet)) return say(env, chatId, 'Send a Solana wallet address: <code>/track WALLET name</code>');
+  const r = await ctx.audience('follow', { id: uid, wallet, label: clean(label || '', 24) }).catch(() => null);
+  if (!r || !r.ok) return say(env, chatId, '⚠️ ' + tgEsc((r && r.error) || 'Could not save that — try again.'));
+  const sync = await resync(ctx);
+  const smart = (await smartWallets().catch(() => null))?.get(wallet);
+  return say(env, chatId,
+    `👛 Tracking <code>${tgEsc(wallet)}</code>${label ? ' as <b>' + tgEsc(clean(label, 24)) + '</b>' : ''}.`
+    + (smart ? `\n🧠 That is ${tgEsc(smart.name)}, #${smart.rank} on pump.fun ${tgEsc(smart.when)} by profit banked.` : '')
+    + '\n\nEvery buy and sell arrives here.' + (sync && sync.ok ? '' : '\n\n⚠️ Saved, but the feed did not update yet: ' + tgEsc(sync && sync.error || '')),
+    { reply_markup: { inline_keyboard: [[{ text: '👛 My wallets', callback_data: 'trk:menu' }]] } });
+}
+
+async function onTracker(ctx, q, act) {
+  const { env } = ctx;
+  const chatId = q.message && q.message.chat && q.message.chat.id;
+  const uid = q.from.id;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery', { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  if (!chatId || !ctx.audience) return ack();
+  if (act === 'menu') { await ack(); return trackerMenu(ctx, chatId, uid); }
+  if (act === 'smart') {
+    const now = !((await ctx.audience('isSmart', { id: uid })) || {}).smart;
+    await ctx.audience('smart', { id: uid, on: now });
+    await resync(ctx);
+    await ack(now ? '🧠 Following pump.fun\u2019s top traders — their buys and sells arrive here.' : 'Stopped following the top traders.', true);
+    return trackerMenu(ctx, chatId, uid, q.message.chat.type === 'private' && q.message.text && q.message.text.startsWith('👛') ? q.message.message_id : 0);
+  }
+  if (act.startsWith('rm:')) {
+    await ctx.audience('unfollow', { id: uid, wallet: act.slice(3) });
+    await resync(ctx);
+    await ack('Removed');
+    return trackerMenu(ctx, chatId, uid, q.message.message_id);
+  }
+  if (act.startsWith('add:')) { await ack(); return trackWallet(ctx, chatId, uid, act.slice(4), ''); }
+  return ack();
+}
+
+/* One Helius delivery, read for the tracker: who followed the wallet, who
+   follows the top traders, and the public channel. Per person, twenty alerts
+   a minute at most — the overflow is dropped, like the groups' feed. */
+const userSent = new Map();
+function allowedUser(uid) {
+  const now = Date.now();
+  const arr = (userSent.get(uid) || []).filter(t => now - t < 60_000);
+  if (arr.length >= 20) { userSent.set(uid, arr); return false; }
+  arr.push(now); userSent.set(uid, arr);
+  if (userSent.size > 5000) userSent.delete(userSent.keys().next().value);
+  return true;
+}
+
+let routeMem = { at: 0, wallets: new Set(), fans: [] };
+async function trackerRoute(ctx) {
+  if (Date.now() - routeMem.at < 60_000) return routeMem;
+  const [w, f] = await Promise.all([ctx.audience('wallets').catch(() => null), ctx.audience('smartFans').catch(() => null)]);
+  routeMem = { at: Date.now(), wallets: new Set((w && w.list) || []), fans: (f && f.list) || [] };
+  return routeMem;
+}
+
+export function formatSwap({ s, token, who, smart, env = {}, solUsd = 0 }) {
+  const sym = clean(token.sym || '?', 12);
+  const usd = s.sol * num(solUsd);
+  const L = tokenLinks(env, { mint: s.mint, sym }, token);
+  const head = s.side === 'buy' ? '🟢 <b>BUY</b>' : '🔴 <b>SELL</b>';
+  const name = smart ? `🧠 ${tgEsc(smart.xh && /^\w{1,15}$/.test(smart.xh) ? '@' + smart.xh : clean(smart.name || '', 20))} · #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')}`
+    : `👛 <b>${tgEsc(who || (s.wallet.slice(0, 4) + '…' + s.wallet.slice(-4)))}</b>`;
+  const lines = [
+    `${head} · ${name}`,
+    '',
+    s.side === 'buy'
+      ? `${fmtSol(s.sol)} SOL${usd > 0 ? ' (' + fmtUsd(usd) + ')' : ''} → ${fmtQty(s.tokens)} <b>$${tgEsc(sym)}</b>${s.newHolder ? ' · 🆕 first buy' : ''}`
+      : `${fmtQty(s.tokens)} <b>$${tgEsc(sym)}</b> → ${fmtSol(s.sol)} SOL${usd > 0 ? ' (' + fmtUsd(usd) + ')' : ''}${s.closed ? ' · sold all' : ''}`,
+    `${num(token.mcap) > 0 ? 'MCap ' + fmtUsd(token.mcap) + ' · ' : ''}`
+      + (/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(s.sig || '') ? `<a href="https://solscan.io/tx/${s.sig}">Tx</a> · ` : '')
+      + `<a href="https://solscan.io/account/${s.wallet}">Wallet</a>`,
+  ];
+  const keyboard = { inline_keyboard: [
+    [{ text: '⚡ Copy buy', url: L.buy }, { text: '📊 Chart', url: L.chart }],
+    [{ text: '🫧 Bubble', url: L.bubble }],
+  ] };
+  return { text: lines.join('\n'), keyboard };
+}
+
+async function onWalletTrades(ctx, payload, solUsd) {
+  const { env, store } = ctx;
+  if (!ctx.audience) return { swaps: 0, dms: 0 };
+  const route = await trackerRoute(ctx);
+  let channel = null;
+  try { channel = await store.get(K.channel); } catch {}
+  const smartMap = (route.fans.length || channel) ? await smartWallets().catch(() => new Map()) : new Map();
+  const watch = new Set([...route.wallets, ...smartMap.keys()]);
+  if (!watch.size) return { swaps: 0, dms: 0 };
+  const swaps = walletSwapsFromPayload(payload, watch);
+  let dms = 0;
+  for (const s of swaps) {
+    if (!fresh('w:' + s.sig + ':' + s.wallet)) continue;
+    const token = (await tokenInfo(env, s.mint)) || { mint: s.mint };
+    const smart = smartMap.get(s.wallet) || null;
+    const targets = new Map();                        // uid → label
+    if (route.wallets.has(s.wallet)) {
+      const r = await ctx.audience('route', { wallets: [s.wallet] }).catch(() => null);
+      for (const x of (r && r.by && r.by[s.wallet]) || []) targets.set(x.uid, x.label);
+    }
+    if (smart) for (const uid of route.fans) if (!targets.has(uid)) targets.set(uid, '');
+    for (const [uid, label] of targets) {
+      if (!allowedUser(uid)) continue;
+      const { text, keyboard } = formatSwap({ s, token, who: label, smart: label ? null : smart, env, solUsd });
+      try {
+        await tg(env, 'sendMessage', { chat_id: uid, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: keyboard });
+        dms++;
+      } catch (e) {
+        if (/blocked|deactivated|chat not found/i.test(String(e.description || e.message))) await ctx.audience('purge', { id: uid }).catch(() => null);
+      }
+    }
+    /* the public channel: top traders' buys of half a SOL or more — the
+       free alpha feed that brings people to the bot */
+    if (channel && smart && s.side === 'buy' && s.sol >= 0.5 && allowedUser('ch')) {
+      const { text, keyboard } = formatSwap({ s, token, smart, env, solUsd });
+      await tg(env, 'sendMessage', { chat_id: channel.id, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: keyboard }).catch(() => null);
+    }
+  }
+  return { swaps: swaps.length, dms };
+}
+
+/* The console sets the channel: the bot must be an admin there to post. */
+export async function setChannel(env, store, handle) {
+  const h = String(handle || '').trim();
+  if (!h) { await store.put(K.channel, null); return { ok: true, channel: null }; }
+  const id = /^-?\d+$/.test(h) ? Number(h) : (h.startsWith('@') ? h : '@' + h);
+  let chat;
+  try { chat = await tg(env, 'getChat', { chat_id: id }); } catch (e) { return { ok: false, error: 'I cannot see that channel — add me to it as an admin first.' }; }
+  const bot = await me(env, store).catch(() => null);
+  try {
+    const m = await tg(env, 'getChatMember', { chat_id: chat.id, user_id: bot && bot.id });
+    if (!m || (m.status !== 'administrator' && m.status !== 'creator')) return { ok: false, error: 'Make me an admin of the channel so I can post.' };
+  } catch { return { ok: false, error: 'Make me an admin of the channel so I can post.' }; }
+  const v = { id: chat.id, title: chat.title || '', username: chat.username || '' };
+  await store.put(K.channel, v);
+  return { ok: true, channel: v };
 }
 
 /* ============================================================== settings */
@@ -1318,7 +1506,7 @@ async function onPrivate(ctx, msg) {
   if (!uid) return;
   if (c && c.cmd === 'stop') {
     await forgetUser(store, uid);
-    if (ctx.audience) await ctx.audience('remove', { id: uid }).catch(() => null);
+    if (ctx.audience) { await ctx.audience('purge', { id: uid }).catch(() => null); await resync(ctx); }
     return say(env, msg.chat.id, 'Done — nothing more from me. /start any time.');
   }
   /* anyone talking to the bot in private has pressed Start: on the list */
@@ -1336,6 +1524,19 @@ async function onPrivate(ctx, msg) {
     if (what === 'boost' || what === 'ads' || what === 'ad') return askForToken(ctx, msg.chat.id, what);
   }
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') return askForToken(ctx, msg.chat.id, c.cmd);
+  if (c.cmd === 'track') {
+    const [wallet = '', ...rest] = c.arg.split(/\s+/);
+    if (!wallet) return trackerMenu(ctx, msg.chat.id, uid);
+    return trackWallet(ctx, msg.chat.id, uid, wallet, rest.join(' '));
+  }
+  if (c.cmd === 'untrack') {
+    const wallet = c.arg.split(/\s+/)[0] || '';
+    if (!ctx.audience) return;
+    await ctx.audience('unfollow', { id: uid, wallet });
+    await resync(ctx);
+    return say(env, msg.chat.id, 'Stopped tracking <code>' + tgEsc(wallet) + '</code>.');
+  }
+  if (c.cmd === 'wallets' || c.cmd === 'tracker') return trackerMenu(ctx, msg.chat.id, uid);
   if (c.cmd === 'start' || c.cmd === 'help') {
     /* Add-to-group asks for the admin rights the guard needs up front —
        Telegram's startgroup link can request them — so an owner is not sent
@@ -1347,10 +1548,12 @@ async function onPrivate(ctx, msg) {
     return say(env, msg.chat.id,
       '🫧 <b>pumpbubble</b> — the live bubble map for pump.fun, Base, Robinhood Chain and the market.\n\n'
       + 'To add buy alerts to your group: add me there and run <code>/setup &lt;contract address&gt;</code>.\n\n'
+      + '👛 <b>Track any wallet</b> — or follow pump.fun\u2019s top 300 traders by realized profit — and get every buy and sell here, with one tap to copy it.\n\n'
       + 'Promote a token right here: a golden bubble, an ad on the map or under every buy alert, or a DM to everyone on my list.\n\n'
       + '<i>' + DISCLOSURE + '</i>',
       { reply_markup: { inline_keyboard: [
         ...add,
+        [{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }],
         [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
         [UNSUB],
       ] } });
@@ -1372,6 +1575,7 @@ async function onCallback(ctx, q) {
   if (uid && data.startsWith('vcap:')) return onVerifyAnswer(ctx, q, data.slice(5));
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
   if (uid && (data.startsWith('shop:') || data.startsWith('buy:') || data.startsWith('chk:'))) return onShop(ctx, q, data);
+  if (uid && data.startsWith('trk:')) return onTracker(ctx, q, data.slice(4));
   if (uid && data.startsWith('cap:')) return onCaptcha(ctx, q, data.slice(4));
   if (!uid || !data.startsWith('sub:')) { await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {}); return; }
   const pick = data.slice(4);
@@ -1413,7 +1617,7 @@ async function forgetUser(store, uid) {
 
 async function resync(ctx) {
   try {
-    return await syncWebhook(ctx.env, ctx.store, site(ctx.env), await watchAddresses(ctx.store));
+    return await syncWebhook(ctx.env, ctx.store, site(ctx.env), await watchAddresses(ctx.store, ctx.audience));
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 
@@ -1483,8 +1687,9 @@ async function sendAlert(env, store, chatId, g, caption, keyboard) {
 export const LAT = [];              // seconds, block to posted, this isolate
 export async function onTrade(ctx, payload, solUsd) {
   const { env, store } = ctx;
+  const w = await onWalletTrades(ctx, payload, solUsd).catch(() => ({ swaps: 0, dms: 0 }));
   const { set } = await tracked(store);
-  if (!set.size) return { buys: 0, sent: 0 };
+  if (!set.size) return { buys: 0, sent: 0, wallets: w };
   const buys = buysFromPayload(payload, set);
   let sent = 0, skipped = 0;
   const bot = await me(env, store).catch(() => ({ username: '' }));

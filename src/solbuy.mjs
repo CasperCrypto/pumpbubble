@@ -160,6 +160,66 @@ export function parseBuys(tx, tracked) {
   return out;
 }
 
+/* The wallet tracker's reading of one transaction: every swap a followed
+   wallet made, in either direction, of any token. The same balance rule as a
+   buy, from the wallet's side — the wallet must have signed; SOL (native plus
+   wrapped) is the money; a token going up while SOL goes down is a buy, down
+   while SOL goes up is a sell. A transaction that moved more than one token
+   for the wallet (a multi-hop, a token-for-token swap) is left out rather than
+   guessed at: the alert would have to invent which leg the SOL paid for. */
+const WSOL = 'So11111111111111111111111111111111111111112';
+export function parseWalletSwaps(tx, wallets) {
+  if (!tx || !tx.meta || tx.meta.err) return [];
+  const meta = tx.meta;
+  const keys = accountList(tx);
+  if (!keys.length) return [];
+  const signed = signers(tx);
+  const fee = num(meta.fee);
+  const sig = (tx.transaction && tx.transaction.signatures && tx.transaction.signatures[0]) || '';
+  const out = [];
+  for (const w of signed) {
+    if (!wallets.has(w)) continue;
+    const idx = keys.indexOf(w);
+    if (idx < 0) continue;
+    const solNative = (num((meta.postBalances || [])[idx]) - num((meta.preBalances || [])[idx]) + (keys[0] === w ? fee : 0)) / LAMPORTS;
+    const deltas = new Map();
+    for (const e of [].concat(meta.preTokenBalances || [], meta.postTokenBalances || [])) {
+      if (e && e.owner === w && e.mint) deltas.set(e.mint, 0);
+    }
+    for (const mint of deltas.keys()) {
+      const d = (ownerBalances(meta.postTokenBalances, mint).get(w) || 0) - (ownerBalances(meta.preTokenBalances, mint).get(w) || 0);
+      deltas.set(mint, d);
+    }
+    const wsol = deltas.get(WSOL) || 0;
+    deltas.delete(WSOL);
+    const moved = [...deltas.entries()].filter(([, d]) => Math.abs(d) > 0);
+    if (moved.length !== 1) continue;
+    const [mint, d] = moved[0];
+    const sol = solNative + wsol;                  // + received, − spent
+    const side = d > 0 && sol < 0 ? 'buy' : d < 0 && sol > 0 ? 'sell' : '';
+    if (!side || Math.abs(sol) < MIN_SOL) continue;
+    const pre = ownerBalances(meta.preTokenBalances, mint).get(w) || 0;
+    out.push({
+      wallet: w, mint, side, sol: Math.abs(sol), tokens: Math.abs(d),
+      newHolder: side === 'buy' ? !(pre > 0) : undefined,
+      closed: side === 'sell' ? !((ownerBalances(meta.postTokenBalances, mint).get(w) || 0) > 0) : undefined,
+      sig, slot: num(tx.slot), blockTime: num(tx.blockTime),
+    });
+  }
+  return out;
+}
+
+export function walletSwapsFromPayload(payload, wallets) {
+  const list = Array.isArray(payload) ? payload
+    : (payload && Array.isArray(payload.transactions)) ? payload.transactions
+    : payload ? [payload] : [];
+  const out = [];
+  for (const tx of list) {
+    try { out.push(...parseWalletSwaps(tx, wallets)); } catch { /* one bad row, not the batch */ }
+  }
+  return out;
+}
+
 /* A Helius raw webhook delivers an array of transactions; be lenient about a
    single object or a wrapper, since a payload shape that moves should degrade
    to "no buys", never to a throw inside a webhook handler. */

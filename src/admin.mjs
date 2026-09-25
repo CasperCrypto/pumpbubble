@@ -268,6 +268,9 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
       <button class="go" id="dmCancel">Stop the send</button>
     </div>
     <div class="dim" id="bOut" style="margin-top:6px"></div>
+    <h2 style="margin-top:16px">Smart money channel</h2>
+    <div class="dim" style="margin-bottom:6px">A public Telegram channel where the bot posts every buy of half a SOL or more by pump.fun's top 300 traders, with ⚡ Copy buy — the free feed that brings people to the bot. Make the bot an admin of the channel, then put its @username here (empty to switch off).</div>
+    <div class="row"><input id="chName" placeholder="@yourchannel" style="flex:1"><button class="go" id="chSave">Save channel</button></div>
     <h2 style="margin-top:16px">Paid DM blasts</h2>
     <div class="dim" style="margin-bottom:6px">Bought in the bot's shop. Nothing goes out until you approve it — decline anything you would not put your name on, and refund the payer.</div>
     <div id="dmReviews"></div>
@@ -323,6 +326,7 @@ $('bSend').onclick=async()=>{
   try{ await api('dm.send',{text,buttonText:$('dmBtnText').value,buttonUrl:$('dmBtnUrl').value}); say('sending'); dmLoad(); }
   catch(e){say(e.message,true)}
 };
+$('chSave').onclick=async()=>{try{const r=await api('tg.channel',{channel:$('chName').value});say(r.channel?'posting to '+(r.channel.username?'@'+r.channel.username:r.channel.title):'channel off')}catch(e){say(e.message,true)}};
 $('dmCancel').onclick=async()=>{try{await api('dm.cancel');say('stopped');dmLoad()}catch(e){say(e.message,true)}};
 $('dmReviews').onclick=async e=>{
   const ok=e.target.dataset.dmok,no=e.target.dataset.dmno;if(!ok&&!no)return;

@@ -17,9 +17,9 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
-  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks,
+  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks, setChannel as tgSetChannel, watchAddresses as tgWatch,
 } from './tgbot.mjs';
-import { deliveryAuth as heliusAuth } from './helius.mjs';
+import { deliveryAuth as heliusAuth, syncWebhook as heliusSync } from './helius.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
@@ -600,6 +600,11 @@ async function solPriceNow(ctx) {
 }
 
 /* =============================================================== routes */
+/* after a tracker-wide change made from the console */
+async function tgEnsureAudience(ctx) {
+  return heliusSync(ctx.env, ctx.store, (ctx.env.PUBLIC_ORIGIN || 'https://pumpbubble.fun').replace(/\/+$/, ''), await tgWatch(ctx.store, ctx.audience));
+}
+
 export async function handle(req, ctx) {
   setCoingeckoKey(ctx.env.COINGECKO_KEY);
   const url = new URL(req.url);
@@ -2018,6 +2023,13 @@ export async function handle(req, ctx) {
           const buttons = bt && /^https:\/\/[^\s"'<>]{4,300}$/i.test(bu) ? [[{ text: bt, url: bu }]] : [];
           return json(await ctx.audience('start', { html, buttons, label: 'console' }));
         }
+        /* the public smart-money channel the tracker posts top traders' buys to */
+        if (action === 'tg.channel') {
+          if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);
+          const r = await tgSetChannel(ctx.env, ctx.store, String(body.channel || ''));
+          if (r.ok && ctx.audience) { try { await tgEnsureAudience(ctx); } catch {} }
+          return json(r, r.ok ? 200 : 400);
+        }
         if (action === 'dm.cancel') {
           if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
           return json(await ctx.audience('cancel'));
@@ -2198,7 +2210,7 @@ export async function handle(req, ctx) {
     /* Called from cron: registers the Telegram webhook once the token is set,
        so turning the bot on is one secret and nothing else. */
     if (path === '/api/tg/ensure') {
-      try { return json({ ok: true, ...(await tgEnsure(ctx.env, ctx.store)) }); }
+      try { return json({ ok: true, ...(await tgEnsure(ctx.env, ctx.store, ctx.audience || null)) }); }
       catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 502); }
     }
 

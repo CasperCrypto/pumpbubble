@@ -26,6 +26,7 @@
    ========================================================================== */
 
 export const BATCH = 25;           // messages per tick, under Telegram's ~30/s
+export const MAX_FOLLOWS = 10;     // wallets one person can track
 export const TICK_MS = 1100;
 
 export const UNSUB = { text: '🔕 Unsubscribe', callback_data: 'unsub' };
@@ -53,6 +54,73 @@ export class Audience {
     await this.s.delete(k);
     await this.s.put('n', Math.max(0, (await this.count()) - 1));
     return { ok: true, removed: true };
+  }
+
+  /* ------------------------------------------------------ wallet tracker */
+  /* Who follows which wallet, both ways round: `w:<user>` is a user's list
+     (for /wallets), `f:<wallet>` the users to tell (for a delivery). A
+     follow is something the user asked for, so unsubscribing from the mass
+     DM does not touch it; blocking the bot or /stop does (`purge`). */
+  async following(uid) { return (await this.s.get('w:' + Math.floor(+uid))) || []; }
+
+  async follow(uid, wallet, label = '') {
+    uid = Math.floor(+uid);
+    wallet = String(wallet || '');
+    if (!(uid > 0) || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) return { ok: false, error: 'that is not a Solana wallet address' };
+    const mine = await this.following(uid);
+    const have = mine.find(x => x.wallet === wallet);
+    if (have) { have.label = String(label || have.label || '').slice(0, 24); await this.s.put('w:' + uid, mine); return { ok: true, added: false, list: mine }; }
+    if (mine.length >= MAX_FOLLOWS) return { ok: false, error: `you can track ${MAX_FOLLOWS} wallets — remove one first` };
+    mine.push({ wallet, label: String(label || '').slice(0, 24), at: Date.now() });
+    await this.s.put('w:' + uid, mine);
+    const fans = (await this.s.get('f:' + wallet)) || [];
+    if (!fans.includes(uid)) { fans.push(uid); await this.s.put('f:' + wallet, fans); }
+    return { ok: true, added: true, list: mine };
+  }
+
+  async unfollow(uid, wallet) {
+    uid = Math.floor(+uid);
+    const mine = (await this.following(uid)).filter(x => x.wallet !== wallet);
+    await this.s.put('w:' + uid, mine);
+    const fans = ((await this.s.get('f:' + wallet)) || []).filter(x => x !== uid);
+    if (fans.length) await this.s.put('f:' + wallet, fans); else await this.s.delete('f:' + wallet);
+    return { ok: true, list: mine };
+  }
+
+  /* following pump.fun's top traders as one switch, not three hundred rows */
+  async smart(uid, on) {
+    uid = Math.floor(+uid);
+    if (on) await this.s.put('sm:' + String(uid).padStart(15, '0'), 1); else await this.s.delete('sm:' + String(uid).padStart(15, '0'));
+    return { ok: true, smart: !!on };
+  }
+  async isSmart(uid) { return !!(await this.s.get('sm:' + String(Math.floor(+uid)).padStart(15, '0'))); }
+  async smartFans() { return [...(await this.s.list({ prefix: 'sm:' })).keys()].map(k => +k.slice(3)); }
+
+  /* every wallet somebody follows — what the Helius webhook has to watch */
+  async wallets() { return [...(await this.s.list({ prefix: 'f:' })).keys()].map(k => k.slice(2)); }
+
+  /* for one delivery: who to tell about which wallet */
+  async route(wallets) {
+    const by = {};
+    for (const w of [...new Set(wallets || [])]) {
+      const fans = (await this.s.get('f:' + w)) || [];
+      if (!fans.length) continue;
+      by[w] = [];
+      for (const uid of fans) {
+        const hit = (await this.following(uid)).find(x => x.wallet === w);
+        by[w].push({ uid, label: hit ? hit.label : '' });
+      }
+    }
+    return { ok: true, by };
+  }
+
+  /* blocked the bot, or /stop: nothing more of any kind */
+  async purge(uid) {
+    uid = Math.floor(+uid);
+    for (const x of await this.following(uid)) await this.unfollow(uid, x.wallet);
+    await this.s.delete('w:' + uid);
+    await this.smart(uid, false);
+    return this.remove(uid);
   }
 
   async job() { return (await this.s.get('job')) || null; }
@@ -91,7 +159,7 @@ export class Audience {
     const res = await Promise.all(keys.map(k => send(+k.slice(2), j.html, j.buttons).catch(() => 'fail')));
     for (let i = 0; i < keys.length; i++) {
       if (res[i] === 'ok') j.sent++;
-      else if (res[i] === 'gone') { j.gone++; await this.remove(+keys[i].slice(2)); }
+      else if (res[i] === 'gone') { j.gone++; await this.purge(+keys[i].slice(2)); }
       else j.failed++;
     }
     if (keys.length) j.cursor = keys[keys.length - 1];

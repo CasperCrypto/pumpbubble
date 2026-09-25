@@ -1386,6 +1386,36 @@ is restricted by Telegram, and a restricted bot stops posting buys in every grou
 disclosure and the one-tap way out are what keep the block rate down — do not remove them to
 "grow faster".
 
+**Smart Buy, the Tap wars head start, and the wallet tracker — the answer to "why us, when there
+are many buy bots".** Three things nobody else's bot can do, because they come from the map's own
+data (asked for as "we need to give value — help people earn, find big traders to track and copy;
+they can't copy them inside the pump.fun app"):
+
+- **🧠 SMART BUY** on a group's alert when the buyer is one of pump.fun's top traders by realized
+  profit (`src/smartset.mjs`: the Smart money tab's three boards as a wallet lookup, each wallet at
+  its best rank, ten-minute cache): *"@CookerFlips, #3 on pump.fun this week by profit banked"*.
+- **Tap wars head start**: every token set up with the bot enters the arena with 500 taps, once per
+  token ever (`Arena.grant`, server-side, no address limits, decays like any tap) — half of a free
+  rail slot, a reason for a project to install this bot rather than another.
+- **Wallet tracker** (private chat: 👛 Wallet tracker, 🧠 Follow top traders, `/track WALLET name`,
+  `/untrack`, `/wallets`; a pasted address that is no token is offered as a wallet). Followed
+  wallets ride the buybot's Helius webhook (`watchAddresses` with the audience); pump.fun's top 300
+  join it only while somebody follows them or a channel posts them, re-synced hourly as the boards
+  turn over. A swap is read off balances from the wallet's side (`parseWalletSwaps`: it signed, SOL
+  native-or-wrapped one way, exactly one token the other; token-for-token routes are left out
+  rather than guessed). Buys and sells arrive with **⚡ Copy buy**. Follows live in the AudienceDO
+  (`w:<user>`, `f:<wallet>`, `sm:<user>`), ten per person; unsubscribing from the mass DM does not
+  touch them, `/stop` or blocking the bot does. Twenty alerts a minute per person at most.
+- **The public Smart money channel** (console → Smart money channel): top traders' buys of 0.5 SOL
+  or more, posted with Copy buy — the free alpha feed that brings people to the bot. The console
+  checks the bot is an admin there before saving.
+
+**Copy trading and sniping are deep links, not custody — decided, not deferred.** ⚡ Copy buy opens
+the same swap as the Buy button (the referral trading bot when `REF_PROVIDER`/`REF_CODE` are set,
+Jupiter otherwise). Executing trades for users means holding their keys and money in a Worker; one
+bug or breach empties every user at once, and the liability is the operator's. The trading bots
+that already do sniping and auto-copy are the execution layer, and they pay referral for the flow.
+
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate
