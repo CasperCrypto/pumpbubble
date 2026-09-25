@@ -1311,14 +1311,40 @@ says what is missing — a captcha the bot cannot enforce mutes nobody.
 time to message sent — and `/status` in the console carries the median and p90 of the isolate's
 last hundred. Read it with `wrangler tail` before comparing the bot to Bobby.
 
+**Base, Ethereum and Robinhood Chain** (`src/evmbuy.mjs`, the `EvmWatch` Durable Object, one per
+chain). `/setup 0x…` finds the chain where the token trades deepest (or the one named after the
+address), takes up to four pools priced in ETH/WETH or a dollar stablecoin from DexScreener *once*,
+reads `decimals()` and `totalSupply()`, and from then on the chain's watcher polls those pools'
+Swap events every 4s (Base, Robinhood) or 12s (Ethereum, one block) with one batched `eth_getLogs`
+— no DexScreener at alert time, which matters because DexScreener refuses the Worker. Market cap is
+the trade's own price × supply; measured against DexScreener on live buys: $97.95M vs $97.67M,
+$28.81M vs $28.78M. The buyer is the transaction's signer (`eth_getTransactionByHash`), because
+routers and v4's PoolManager sit between the pool and the wallet. EVM alerts do not claim
+"New Holder" — nothing here knows whether the wallet held before.
+
+Five Swap formats, every topic read off a real transaction first: Uniswap v2, Solidly (Aerodrome
+classic), Uniswap v3 (also Aerodrome CL, Ramses, "up"), Pancake v3 (also "giga"), and Uniswap v4 —
+the PoolManager singleton, pool id in topic 1, Robinhood's at `0x8366…0951` read off the chain.
+**The signs differ and that is the trap**: v3 reports the pool's delta, v4 the swapper's (checked
+on a real Robinhood swap — −0.0026 ETH equal to the tx value, +114M tokens equal to the transfer),
+v2 and Solidly carry In and Out. A transaction that buys and sells the same token is a route
+through it and is not posted. Robinhood Chain trades mostly on v4 (14 of 30 sampled pairs), in
+native ETH or USDG (6 decimals).
+
+**Robinhood makes a block every 0.1 s**, measured (1,000 blocks in 101 s) — the first guess of
+0.25 s made the latency estimate read 45–50 s when delivery was ~5 s. Its public RPC is fresh
+(head 1–2 s old) but answers 429 to bursts; the watcher backs off, and `ALCHEMY_KEY` (one key
+serves all three chains, as a secret) replaces the public endpoints. The watcher keeps its last
+block in memory and saves once a minute, skips ahead rather than posting history after a restart,
+and drops any chat whose group no longer follows the token. `/api/tg/status` shows each watcher's
+token count, last read and last error.
+
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate
 posts so the buy feed stays clean and the bubble posts read as events. Not built yet.
 
-Solana only. The address box accepts any chain (`isCA`) and says so plainly when it is not Solana;
-Base and Robinhood Chain need an EVM event source, which is either a provider's webhook or a
-Durable Object holding a websocket.
+Solana, Base, Ethereum and Robinhood Chain — see above for how the EVM chains are read.
 
 ## Modes
 

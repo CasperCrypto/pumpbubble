@@ -29,7 +29,8 @@
    without running a server.
    ========================================================================== */
 
-import { resolveAnyToken, isCA, isMint, clean, PUMP } from './core.mjs';
+import { resolveAnyToken, isCA, isMint, isEvmAddr, clean, PUMP } from './core.mjs';
+import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
 import { buyUrl } from './refs.mjs';
 import { buysFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
@@ -185,12 +186,38 @@ export function emojiRow(usd, emoji = '🟢', step = 20) {
    Header emoji says what kind of buy it was — 🆕 a new holder, 🐋 four
    figures, 🟢 otherwise. Everything from the token is escaped; every link is
    validated. */
+/* Where a token's buttons go, by chain. Solana: pump.fun or DexScreener,
+   Buy through the referral when one is set. EVM: DexScreener, Buy on
+   Uniswap where it runs (Robinhood Chain falls back to the chart). */
+export function tokenLinks(env, g, token = {}) {
+  const origin = site(env);
+  const net = CHAINS[g.chain];
+  if (net) {
+    const a = String(g.token || token.addr || '');
+    const chart = 'https://dexscreener.com/' + net.dex + '/' + encodeURIComponent(a);
+    const sym = clean(token.sym || g.sym || '', 12);
+    return {
+      chart,
+      buy: net.uniswap ? 'https://app.uniswap.org/swap?chain=' + net.uniswap + '&outputCurrency=' + encodeURIComponent(a) : chart,
+      bubble: g.chain === 'ethereum' || !sym ? origin + '/?source=trending' : origin + '/s/' + encodeURIComponent(sym) + '?source=' + g.chain,
+      boost: origin + '/?boost=' + encodeURIComponent(a),
+    };
+  }
+  const mint = token.mint || g.mint;
+  return {
+    chart: token.grad === false ? 'https://pump.fun/coin/' + encodeURIComponent(mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(mint),
+    buy: buyUrl(env, mint) || ('https://jup.ag/swap/SOL-' + encodeURIComponent(mint)),
+    bubble: origin + '/s/' + encodeURIComponent(mint),
+    boost: origin + '/?boost=' + encodeURIComponent(mint),
+  };
+}
+
 export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false }) {
-  const usd = num(buy.sol) * num(solUsd);
+  const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
   const sym = clean(token.sym || group.sym || '?', 12);
   const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
-  const origin = site(env);
-  const mint = token.mint || group.mint;
+  const net = CHAINS[group.chain];
+  const links = tokenLinks(env, group, token);
 
   const lines = [];
   lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
@@ -198,13 +225,17 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   lines.push('');
   lines.push(emojiRow(usd, group.emoji, group.step));
   lines.push('');
-  lines.push(`🔷 <b>SOL</b> ${fmtSol(buy.sol)}${solUsd > 0 ? ` (${fmtUsd(usd)})` : ''}`);
-  const sig = /^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(String(buy.sig || '')) ? buy.sig : '';
-  const tx = sig ? ` (<a href="https://solscan.io/tx/${sig}">Tx</a>)` : '';
+  lines.push(`🔷 <b>${net ? net.native : 'SOL'}</b> ${fmtSol(buy.sol)}${usd > 0 ? ` (${fmtUsd(usd)})` : ''}`);
+  /* only a hash of the chain's own shape becomes a link */
+  const sig = String(buy.sig || '');
+  const tx = net && /^0x[0-9a-fA-F]{64}$/.test(sig) ? ` (<a href="${net.explorer}/tx/${sig}">Tx</a>)`
+    : !net && /^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(sig) ? ` (<a href="https://solscan.io/tx/${sig}">Tx</a>)` : '';
   lines.push(`🪙 <b>${tgEsc(sym)}</b> ${fmtQty(buy.tokens)}${tx}`);
-  const wallet = buy.buyer && isMint(buy.buyer)
-    ? ` (<a href="https://solscan.io/account/${buy.buyer}">Wallet</a>)` : '';
-  lines.push(`🔎 <b>Position:</b> ${buy.newHolder ? 'New Holder' : 'Holder'}${wallet}`);
+  const wallet = net && isEvmAddr(buy.buyer) ? ` (<a href="${net.explorer}/address/${buy.buyer}">Wallet</a>)`
+    : !net && buy.buyer && isMint(buy.buyer) ? ` (<a href="https://solscan.io/account/${buy.buyer}">Wallet</a>)` : '';
+  /* EVM buys do not know whether the wallet held before; say only what is known */
+  if (buy.newHolder === undefined) { if (wallet) lines.push(`🔎 <b>Buyer:</b>${wallet}`); }
+  else lines.push(`🔎 <b>Position:</b> ${buy.newHolder ? 'New Holder' : 'Holder'}${wallet}`);
   if (num(token.mcap) > 0) lines.push(`📈 <b>MCap:</b> ${fmtUsd(token.mcap)}`);
 
   const soc = [];
@@ -215,20 +246,15 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   if (soc.length) lines.push(`📣 <b>Socials:</b> ${soc.join(' | ')}`);
 
   lines.push('');
-  lines.push(`🫧 <a href="${origin}/s/${encodeURIComponent(mint)}">${tgEsc(sym)} on the bubble map</a>`);
+  lines.push(`🫧 <a href="${links.bubble}">${tgEsc(sym)} on the bubble map</a>`);
 
-  /* Chart goes to a chart. Bonding-curve tokens live on pump.fun; graduated
-     ones have a DexScreener page. Buy goes through the referral when one is
-     configured and to a plain Jupiter swap when not — a button that says Buy
-     and does nothing is worse than no button. */
-  const chart = token.grad === false
-    ? 'https://pump.fun/coin/' + encodeURIComponent(mint)
-    : 'https://dexscreener.com/solana/' + encodeURIComponent(mint);
-  const buyLink = buyUrl(env, mint) || ('https://jup.ag/swap/SOL-' + encodeURIComponent(mint));
+  /* Chart goes to a chart; Buy through the referral where one is configured
+     and to a plain swap when not — a button that says Buy and does nothing
+     is worse than no button. */
   const keyboard = {
     inline_keyboard: [
-      [{ text: '📊 Chart', url: chart }, { text: '🫧 Bubble', url: origin + '/s/' + encodeURIComponent(mint) }],
-      [{ text: '💲 Buy', url: buyLink }, { text: '⚡ Boost', url: origin + '/?boost=' + encodeURIComponent(mint) }],
+      [{ text: '📊 Chart', url: links.chart }, { text: '🫧 Bubble', url: links.bubble }],
+      [{ text: '💲 Buy', url: links.buy }, { text: '⚡ Boost', url: links.boost }],
     ],
   };
   return { caption: lines.join('\n'), keyboard };
@@ -371,7 +397,7 @@ async function dexPoolAndSocials(mint) {
 const HELP = [
   '<b>pumpbubble buybot</b>',
   '',
-  '/setup <code>&lt;contract address&gt;</code> — start posting buys for a token',
+  '/setup <code>&lt;contract address&gt;</code> — start posting buys for a token on Solana, Base, Ethereum or Robinhood Chain',
   '/media — send a photo, GIF or video with this as its caption to use it on buys',
   '/emoji 🟢 — the emoji that fills the buy bar',
   '/step 20 — dollars per emoji',
@@ -383,7 +409,7 @@ const HELP = [
   '/status — what this group is tracking',
   '/stop — stop posting here',
   '',
-  'Admins only. Solana tokens for now.',
+  'Admins only. The chain is found from the address; if a 0x address trades on more than one, add it: <code>/setup 0x… base</code>.',
 ].join('\n');
 
 const adminMem = new Map();       // chat:user -> {at, ok}
@@ -426,7 +452,15 @@ export async function handleUpdate(ctx, update) {
   /* A group that became a supergroup gets a new id; carry the config over. */
   if (msg.migrate_to_chat_id) {
     const g = await getGroup(store, msg.chat.id);
-    if (g) { await putGroup(store, msg.migrate_to_chat_id, { ...g, chatId: msg.migrate_to_chat_id }); await removeGroup(store, msg.chat.id); await addTracking(store, g.mint, g.pool, msg.migrate_to_chat_id); }
+    if (g) {
+      await putGroup(store, msg.migrate_to_chat_id, { ...g, chatId: msg.migrate_to_chat_id });
+      await removeGroup(store, msg.chat.id);
+      if (g.mint) await addTracking(store, g.mint, g.pool, msg.migrate_to_chat_id);
+      if (isChain(g.chain) && g.token && ctx.evm) {
+        await ctx.evm(g.chain, 'untrack', { token: g.token, chatId: msg.chat.id }).catch(() => null);
+        await ctx.evm(g.chain, 'track', { token: g.token, chatId: msg.migrate_to_chat_id }).catch(() => null);
+      }
+    }
     return;
   }
 
@@ -486,7 +520,7 @@ async function onGroup(ctx, msg) {
     const g = await getGroup(store, chatId);
     if (!g) return say(env, chatId, 'Not tracking anything here yet. /setup <code>&lt;contract address&gt;</code>');
     return say(env, chatId,
-      `Tracking <b>${tgEsc(g.sym)}</b> on Solana\n<code>${tgEsc(g.mint)}</code>\n`
+      `Tracking <b>${tgEsc(g.sym)}</b> on ${tgEsc((CHAINS[g.chain] && CHAINS[g.chain].name) || 'Solana')}\n<code>${tgEsc(g.token || g.mint)}</code>\n`
       + `emoji ${tgEsc(g.emoji)} · step $${num(g.step)} · min buy $${num(g.minBuy)} · media ${g.media ? g.media.kind : 'none'}`,
       settingsMarkup());
   }
@@ -494,22 +528,22 @@ async function onGroup(ctx, msg) {
   if (!await isAdmin(env, msg)) return say(env, chatId, 'Admins only.');
 
   if (c.cmd === 'setup') {
-    const addr = c.arg.split(/\s+/)[0] || '';
+    const [addr = '', wantChain = ''] = c.arg.split(/\s+/);
     if (!isCA(addr)) return say(env, chatId, 'Send the contract address after the command:\n<code>/setup &lt;address&gt;</code>');
-    if (!isMint(addr)) return say(env, chatId, 'Buy alerts are Solana-only for now. Base and Robinhood Chain are next.');
+    if (isEvmAddr(addr)) return setupEvm(ctx, msg, addr.toLowerCase(), wantChain.toLowerCase());
     const t = await resolveAnyToken(addr, env.IMG_SECRET);
     if (!t) return say(env, chatId, 'No token found at that address.');
     if (t.chain && t.chain !== 'solana') return say(env, chatId, 'Buy alerts are Solana-only for now.');
     const { pool, socials } = await poolAndSocials(addr);
     const prev = await getGroup(store, chatId);
-    if (prev && prev.mint && prev.mint !== addr) await dropTracking(store, prev.mint, chatId);
+    await untrackOld(ctx, chatId, prev, 'solana:' + addr);
     /* Switching to a different token keeps the group's own choices (emoji,
        step, minimum, the guard) and drops what belonged to the old token —
        its links and its picture — or the new token's buys would link to the
        old one's X account. Re-running /setup on the same token keeps it all. */
     const same = !!(prev && prev.mint === addr);
     const cfg = {
-      chatId, mint: addr, pool, chain: 'solana',
+      chatId, mint: addr, pool, chain: 'solana', token: '',
       sym: clean(t.sym, 12), name: clean(t.name, 48),
       socials: { ...(same && prev.socials || {}), ...socials },
       emoji: (prev && prev.emoji) || '🟢',
@@ -536,6 +570,7 @@ async function onGroup(ctx, msg) {
   if (!g) return say(env, chatId, 'Run /setup <code>&lt;contract address&gt;</code> first.');
 
   if (c.cmd === 'stop') {
+    await untrackOld(ctx, chatId, g, '');
     await removeGroup(store, chatId);
     await resync(ctx);
     return say(env, chatId, 'Stopped — no more buy alerts here, and the guard is off. /setup <code>&lt;contract address&gt;</code> to start again.');
@@ -582,6 +617,16 @@ async function onGroup(ctx, msg) {
 
 async function sendTest(ctx, chatId, g) {
   const { env, store } = ctx;
+  if (isChain(g.chain)) {
+    const eth = await evmEthUsd();
+    const t = await tokenInfo(env, g.token);
+    const price = num(t && t.price);
+    const buy = { sol: 0.05, usd: 0.05 * eth, tokens: price > 0 && eth > 0 ? (0.05 * eth) / price : 1_000_000, buyer: '', sig: '' };
+    const bot = await me(env, store).catch(() => ({ username: '' }));
+    const token = { sym: g.sym, mcap: t && t.mcap, addr: g.token };
+    const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: eth, botName: bot.username, env, test: true });
+    return sendAlert(env, store, chatId, g, caption, keyboard);
+  }
   const t = await tokenInfo(env, g.mint);
   const solUsd = num(ctx.solUsd);
   const price = num(t && t.price);
@@ -592,6 +637,115 @@ async function sendTest(ctx, chatId, g) {
   const bot = await me(env, store).catch(() => ({ username: '' }));
   const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true });
   return sendAlert(env, store, chatId, g, caption, keyboard);
+}
+
+/* ================================================================ EVM */
+/* /setup with a 0x address. The chain is where the token trades deepest
+   among Base, Ethereum and Robinhood Chain, unless the admin names one; the
+   pools come from DexScreener once, here, and after that the chain's
+   EvmWatch Durable Object reads swaps straight from the chain. */
+async function setupEvm(ctx, msg, addr, want) {
+  const { env, store } = ctx;
+  const chatId = msg.chat.id;
+  if (!ctx.evm) return say(env, chatId, 'Buy alerts for Base, Ethereum and Robinhood Chain are not switched on in this deployment.');
+  let pairs = null;
+  try {
+    const r = await fetch(DEXS + '/latest/dex/tokens/' + addr, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(9000) });
+    if (r.ok) pairs = ((await r.json()) || {}).pairs || [];
+  } catch {}
+  if (!pairs) return say(env, chatId, 'Could not reach DexScreener to find this token\u2019s pools — try again in a minute.');
+  const liq = p => (p && p.liquidity && p.liquidity.usd) || 0;
+  const onChain = pairs.filter(p => isChain(p.chainId));
+  if (!onChain.length) return say(env, chatId, 'No pools found for that address on ' + Object.values(CHAINS).map(c => c.name).join(', ') + '.');
+  let chain = isChain(want) ? want : '';
+  if (!chain) {
+    const depth = {};
+    for (const p of onChain) depth[p.chainId] = (depth[p.chainId] || 0) + liq(p);
+    chain = Object.entries(depth).sort((a, b) => b[1] - a[1])[0][0];
+  }
+  const mine = onChain.filter(p => p.chainId === chain).sort((a, b) => liq(b) - liq(a));
+  if (!mine.length) return say(env, chatId, `No pools on ${CHAINS[chain].name} for that address.`);
+  const pools = poolsFrom(mine, addr, chain);
+  if (!pools.length) return say(env, chatId, `Found it on ${CHAINS[chain].name}, but none of its pools trade against ETH or a dollar stablecoin, so its buys cannot be priced yet.`);
+  const facts = await tokenFacts(chain, addr, env).catch(() => ({ dec: 18, supply: 0 }));
+  const top = mine[0];
+  const me_ = String(top.baseToken && top.baseToken.address || '').toLowerCase() === addr ? top.baseToken : top.quoteToken;
+  const info = top.info || {};
+  const socials = {};
+  const web = (info.websites || []).map(w => okUrl(w && w.url)).find(Boolean);
+  if (web) socials.web = web;
+  for (const s of info.socials || []) {
+    const u = okUrl(s && s.url);
+    if (u && s.type === 'twitter' && !socials.x) socials.x = u;
+    if (u && s.type === 'telegram' && !socials.tg) socials.tg = u;
+  }
+  const prev = await getGroup(store, chatId);
+  const same = !!(prev && prev.chain === chain && prev.token === addr);
+  await untrackOld(ctx, chatId, prev, chain + ':' + addr);
+  const cfg = {
+    chatId, chain, token: addr, mint: '', pool: '',
+    sym: clean(me_ && me_.symbol, 12) || '?', name: clean(me_ && (me_.name || me_.symbol), 48) || 'unknown',
+    socials: { ...(same && prev.socials || {}), ...socials },
+    emoji: (prev && prev.emoji) || '🟢',
+    step: (prev && prev.step) || 20,
+    minBuy: (prev && prev.minBuy) || 0,
+    media: (same && prev.media) || null,
+    ...(prev && prev.guard ? { guard: prev.guard } : {}),
+    by: msg.from && msg.from.id, at: Date.now(),
+  };
+  await putGroup(store, chatId, cfg);
+  const r = await ctx.evm(chain, 'track', { token: addr, chatId, meta: { sym: cfg.sym, dec: facts.dec, supply: facts.supply, pools } })
+    .catch(e => ({ ok: false, error: String(e && e.message || e) }));
+  const warn = r && r.ok ? '' : `\n\n⚠️ Saved, but the ${CHAINS[chain].name} watcher did not answer: ${tgEsc(r && r.error || 'unknown')}`;
+  const dexes = [...new Set(pools.map(p => p.dex).filter(Boolean))].join(', ');
+  return say(env, chatId,
+    `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)} on ${CHAINS[chain].name}\n`
+    + `MCap ${fmtUsd(num(top.marketCap) || num(top.fdv))} · watching ${pools.length} pool${pools.length > 1 ? 's' : ''}${dexes ? ' (' + tgEsc(dexes) + ')' : ''}\n\n`
+    + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
+    settingsMarkup());
+}
+
+/* Stop following whatever this group followed before, unless it is the same
+   token (`key` is chain:address). Solana leaves the Helius list; EVM leaves
+   its chain's watcher. */
+async function untrackOld(ctx, chatId, prev, key) {
+  if (!prev) return;
+  const evm = isChain(prev.chain) && prev.token;
+  const prevKey = evm ? prev.chain + ':' + prev.token : prev.mint ? 'solana:' + prev.mint : '';
+  if (!prevKey || prevKey === key) return;
+  if (evm) { if (ctx.evm) await ctx.evm(prev.chain, 'untrack', { token: prev.token, chatId }).catch(() => null); }
+  else { await dropTracking(ctx.store, prev.mint, chatId); if (key) await resync(ctx); }
+}
+
+/* Called by a chain's EvmWatch with the buys of one poll. Returns what it
+   sent and any chat that no longer follows the token, so the watcher can
+   drop it — the watcher's own list heals itself instead of trusting that
+   every stop reached it. */
+export async function onEvmBuys(ctx, chain, buys, chatsByToken, ethPrice) {
+  const { env, store } = ctx;
+  let sent = 0;
+  const stale = [];
+  const bot = await me(env, store).catch(() => ({ username: '' }));
+  for (const b of buys || []) {
+    for (const chatId of (chatsByToken && chatsByToken[b.token]) || []) {
+      const g = await getGroup(store, chatId);
+      if (!g || g.chain !== chain || g.token !== b.token) { stale.push({ token: b.token, chatId }); continue; }
+      if (num(g.minBuy) > 0 && b.usd < num(g.minBuy)) continue;
+      if (!allowed(chatId)) continue;
+      const buy = { sol: b.eth, usd: b.usd, tokens: b.tokens, buyer: b.buyer || '', sig: b.tx };
+      const token = { sym: g.sym, mcap: b.mcap, addr: b.token };
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: ethPrice, botName: bot.username, env });
+      if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
+        sent++;
+        if (b.ts) {
+          const lat = Date.now() / 1000 - b.ts;
+          LAT.push(lat); if (LAT.length > 100) LAT.shift();
+          console.log(JSON.stringify({ ev: 'buy-alert', chain, sym: g.sym, latencyS: +lat.toFixed(1) }));
+        }
+      }
+    }
+  }
+  return { sent, stale };
 }
 
 /* ============================================================== settings */
@@ -744,6 +898,7 @@ async function onSettings(ctx, q, act) {
   }
   if (what === 'test') { await ack('Sending a test alert'); return sendTest(ctx, chat.id, g); }
   if (what === 'stop' && val === 'yes') {
+    await untrackOld(ctx, chat.id, g, '');
     await removeGroup(store, chat.id);
     await resync(ctx);
     await ack('Stopped');
@@ -840,12 +995,10 @@ export function welcomeText(g, chat, u) {
 
 async function postWelcome(ctx, chat, u, g) {
   const { env } = ctx;
-  const origin = site(env);
-  const mint = g.mint;
-  const buttons = mint ? [[
-    { text: '📊 Chart', url: 'https://dexscreener.com/solana/' + encodeURIComponent(mint) },
-    { text: '💲 Buy', url: buyUrl(env, mint) || ('https://jup.ag/swap/SOL-' + encodeURIComponent(mint)) },
-    { text: '🫧 Bubble', url: origin + '/s/' + encodeURIComponent(mint) },
+  const has = g.mint || g.token;
+  const L = has ? tokenLinks(env, g) : null;
+  const buttons = L ? [[
+    { text: '📊 Chart', url: L.chart }, { text: '💲 Buy', url: L.buy }, { text: '🫧 Bubble', url: L.bubble },
   ]] : [];
   const m = await say(env, chat.id, welcomeText(g, chat, u), buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {});
   if (!m) return;

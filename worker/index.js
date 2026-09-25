@@ -10,7 +10,8 @@
    ========================================================================== */
 
 import { Guard, runGuard } from '../src/guard.mjs';
-import { guardExpire } from '../src/tgbot.mjs';
+import { guardExpire, onEvmBuys } from '../src/tgbot.mjs';
+import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
 import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
@@ -54,6 +55,96 @@ export class GroupGuard {
     if (list.length && this.g.chatId && this.env.TG_BOT_TOKEN) await guardExpire(this.env, this.g.chatId, list);
     await this.schedule();
   }
+}
+
+/* One per EVM chain: the tokens groups follow there, and a poll every few
+   seconds while there are any. src/evmbuy.mjs has the decoding and the why.
+   The last block is kept in memory and saved at most once a minute — a
+   restart loses a few seconds, never floods a group with history. */
+export class EvmWatch {
+  constructor(state, env) {
+    this.state = state; this.env = env;
+    this.tokens = null; this.chain = ''; this.last = 0; this.savedAt = 0; this.back = 0;
+    this.eth = { v: 0, at: 0 };
+    this.stat = { okAt: 0, err: '', errAt: 0, polls: 0, buys: 0, sent: 0 };
+  }
+  async load() {
+    if (this.tokens) return;
+    const s = (await this.state.storage.get('s')) || {};
+    this.tokens = s.tokens || {}; this.chain = s.chain || ''; this.last = s.last || 0;
+  }
+  async save(force) {
+    if (!force && Date.now() - this.savedAt < 60_000) return;
+    this.savedAt = Date.now();
+    await this.state.storage.put('s', { tokens: this.tokens, chain: this.chain, last: this.last });
+  }
+  drop(token, chatId) {
+    const t = this.tokens[token];
+    if (!t) return;
+    t.chats = (t.chats || []).filter(c => c !== chatId);
+    if (!t.chats.length) delete this.tokens[token];
+  }
+  async fetch(req) {
+    await this.load();
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    if (isChain(b.chain)) this.chain = b.chain;
+    let out = { ok: true };
+    if (b.op === 'track') {
+      const t = this.tokens[b.token] || { chats: [] };
+      if (b.meta) Object.assign(t, b.meta, { chats: t.chats });
+      if (!t.pools || !t.pools.length) out = { ok: false, error: 'no pools for this token yet' };
+      else {
+        if (!t.chats.includes(b.chatId)) t.chats.push(b.chatId);
+        this.tokens[b.token] = t;
+        await this.save(true);
+      }
+    } else if (b.op === 'untrack') {
+      this.drop(b.token, b.chatId);
+      await this.save(true);
+    } else if (b.op === 'status') {
+      out = { ok: true, chain: this.chain, tokens: Object.keys(this.tokens).length, last: this.last, ethUsd: this.eth.v, backoffMs: this.back, ...this.stat };
+    }
+    if (Object.keys(this.tokens).length && !(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 1000);
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async alarm() {
+    await this.load();
+    if (!Object.keys(this.tokens).length || !CHAINS[this.chain]) return;   // nothing to watch: no next alarm
+    const c = CHAINS[this.chain];
+    try {
+      if (Date.now() - this.eth.at > 60_000) { const v = await evmEthUsd(); if (v > 0) this.eth = { v, at: Date.now() }; }
+      const { buys, head } = await evmPoll(this.chain, this.tokens, { last: this.last }, this.env, this.eth.v);
+      this.last = head; this.stat.okAt = Date.now(); this.stat.polls++;
+      this.back = Math.floor(this.back / 2) < c.every ? 0 : Math.floor(this.back / 2);
+      if (buys.length && this.env.TG_BOT_TOKEN) {
+        this.stat.buys += buys.length;
+        const chats = Object.fromEntries(Object.entries(this.tokens).map(([k, t]) => [k, t.chats || []]));
+        const r = await onEvmBuys({ env: this.env, store: makeStore(this.env) }, this.chain, buys, chats, this.eth.v);
+        this.stat.sent += r.sent;
+        for (const s of r.stale || []) this.drop(s.token, s.chatId);
+        if ((r.stale || []).length) await this.save(true);
+      }
+      await this.save(false);
+    } catch (e) {
+      this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
+      /* a rate limit backs off; anything else retries at the normal pace */
+      if ((e && e.limited) || /429|Too Many/i.test(this.stat.err)) this.back = Math.min(60_000, Math.max(c.every, this.back) * 2);
+    }
+    await this.state.storage.setAlarm(Date.now() + (this.back || c.every));
+  }
+}
+
+function evmClient(env) {
+  if (!env.EVM) return null;
+  return async (chain, op, body = {}) => {
+    const stub = env.EVM.get(env.EVM.idFromName(chain));
+    const r = await stub.fetch('https://evm/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, chain, ...body }),
+    });
+    return r.json();
+  };
 }
 
 function guardClient(env) {
@@ -252,6 +343,7 @@ async function makeCtx(env, execCtx) {
     hist: await loadHist(env),
     arena: arenaClient(env),
     guard: guardClient(env),
+    evm: evmClient(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),

@@ -88,6 +88,18 @@ class_name = "GroupGuard"
 tag = "v2-guard"
 new_sqlite_classes = ["GroupGuard"]
 
+# EVM buy alerts: one Durable Object per chain (Base, Ethereum, Robinhood
+# Chain) polling the followed pools' Swap events every few seconds — see
+# src/evmbuy.mjs. Set ALCHEMY_KEY as a secret to use Alchemy instead of the
+# public RPCs (one key serves all three).
+[[durable_objects.bindings]]
+name = "EVM"
+class_name = "EvmWatch"
+
+[[migrations]]
+tag = "v3-evm"
+new_sqlite_classes = ["EvmWatch"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

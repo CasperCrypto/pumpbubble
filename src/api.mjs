@@ -2130,7 +2130,17 @@ export async function handle(req, ctx) {
     if (path === '/api/tg/status') {
       const st = await tgStatus(ctx.env, ctx.store).catch(e => ({ enabled: tgEnabled(ctx.env), error: String(e.message) }));
       /* Public: counts and whether it is on, never ids, never tokens. */
-      return json({ ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0 });
+      /* each EVM watcher: how many tokens, when it last read the chain, its
+         last error — never which groups */
+      const evm = {};
+      if (ctx.evm && st.enabled) {
+        for (const chain of ['base', 'ethereum', 'robinhood']) {
+          const s = await ctx.evm(chain, 'status').catch(() => null);
+          if (s && s.tokens) evm[chain] = { tokens: s.tokens, lastReadS: s.okAt ? Math.round((Date.now() - s.okAt) / 1000) : null,
+            polls: s.polls, buys: s.buys, sent: s.sent, error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
+        }
+      }
+      return json({ ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm });
     }
 
     if (path === '/api/xbot/status') {
