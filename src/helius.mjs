@@ -20,7 +20,11 @@
 
 export const KEY = 'tg:helius';
 
-const API = 'https://api.helius-rpc.com/v0/webhooks';
+/* api.helius.xyz — the webhooks API. `api.helius-rpc.com` does not resolve
+   (Cloudflare 530 / 1016, origin DNS), which is what the first /setup in a
+   real group reported: "helius 530 error code: 1016". The RPC lives on
+   helius-rpc.com; the REST API does not. */
+const API = 'https://api.helius.xyz/v0/webhooks';
 
 export function heliusKey(env = {}) {
   if (env.HELIUS_KEY) return String(env.HELIUS_KEY);

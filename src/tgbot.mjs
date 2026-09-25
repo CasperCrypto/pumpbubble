@@ -29,10 +29,10 @@
    without running a server.
    ========================================================================== */
 
-import { resolveAnyToken, isCA, isMint, clean } from './core.mjs';
+import { resolveAnyToken, isCA, isMint, clean, PUMP } from './core.mjs';
 import { buyUrl } from './refs.mjs';
 import { buysFromPayload } from './solbuy.mjs';
-import { syncWebhook, webhookInfo } from './helius.mjs';
+import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 
 export const SITE = 'https://pumpbubble.fun';
 const DEXS = 'https://api.dexscreener.com';
@@ -119,13 +119,26 @@ export async function ensureWebhook(env, store) {
   ensuredAt = Date.now();
   const want = site(env) + '/tg/webhook';
   const info = await tg(env, 'getWebhookInfo');
-  if (info && info.url === want) return { enabled: true, ok: true, url: want, pending: info.pending_update_count };
-  await tg(env, 'setWebhook', {
-    url: want,
-    secret_token: await webhookSecret(env),
-    allowed_updates: ['message', 'my_chat_member', 'callback_query'],
-  });
-  return { enabled: true, ok: true, url: want, set: true };
+  let out;
+  if (info && info.url === want) out = { enabled: true, ok: true, url: want, pending: info.pending_update_count };
+  else {
+    await tg(env, 'setWebhook', {
+      url: want,
+      secret_token: await webhookSecret(env),
+      allowed_updates: ['message', 'my_chat_member', 'callback_query'],
+    });
+    out = { enabled: true, ok: true, url: want, set: true };
+  }
+  /* A group whose /setup could not register the buy feed (the first real one
+     hit a wrong Helius host) has its mint tracked and no webhook. Heal it here,
+     on the cron, instead of asking the group to run /setup again. */
+  try {
+    let saved = null;
+    try { saved = await store.get(HELIUS_KEY); } catch {}
+    const addrs = await watchAddresses(store);
+    if (addrs.length && !(saved && saved.id)) out.helius = await syncWebhook(env, store, site(env), addrs);
+  } catch (e) { out.helius = { ok: false, error: String(e && e.message || e) }; }
+  return out;
 }
 
 /* ============================================================ formatting */
@@ -289,11 +302,41 @@ export async function watchAddresses(store) {
   return out;
 }
 
-/* The deepest pool and the socials, in one DexScreener call. Some routers
-   list only the pool in a swap's accounts, so the pool is watched alongside
-   the mint; a bonding-curve token has no pool yet and the mint alone is in
-   every one of its trades. */
+/* The pool and the socials. Some routers list only the pool in a swap's
+   accounts, so the pool is watched alongside the mint; a bonding-curve token
+   has no pool yet and the mint alone is in every one of its trades.
+
+   **pump.fun's own record first.** The first /setup in a real group asked
+   DexScreener only, DexScreener answered the Worker 429 (it does that to
+   Cloudflare's shared egress — see CLAUDE.md), and a token that had graduated
+   to PumpSwap was set up with no pool and announced as "bonding curve".
+   pump.fun names the pool itself (`pump_swap_pool`) and the socials the
+   creator entered, and it answers the Worker. DexScreener only fills gaps. */
 async function poolAndSocials(mint) {
+  let pool = '';
+  const socials = {};
+  try {
+    const r = await fetch(PUMP + '/coins/' + encodeURIComponent(mint), {
+      headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000),
+    });
+    const c = r.ok ? await r.json() : null;
+    if (c && c.complete) {
+      const p = c.pump_swap_pool || c.pool_address || c.raydium_pool || '';
+      if (isMint(p)) pool = p;
+    }
+    if (c) {
+      const web = okUrl(c.website), x = okUrl(c.twitter), t = okUrl(c.telegram);
+      if (web) socials.web = web;
+      if (x) socials.x = x;
+      if (t) socials.tg = t;
+    }
+  } catch { /* DexScreener below */ }
+  if (pool && socials.x) return { pool, socials };
+  const dex = await dexPoolAndSocials(mint);
+  return { pool: pool || dex.pool, socials: { ...dex.socials, ...socials } };
+}
+
+async function dexPoolAndSocials(mint) {
   try {
     const r = await fetch(DEXS + '/latest/dex/tokens/' + encodeURIComponent(mint), {
       headers: { accept: 'application/json' }, signal: AbortSignal.timeout(9000),
@@ -328,6 +371,7 @@ const HELP = [
   '/step 20 — dollars per emoji',
   '/minbuy 0 — hide buys under this many dollars',
   '/web, /x, /tg <code>&lt;url&gt;</code> — links under each buy',
+  '/settings — buttons for all of the above',
   '/test — post a sample alert',
   '/status — what this group is tracking',
   '/stop — stop posting here',
@@ -409,28 +453,33 @@ async function onGroup(ctx, msg) {
   const text = msg.text || msg.caption || '';
   const c = command(text);
 
-  /* Media with "/media" as its caption, from an admin, becomes the group's
-     buy picture. Photos come as a size ladder; the last is the largest. */
-  if (c && c.cmd === 'media' && (msg.photo || msg.animation || msg.video)) {
+  /* Media becomes the group's buy picture two ways: sent with "/media" as its
+     caption, or sent as a reply to the bot's upload prompt (the ⚙️ menu's
+     Upload button). Admins only, either way. */
+  const hasMedia = !!(msg.photo || msg.animation || msg.video);
+  const rt = msg.reply_to_message;
+  const toPrompt = hasMedia && !c && rt && rt.from && rt.from.is_bot
+    && String(rt.text || '').startsWith(MEDIA_PROMPT);
+  if (hasMedia && ((c && c.cmd === 'media') || toPrompt)) {
     if (!await isAdmin(env, msg)) return;
+    const bot = await me(env, store).catch(() => null);
+    if (toPrompt && bot && bot.id && rt.from.id !== bot.id) return;
     const g = await getGroup(store, chatId);
     if (!g) return say(env, chatId, 'Run /setup first, then send the media.');
-    const media = msg.animation ? { kind: 'animation', id: msg.animation.file_id }
-      : msg.video ? { kind: 'video', id: msg.video.file_id }
-      : { kind: 'photo', id: msg.photo[msg.photo.length - 1].file_id };
-    await putGroup(store, chatId, { ...g, media });
-    return say(env, chatId, '✅ Saved. Every buy will carry this. /test to see one.');
+    await putGroup(store, chatId, { ...g, media: mediaOf(msg) });
+    return say(env, chatId, '✅ Saved. Every buy will carry this.', settingsMarkup());
   }
   if (!c) return;
 
-  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media']);
+  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'settings']);
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
   if (c.cmd === 'status') {
     const g = await getGroup(store, chatId);
     if (!g) return say(env, chatId, 'Not tracking anything here yet. /setup <code>&lt;contract address&gt;</code>');
     return say(env, chatId,
       `Tracking <b>${tgEsc(g.sym)}</b> on Solana\n<code>${tgEsc(g.mint)}</code>\n`
-      + `emoji ${tgEsc(g.emoji)} · step $${num(g.step)} · min buy $${num(g.minBuy)} · media ${g.media ? g.media.kind : 'none'}`);
+      + `emoji ${tgEsc(g.emoji)} · step $${num(g.step)} · min buy $${num(g.minBuy)} · media ${g.media ? g.media.kind : 'none'}`,
+      settingsMarkup());
   }
   if (!ADMIN_CMDS.has(c.cmd)) return;
   if (!await isAdmin(env, msg)) return say(env, chatId, 'Admins only.');
@@ -459,11 +508,13 @@ async function onGroup(ctx, msg) {
     await addTracking(store, addr, pool, chatId);
     const sync = await resync(ctx);
     const warn = sync && sync.ok ? '' : `\n\n⚠️ Saved, but the buy feed could not be registered: ${tgEsc(sync && sync.error || 'unknown')}`;
+    /* graduation comes from pump.fun's own flag, not from whether a pool
+       lookup happened to answer */
     return say(env, chatId,
       `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)}\n`
-      + `MCap ${fmtUsd(t.mcap)}${pool ? '' : ' · bonding curve'}\n\n`
-      + 'Send a photo or GIF with the caption <code>/media</code> to put it on every buy.\n'
-      + '/emoji 🔥 · /step 20 · /minbuy 50 · /test' + warn);
+      + `MCap ${fmtUsd(t.mcap)} · ${t.grad === false ? 'bonding curve' : 'graduated'}\n\n`
+      + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
+      settingsMarkup());
   }
 
   const g = await getGroup(store, chatId);
@@ -474,8 +525,12 @@ async function onGroup(ctx, msg) {
     await resync(ctx);
     return say(env, chatId, 'Stopped. /setup to start again.');
   }
+  if (c.cmd === 'settings') {
+    const v = settingsView(g);
+    return say(env, chatId, v.text, { reply_markup: { inline_keyboard: v.kb } });
+  }
   if (c.cmd === 'media') {
-    return say(env, chatId, 'Send a photo, GIF or video with <code>/media</code> as its caption.');
+    return say(env, chatId, 'Send a photo, GIF or video with <code>/media</code> as its caption — or use ⚙️ Settings → Media.', settingsMarkup());
   }
   if (c.cmd === 'emoji') {
     const e = (c.arg.split(/\s+/)[0] || '').slice(0, 16);
@@ -497,18 +552,138 @@ async function onGroup(ctx, msg) {
     await putGroup(store, chatId, { ...g, socials });
     return say(env, chatId, u ? `Saved: ${tgEsc(u)}` : `Removed the ${c.cmd} link.`);
   }
-  if (c.cmd === 'test') {
-    const t = await tokenInfo(env, g.mint);
-    const solUsd = num(ctx.solUsd);
-    const price = num(t && t.price);
-    const buy = {
-      sol: 0.5, tokens: price > 0 && solUsd > 0 ? (0.5 * solUsd) / price : 1_000_000,
-      buyer: '', sig: '', newHolder: true,
-    };
-    const bot = await me(env, store).catch(() => ({ username: '' }));
-    const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true });
-    return sendAlert(env, store, chatId, g, caption, keyboard);
+  if (c.cmd === 'test') return sendTest(ctx, chatId, g);
+}
+
+async function sendTest(ctx, chatId, g) {
+  const { env, store } = ctx;
+  const t = await tokenInfo(env, g.mint);
+  const solUsd = num(ctx.solUsd);
+  const price = num(t && t.price);
+  const buy = {
+    sol: 0.5, tokens: price > 0 && solUsd > 0 ? (0.5 * solUsd) / price : 1_000_000,
+    buyer: '', sig: '', newHolder: true,
+  };
+  const bot = await me(env, store).catch(() => ({ username: '' }));
+  const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true });
+  return sendAlert(env, store, chatId, g, caption, keyboard);
+}
+
+/* ============================================================== settings */
+/* Everything the slash commands do, as buttons. The commands stay — some
+   admins type faster than they tap — but a group should never need /help to
+   set its buy bar up. One message, edited in place as the admin moves
+   through it. Callback data is `cfg:<what>[:<value>]`, under Telegram's 64
+   bytes; choices are indexes into the lists below, never free text. */
+
+export const EMOJIS = ['🟢', '🔥', '🚀', '💎', '🐸', '🫧', '⚡', '💰', '🐶', '🌕', '🦍', '👑'];
+export const MINBUYS = [0, 10, 25, 50, 100, 250, 500, 1000];
+export const STEPS = [5, 10, 20, 50, 100, 250];
+export const MEDIA_PROMPT = '🖼 Reply to this message with a photo, GIF or video';
+
+const settingsMarkup = () => ({ reply_markup: { inline_keyboard: [[{ text: '⚙️ Settings', callback_data: 'cfg:main' }]] } });
+
+function mediaOf(msg) {
+  /* Photos come as a size ladder; the last is the largest. */
+  return msg.animation ? { kind: 'animation', id: msg.animation.file_id }
+    : msg.video ? { kind: 'video', id: msg.video.file_id }
+    : { kind: 'photo', id: msg.photo[msg.photo.length - 1].file_id };
+}
+
+const back = [{ text: '« Back', callback_data: 'cfg:main' }];
+const rows = (items, per) => items.reduce((a, x, i) => (i % per ? a[a.length - 1].push(x) : a.push([x]), a), []);
+
+export function settingsView(g, page = 'main') {
+  const sym = tgEsc(g.sym || '?');
+  const step = num(g.step) || 20, minBuy = num(g.minBuy);
+  const links = ['web', 'x', 'tg'].filter(k => g.socials && okUrl(g.socials[k]))
+    .map(k => ({ web: 'Web', x: '𝕏', tg: 'TG' })[k]);
+  if (page === 'emoji') return {
+    text: `😀 <b>Buy bar emoji</b> for ${sym}\nNow: ${tgEsc(g.emoji || '🟢')}\n\nAny other: <code>/emoji 🦄</code>`,
+    kb: [...rows(EMOJIS.map((e, i) => ({ text: (e === g.emoji ? '✅ ' : '') + e, callback_data: 'cfg:emoji:' + i })), 4), back],
+  };
+  if (page === 'min') return {
+    text: `💵 <b>Minimum buy</b> for ${sym}\nBuys under this are not posted. Now: ${minBuy ? '$' + minBuy : 'every buy'}`,
+    kb: [...rows(MINBUYS.map((v, i) => ({ text: (v === minBuy ? '✅ ' : '') + (v ? '$' + v : 'All'), callback_data: 'cfg:min:' + i })), 4), back],
+  };
+  if (page === 'step') return {
+    text: `📊 <b>Dollars per emoji</b> for ${sym}\nA $100 buy at $20 shows ${tgEsc((g.emoji || '🟢').repeat(6))}. Now: $${step}`,
+    kb: [...rows(STEPS.map((v, i) => ({ text: (v === step ? '✅ ' : '') + '$' + v, callback_data: 'cfg:step:' + i })), 3), back],
+  };
+  if (page === 'media') return {
+    text: `🖼 <b>Buy media</b> for ${sym}\nNow: ${g.media ? g.media.kind : 'none'}\n\nTap Upload, then reply to my message with a photo, GIF or video.`,
+    kb: [[{ text: '📤 Upload', callback_data: 'cfg:media:new' }],
+         ...(g.media ? [[{ text: '🗑 Remove', callback_data: 'cfg:media:off' }]] : []), back],
+  };
+  if (page === 'links') return {
+    text: `🔗 <b>Links under each buy</b> for ${sym}\nNow: ${links.join(' · ') || 'none'}\n\n`
+      + 'Change with <code>/web url</code>, <code>/x url</code>, <code>/tg url</code> — the command alone removes one.',
+    kb: [back],
+  };
+  if (page === 'stop') return {
+    text: `⏹ Stop posting ${sym} buys here?`,
+    kb: [[{ text: 'Yes, stop', callback_data: 'cfg:stop:yes' }, { text: 'Cancel', callback_data: 'cfg:main' }]],
+  };
+  return {
+    text: `⚙️ <b>${sym}</b> buy alerts\n\n`
+      + `Emoji ${tgEsc(g.emoji || '🟢')} · one per $${step}\n`
+      + `Min buy ${minBuy ? '$' + minBuy : 'none — every buy'}\n`
+      + `Media ${g.media ? g.media.kind : 'none'}\n`
+      + `Links ${links.join(' · ') || 'none'}\n\nAdmins only.`,
+    kb: [
+      [{ text: '🖼 Media', callback_data: 'cfg:media' }, { text: 'Emoji ' + (g.emoji || '🟢'), callback_data: 'cfg:emoji' }],
+      [{ text: '💵 Min buy', callback_data: 'cfg:min' }, { text: '📊 $ per emoji', callback_data: 'cfg:step' }],
+      [{ text: '🧪 Test alert', callback_data: 'cfg:test' }, { text: '🔗 Links', callback_data: 'cfg:links' }],
+      [{ text: '⏹ Stop alerts', callback_data: 'cfg:stop' }],
+    ],
+  };
+}
+
+async function onSettings(ctx, q, act) {
+  const { env, store } = ctx;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery',
+    { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  const chat = q.message && q.message.chat;
+  if (!chat || chat.type === 'private') return ack();
+  if (!await isAdmin(env, { chat, from: q.from })) return ack('Only group admins can change these.', true);
+  let g = await getGroup(store, chat.id);
+  if (!g) return ack('Run /setup <contract address> first.', true);
+
+  const show = view => tg(env, 'editMessageText', {
+    chat_id: chat.id, message_id: q.message.message_id, text: view.text, parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: view.kb },
+  }).catch(() => null);
+  const save = async (patch, note) => {
+    g = { ...g, ...patch };
+    await putGroup(store, chat.id, g);
+    await ack(note);
+    return show(settingsView(g));
+  };
+
+  const [what, val] = act.split(':');
+  const i = Math.floor(num(val));
+  if (what === 'emoji' && val != null && EMOJIS[i]) return save({ emoji: EMOJIS[i] }, 'Emoji ' + EMOJIS[i]);
+  if (what === 'min' && val != null && MINBUYS[i] != null) return save({ minBuy: MINBUYS[i] }, MINBUYS[i] ? 'Hiding buys under $' + MINBUYS[i] : 'Showing every buy');
+  if (what === 'step' && val != null && STEPS[i]) return save({ step: STEPS[i] }, 'One emoji per $' + STEPS[i]);
+  if (what === 'media' && val === 'off') return save({ media: null }, 'Media removed');
+  if (what === 'media' && val === 'new') {
+    await ack();
+    /* force_reply opens the reply box; selective + a mention of whoever
+       tapped keeps it from opening for every member of the group */
+    const who = q.from ? `<a href="tg://user?id=${num(q.from.id)}">${tgEsc(q.from.first_name || 'admin')}</a>` : '';
+    return say(env, chat.id, `${MEDIA_PROMPT} — it goes on every buy. ${who}`,
+      { reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'Attach a photo, GIF or video' } });
   }
+  if (what === 'test') { await ack('Sending a test alert'); return sendTest(ctx, chat.id, g); }
+  if (what === 'stop' && val === 'yes') {
+    await removeGroup(store, chat.id);
+    await resync(ctx);
+    await ack('Stopped');
+    return tg(env, 'editMessageText', { chat_id: chat.id, message_id: q.message.message_id,
+      text: 'Stopped. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
+  }
+  await ack();
+  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop'].includes(what) ? what : 'main'));
 }
 
 /* Private chat: /start offers the opt-in keyboard and stores nothing until a
@@ -540,6 +715,7 @@ async function onCallback(ctx, q) {
   const data = String(q.data || '');
   const uid = q.from && q.from.id;
   const chatId = q.message && q.message.chat && q.message.chat.id;
+  if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
   if (!uid || !data.startsWith('sub:')) { await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {}); return; }
   const pick = data.slice(4);
   if (pick === 'none') {

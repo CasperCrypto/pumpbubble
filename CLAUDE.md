@@ -1260,6 +1260,32 @@ are kept only when they are `http(s)`, because a minter's "website" field has be
 `scripts/tgbot.test.mjs` covers all of it, and runs the caption end to end so the shape can be
 read in the test output.
 
+**What the first real group taught (2026-09-25).** `/setup` on Shurikane answered *"MCap $4,902 ·
+bonding curve ⚠️ helius 530 error code: 1016"*, and was wrong in two of three ways:
+
+- **The Helius host was wrong.** `api.helius-rpc.com` does not resolve (Cloudflare 1016 is origin
+  DNS); the webhooks API is `api.helius.xyz`. The RPC is on helius-rpc.com, the REST API is not.
+  `ensureWebhook()` now also registers the Helius webhook on the cron when mints are tracked and
+  none exists, so a group whose setup failed heals without running `/setup` again.
+- **"Bonding curve" on a graduated token.** The pool came from DexScreener only, DexScreener 429s
+  the Worker, so no pool — and the label keyed off the pool. The pool now comes from pump.fun's own
+  record (`pump_swap_pool`), socials too, DexScreener only fills gaps; the label reads pump.fun's
+  `complete` flag.
+- **The market cap was right, and DexScreener's was not.** The operator expected DexScreener's
+  $354K. The PumpSwap pool held **13 SOL against 745M tokens** — about $2K by its own reserves, so
+  selling 1% of supply returns ~$20 — while DexScreener priced it from a stream of dust-sized trades
+  at 176× the reserve ratio (its "$3M volume" is the same trades). Checked the method on healthy
+  pools before trusting it: reserves, DexScreener and pump.fun agree within ~4% on neet, TripleT,
+  JEANPHIL and PAID. pump.fun's `usd_market_cap` stays the bot's figure.
+
+**Settings are buttons.** `/settings`, the `/setup` reply and `/status` carry a ⚙️ panel —
+media, emoji, minimum buy, dollars per emoji, test alert, links, stop — one message edited in place
+(`settingsView`, `onSettings`), admins only, callback data `cfg:<what>[:<index>]` with choices as
+indexes into fixed lists, never free text. Media is set by replying to the bot's upload prompt
+(`MEDIA_PROMPT`, `force_reply` with `selective` and a mention of whoever tapped, so the reply box
+does not open for the whole group); the `/media` caption still works. Links stay typed commands —
+a button cannot collect a URL.
+
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate

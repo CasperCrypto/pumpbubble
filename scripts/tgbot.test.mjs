@@ -12,7 +12,7 @@
    ========================================================================== */
 
 import { parseBuys, buysFromPayload, accountList, signers, MIN_SOL } from '../src/solbuy.mjs';
-import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command } from '../src/tgbot.mjs';
+import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS } from '../src/tgbot.mjs';
 import { heliusKey } from '../src/helius.mjs';
 
 let pass = 0, fail = 0;
@@ -254,6 +254,25 @@ is('not a command', command('hello /setup'), null);
 is('helius key from HELIUS_KEY', heliusKey({ HELIUS_KEY: 'k1' }), 'k1');
 is('helius key parsed from a Helius RPC URL', heliusKey({ SOLANA_RPC: 'https://mainnet.helius-rpc.com/?api-key=abc-123' }), 'abc-123');
 is('no key from a non-Helius RPC', heliusKey({ SOLANA_RPC: 'https://api.mainnet-beta.solana.com' }), '');
+
+/* ---------------------------------------------------------- settings menu */
+{
+  const g = { sym: '<b>X&Y</b>', emoji: '🔥', step: 50, minBuy: 25, media: null, socials: { x: 'https://x.com/a', web: 'javascript:alert(1)' } };
+  const pages = ['main', 'emoji', 'min', 'step', 'media', 'links', 'stop'];
+  const all = pages.flatMap(p => settingsView(g, p).kb.flat());
+  const enc = new TextEncoder();
+  is('every settings button fits Telegram’s 64-byte callback limit', all.every(b => enc.encode(b.callback_data).length <= 64), true);
+  is('every settings button is a cfg: action', all.every(b => /^cfg:[a-z]+(:[a-z0-9]+)?$/.test(b.callback_data)), true);
+  is('a hostile ticker is escaped on every page', pages.every(p => !settingsView(g, p).text.includes('<b>X&Y</b>')), true);
+  is('main page: media, emoji, min, step, test, links, stop', settingsView(g).kb.flat().length, 7);
+  is('the current emoji is ticked', settingsView(g, 'emoji').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:emoji:' + EMOJIS.indexOf('🔥'));
+  is('the current minimum is ticked', settingsView(g, 'min').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:min:' + MINBUYS.indexOf(25));
+  is('the current step is ticked', settingsView(g, 'step').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:step:' + STEPS.indexOf(50));
+  is('a zero minimum reads "All"', settingsView({ ...g, minBuy: 0 }, 'min').kb[0][0].text, '✅ All');
+  is('no media, no Remove button', settingsView(g, 'media').kb.flat().some(b => b.callback_data === 'cfg:media:off'), false);
+  is('media set, Remove appears', settingsView({ ...g, media: { kind: 'photo', id: 'f' } }, 'media').kb.flat().some(b => b.callback_data === 'cfg:media:off'), true);
+  is('a javascript: link is not listed', settingsView(g, 'links').text.includes('Web'), false);
+}
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
