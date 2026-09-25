@@ -1339,6 +1339,36 @@ block in memory and saves once a minute, skips ahead rather than posting history
 and drops any chat whose group no longer follows the token. `/api/tg/status` shows each watcher's
 token count, last read and last error.
 
+**Boosts and ads are sold inside the bot too, through the same system.** A private chat with the
+bot (`/start`, `/boost`, `/ads`, a pasted contract address, or the ⚡ Boost button on any alert,
+which now deep-links to `t.me/<bot>?start=boost_<address>`) shows the three boost tiers and two ad
+slots; a tap calls `/api/boost/order` through `ctx.self` — the site's own route, so one order
+system, one gold-share cap, one unique-amount match, one sweep — and replies with the exact SOL and
+the treasury to copy, and a *Check* button that runs the sweep. Buyers are told when the cron's
+sweep finds their payment (`notify` on the order; only a bot-originated order may carry one, or a
+web caller could point paid-notices at anyone). Rate limits key on the Telegram user.
+
+Two ad products, `AD_TIERS` in boosts.mjs, prices the operator's to change: **Map ad** (a rail slot,
+four at a time, lands in the same `ads` list the console writes) and **Buy-alert ad** (one line
+under every buy alert in every group, one at a time, list `alertads`). Full inventory **queues**
+rather than refusing (`adSchedule`, up to seven days out), so tomorrow's slot sells today. **The ad
+is always the token itself** — ticker, name, and its own page (our `/s/` for Solana, DexScreener for
+EVM) — never free text or a typed link, so nobody can buy a phishing line under every alert. While
+the alert slot is unsold the line sells itself ("Your token here, under every buy").
+
+Adding ads exposed a real bug: the pending record dropped the order's `kind`, so a bid paid after
+its tab closed was swept in as a zero-hour boost and the bid never landed. `addPending` keeps
+`kind` now.
+
+**Mass DMs to group members were asked for and not built** — "10 projects with 100 members, 1,000
+users I can DM, sell mass DMs". Telegram bots cannot message anyone who has not pressed Start on the
+bot, so group membership gives no reach at all, and getting those Starts through a "verify" button
+that quietly enrols people in promotions is harvesting consent under false pretences — the
+refusal already recorded under *Nobody is messaged who did not ask*. It would also end the product:
+reported bots are restricted, and a restricted bot stops posting buys in every group at once. The
+reach is sold instead through the alert ad (every member of every group sees it) and the opt-in
+subscriber list, which may carry clearly labelled promotions to people who chose it.
+
 **Standard format first; bubble posts later.** The buy alert is deliberately the format the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate

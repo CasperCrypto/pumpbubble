@@ -19,6 +19,34 @@ export const TIERS = {
   whale: { id: 'whale', label: 'Whale',  mult: 4.0, usd: 149, hours: 72 },
 };
 
+/* Paid ads, sold through the same orders as boosts: a unique SOL amount to
+   the same treasury, matched by the same sweep. The ad is always the token
+   itself — its ticker, its art, its chart — never free text or an arbitrary
+   link, so nobody can buy a phishing line under every buy alert.
+
+     rail   a slot on the moving rail above the map, four at a time
+     alert  one sponsored line under every buy alert in every group, one at a time
+
+   Full inventory queues instead of refusing: a sale starts when a slot frees,
+   so tomorrow's slot can be sold today. Prices are the operator's to change. */
+export const AD_TIERS = {
+  rail:  { id: 'rail',  label: 'Map ad',        usd: 49, hours: 24, max: 4, key: 'ads' },
+  alert: { id: 'alert', label: 'Buy-alert ad',  usd: 79, hours: 24, max: 1, key: 'alertads' },
+};
+export const AD_QUEUE_DAYS = 7;
+
+/* The first start time at or after `now` at which one more ad of `ms` fits
+   under `max` overlapping ads. Candidates are now and every existing end. */
+export function adSchedule(list, now, ms, max) {
+  const live = (list || []).filter(a => (a.until || 0) > now);
+  const starts = [now, ...live.map(a => a.until).filter(t => t > now)].sort((a, b) => a - b);
+  for (const t of starts) {
+    const overlap = live.filter(a => (a.from || 0) < t + ms && a.until > t).length;
+    if (overlap < max) return t;
+  }
+  return starts[starts.length - 1];
+}
+
 export const ORDER_TTL_MS = 30 * 60 * 1000;   // a quote is good for 30 minutes
 const LAMPORTS = 1e9;
 
@@ -101,9 +129,9 @@ export async function createOrder({ mint, chain = 'solana', sym, name, img, mcap
   }
   if (!(solPrice > 0)) throw new Error('no SOL price available');
   /* Reject an unknown tier rather than quietly billing them for another one. */
-  if (tierId && !TIERS[tierId]) throw new Error('unknown boost tier');
+  if (kind === 'ad' ? !AD_TIERS[tierId] : (tierId && !TIERS[tierId])) throw new Error(kind === 'ad' ? 'unknown ad slot' : 'unknown boost tier');
 
-  const tier = tierOf(tierId);
+  const tier = kind === 'ad' ? AD_TIERS[tierId] : tierOf(tierId);
   /* Priced in USD, settled in SOL. The rate is locked into the order so the
      amount cannot drift between quote and payment.
 
@@ -153,7 +181,7 @@ export async function createOrder({ mint, chain = 'solana', sym, name, img, mcap
     grad: grad !== false,
     kind,
     tier: kind === 'bid' ? 'bid' : tier.id,
-    mult: kind === 'bid' ? 0 : tier.mult,
+    mult: kind === 'bid' || kind === 'ad' ? 0 : tier.mult,
     hours: kind === 'bid' ? 0 : tier.hours,
     /* A bid has no USD price — it is whatever was offered, converted only for
        display and for the affiliate commission. */
@@ -177,7 +205,7 @@ export function solanaPayUrl(o) {
     amount: String(o.amountSol),
     reference: o.reference,
     label: 'pumpbubble.fun',
-    message: `Boost ${o.sym || o.mint.slice(0, 6)} ${o.tier} x${o.mult}`,
+    message: o.kind === 'ad' ? `Ad ${o.sym || o.mint.slice(0, 6)} ${o.tier} ${o.hours}h` : `Boost ${o.sym || o.mint.slice(0, 6)} ${o.tier} x${o.mult}`,
     memo: o.id,
   });
   return `solana:${o.treasury}?${p}`;
@@ -424,6 +452,10 @@ export async function addPending(store, order) {
     usd: order.usd, lamports: order.lamports, amountSol: order.amountSol,
     reference: order.reference, treasury: order.treasury, ref: order.ref || '',
     createdAt: order.createdAt, expiresAt: order.expiresAt,
+    /* Without `kind` a bid paid after its tab closed was swept in as a boost
+       of zero hours — the bid never landed. Ads need it for the same reason;
+       `notify` is the Telegram chat that bought it, told when it is paid. */
+    kind: order.kind || 'boost', chain: order.chain || '', notify: order.notify || 0,
   });
   await store.put(PENDING_KEY, kept);
   return kept;
@@ -510,6 +542,7 @@ export async function activateBoost(store, order, payment) {
   /* A bid rides the identical payment machinery and lands in a different
      ledger. Branching here rather than at each call site means the live poll,
      the closed-tab sweep and any future path all credit it the same way. */
+  if (order.kind === 'ad') return activateAd(store, order, payment);
   if (order.kind === 'bid') {
     return applyBid(store, {
       mint: order.mint, sym: order.sym, name: order.name, img: order.img,
@@ -526,6 +559,7 @@ export async function activateBoost(store, order, payment) {
   }
   const boost = {
     id: order.id,
+    notify: order.notify || 0,
     mint: order.mint,
     /* Carried so the map knows which chain to price it on, and so the re-add
        builds it as a contract rather than as a Solana mint. */
@@ -553,6 +587,39 @@ export async function activateBoost(store, order, payment) {
   const kept = list.filter(b => b.until > now - 864e5).concat(boost);
   await store.put('boosts', kept);
   return boost;
+}
+
+/* A paid ad lands in the list its slot is served from: `ads` for the rail
+   (the same list the console writes, so /api/ads needs nothing new beyond
+   honouring `from`), `alertads` for the line under buy alerts. Idempotent on
+   the payment signature, like a boost. */
+export async function activateAd(store, order, payment) {
+  const tier = AD_TIERS[order.tier];
+  if (!tier) throw new Error('unknown ad slot');
+  const now = Date.now();
+  const list = (await store.get(tier.key)) || [];
+  const dup = list.find(a => a.sig && a.sig === payment.signature);
+  if (dup) return { ...dup, kind: 'ad', slot: tier.id };
+  const ms = tier.hours * 3600 * 1000;
+  const from = adSchedule(list, now, ms, tier.max);
+  const evm = /^0x[0-9a-f]{40}$/i.test(order.mint || '');
+  const ad = {
+    id: order.id, paid: true, slot: tier.id,
+    title: '$' + String(order.sym || '').slice(0, 20), sub: 'sponsored',
+    name: order.name || '', img: order.img || '',
+    mint: order.mint, chain: order.chain || (evm ? '' : 'solana'),
+    /* where the ad goes: the token's own page — never a link someone typed */
+    url: evm
+      ? 'https://dexscreener.com/' + (order.chain || 'base') + '/' + order.mint
+      : 'https://pumpbubble.fun/s/' + order.mint,
+    usd: order.usd, sol: payment.received, sig: payment.signature, payer: payment.payer || '',
+    notify: order.notify || 0,
+    from, until: from + ms, at: now,
+  };
+  /* ended ads older than a day go; queued and running ones stay */
+  const kept = list.filter(a => !(a.until > 0 && a.until < now - 864e5)).concat(ad);
+  await store.put(tier.key, kept);
+  return { ...ad, kind: 'ad' };
 }
 
 /* Merge live boosts into a snapshot's tokens. Tokens that were boosted but are

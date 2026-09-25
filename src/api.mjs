@@ -16,7 +16,7 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
-  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast,
+  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid,
 } from './tgbot.mjs';
 import { deliveryAuth as heliusAuth } from './helius.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
@@ -45,7 +45,7 @@ import { board, priceFor, standing, countClick, bidsAsBoostSpend,
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend, spendForBonus,
-  addPending, listPending, sweepPayments, ORDER_TTL_MS,
+  addPending, listPending, sweepPayments, ORDER_TTL_MS, AD_TIERS, AD_QUEUE_DAYS, adSchedule,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
@@ -1481,6 +1481,12 @@ export async function handle(req, ctx) {
       /* One canonical spelling of the identifier, since EVM addresses arrive
          checksummed from one source and lowercase from another. */
       const caId = isEvmAddr(body.mint) ? body.mint.toLowerCase() : body.mint;
+      /* A paid ad rides this route: same token resolution, same unique
+         amount, same sweep. Only the Telegram bot may name a chat to notify —
+         a web caller could otherwise point paid-notices at anyone. */
+      const isAd = body.kind === 'ad';
+      if (isAd && !AD_TIERS[body.tier]) return json({ ok: false, error: 'unknown ad slot' }, 400);
+      const notify = ctx.fromBot && Number.isFinite(+body.notify) ? +body.notify : 0;
 
       /* Look in whichever feed the token would actually appear on. A
          bonding-curve token is as boostable as a graduated one, and a Base or
@@ -1523,7 +1529,7 @@ export async function handle(req, ctx) {
          over-selling destroys the thing being sold — CLAUDE.md treats the ~25%
          ceiling as non-negotiable. Refuse the sale that would breach it rather
          than discovering it afterwards in the smoke test. */
-      if (snap) {
+      if (snap && !isAd) {
         const { byMint } = await activeBoosts(ctx.store);
         const onScreen = visibleSet(snap.tokens, byMint);
         const projected = applyBoosts(onScreen.map(t => ({ ...t })), byMint);
@@ -1570,9 +1576,25 @@ export async function handle(req, ctx) {
            right map if the token later drops out of it */
         grad: tok ? !!tok.grad : true,
         tierId: body.tier,
+        kind: isAd ? 'ad' : 'boost',
         solPrice: (snap?.sol > 0 ? snap.sol : await solPriceNow(ctx)),
         treasury: ctx.env.TREASURY_WALLET,
       });
+      if (notify) order.notify = notify;
+
+      /* An ad is not a size: say when it would start instead of projecting. */
+      if (isAd) {
+        const t = AD_TIERS[body.tier];
+        const list = (await ctx.store.get(t.key)) || [];
+        const startsAt = adSchedule(list, Date.now(), t.hours * 3600 * 1000, t.max);
+        if (startsAt - Date.now() > AD_QUEUE_DAYS * 864e5) {
+          return json({ ok: false, error: `${t.label} slots are sold out for the next ${AD_QUEUE_DAYS} days.` }, 409);
+        }
+        order.startsAt = startsAt;
+        await addPending(ctx.store, order);
+        const token = await signOrder(order, ctx.env.IMG_SECRET);
+        return json({ ok: true, order, token });
+      }
 
       /* Quote the actual result, not the headline multiplier. Boosts pool and
          the curve flattens, so the tenth buyer on a token genuinely gets less
@@ -2103,6 +2125,14 @@ export async function handle(req, ctx) {
         let update = null;
         try { update = await req.json(); } catch { return json({ ok: true }); }
         ctx.solUsd = await solPriceNow(ctx).catch(() => 0);
+        /* the bot buys through the same routes the site does: one order
+           system, one inventory cap, one sweep. Rate limits key on the
+           Telegram user, not on Telegram's servers. */
+        ctx.self = (p, body, who = 'tg') => handle(new Request(url.origin + p, {
+          method: body ? 'POST' : 'GET',
+          headers: { 'content-type': 'application/json', 'cf-connecting-ip': 'tg-' + who },
+          body: body ? JSON.stringify(body) : undefined,
+        }), { ...ctx, fromBot: true }).then(r => r ? r.json() : null);
         const work = tgUpdate(ctx, update).catch(() => {});
         if (ctx.waitUntil) ctx.waitUntil(work); else await work;
         return json({ ok: true });
@@ -2163,6 +2193,10 @@ export async function handle(req, ctx) {
 
       const activated = await sweepPayments(ctx.store, ctx.env.SOLANA_RPC, ctx.env.TREASURY_WALLET,
         args => resolveReferral(ctx.store, args));
+      /* a buyer who paid from the bot hears it there, tab or no tab */
+      if (tgEnabled(ctx.env)) {
+        for (const b of activated) if (b && b.notify) await tgNotifyPaid(ctx.env, b).catch(() => null);
+      }
       const pending = await listPending(ctx.store);
       return json({
         ok: true,
@@ -2222,7 +2256,7 @@ export async function handle(req, ctx) {
          because the empty slot is at least an advert for the inventory. */
       const ads = [];
       /* a slot whose time is up is simply not served */
-      for (const a of raw.filter(a => !(a.until > 0 && a.until < Date.now()))) {
+      for (const a of raw.filter(a => !(a.until > 0 && a.until < Date.now()) && !(a.from > Date.now()))) {
         let img = a.img || '';
         if (img && ctx.env.IMG_SECRET && !img.startsWith('/api/img?')) {
           try {

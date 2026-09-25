@@ -180,7 +180,17 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
   is('socials rendered', caption.includes('pokmart.com') && caption.includes('x.com/pokmartcom'), true);
   is('bonding token charts on pump.fun', keyboard.inline_keyboard[0][0].url.startsWith('https://pump.fun/coin/'), true);
   is('bubble button is the share page', keyboard.inline_keyboard[0][1].url, 'https://pumpbubble.fun/s/' + MINT);
-  is('boost button deep-links the address', keyboard.inline_keyboard[1][1].url, 'https://pumpbubble.fun/?boost=' + MINT);
+  is('boost button opens the purchase in the bot', keyboard.inline_keyboard[1][1].url, 'https://t.me/pumpbubblebot?start=boost_' + MINT);
+  is('the unsold sponsor line sells itself', caption.includes('t.me/pumpbubblebot?start=ads'), true);
+  const nameless = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1 });
+  is('without the bot’s name, boost falls back to the site', nameless.keyboard.inline_keyboard[1][1].url, 'https://pumpbubble.fun/?boost=' + MINT);
+  const paid = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    botName: 'pumpbubblebot', ad: { title: '$<b>ZCAT</b>', name: 'Anon <i>Cat</i>', url: 'https://pumpbubble.fun/s/' + MINT } });
+  is('a paid sponsor line links the token', paid.caption.includes('📣 <b>Ad:</b> <a href="https://pumpbubble.fun/s/' + MINT + '">'), true);
+  is('its ticker and name are escaped', paid.caption.includes('<b>ZCAT</b>') || paid.caption.includes('<i>Cat</i>'), false);
+  const bad = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    ad: { title: '$X', url: 'javascript:alert(1)' } });
+  is('an ad with a non-http link is not printed', bad.caption.includes('javascript:'), false);
   is('buy button falls back to a plain swap when no referral is set', keyboard.inline_keyboard[1][0].url.startsWith('https://jup.ag/swap/SOL-'), true);
 }
 {

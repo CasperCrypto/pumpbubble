@@ -35,6 +35,7 @@ import { buyUrl } from './refs.mjs';
 import { buysFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
+import { TIERS as BOOST_TIERS, AD_TIERS } from './boosts.mjs';
 
 export const SITE = 'https://pumpbubble.fun';
 const DEXS = 'https://api.dexscreener.com';
@@ -212,7 +213,7 @@ export function tokenLinks(env, g, token = {}) {
   };
 }
 
-export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false }) {
+export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null }) {
   const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
   const sym = clean(token.sym || group.sym || '?', 12);
   const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
@@ -246,6 +247,14 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   if (soc.length) lines.push(`📣 <b>Socials:</b> ${soc.join(' | ')}`);
 
   lines.push('');
+  /* The sponsored line: a paid token (its ticker, its own page — never text
+     or a link somebody typed), or, while the slot is unsold, the slot selling
+     itself — the same idea as the rail's empty pitch. */
+  if (ad && okUrl(ad.url)) {
+    lines.push(`📣 <b>Ad:</b> <a href="${attr(ad.url)}">${tgEsc(clean(ad.title || '', 22))}</a>${ad.name ? ' — ' + tgEsc(clean(ad.name, 32)) : ''}`);
+  } else if (botName) {
+    lines.push(`📣 <a href="https://t.me/${tgEsc(botName)}?start=ads">Your token here, under every buy</a>`);
+  }
   lines.push(`🫧 <a href="${links.bubble}">${tgEsc(sym)} on the bubble map</a>`);
 
   /* Chart goes to a chart; Buy through the referral where one is configured
@@ -254,7 +263,10 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   const keyboard = {
     inline_keyboard: [
       [{ text: '📊 Chart', url: links.chart }, { text: '🫧 Bubble', url: links.bubble }],
-      [{ text: '💲 Buy', url: links.buy }, { text: '⚡ Boost', url: links.boost }],
+      /* Boost opens the purchase inside the bot when we know its name — the
+         person tapping is already in Telegram */
+      [{ text: '💲 Buy', url: links.buy }, { text: '⚡ Boost', url: botName && /^\w+$/.test(botName)
+        ? 'https://t.me/' + botName + '?start=boost_' + (group.token || token.mint || group.mint) : links.boost }],
     ],
   };
   return { caption: lines.join('\n'), keyboard };
@@ -407,6 +419,7 @@ const HELP = [
   '/welcome <code>text</code> — the welcome message; {name}, {group}, {sym} fill in',
   '/test — post a sample alert',
   '/status — what this group is tracking',
+  '/boost, /ads — buy a golden bubble or an ad for this token (opens a private chat with me)',
   '/stop — stop posting here',
   '',
   'Admins only. The chain is found from the address; if a 0x address trades on more than one, add it: <code>/setup 0x… base</code>.',
@@ -516,6 +529,18 @@ async function onGroup(ctx, msg) {
 
   const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'settings', 'welcome']);
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
+  /* anyone may buy for the token; the purchase itself happens in private */
+  if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') {
+    const g0 = await getGroup(store, chatId);
+    const bot = await me(env, store).catch(() => null);
+    const ca = g0 && (g0.token || g0.mint);
+    if (!bot || !bot.username) return;
+    const start = c.cmd === 'boost' ? (ca ? 'boost_' + ca : 'boost') : (ca ? 'ad_' + ca : 'ads');
+    return say(env, chatId, c.cmd === 'boost'
+      ? '⚡ Golden bubbles on pumpbubble.fun — the token grows past everyone on the map. Pick a size in private:'
+      : '📣 Ads: a slot on the map\u2019s rail, or a line under every buy alert in every group I\u2019m in. Pick one in private:',
+      { reply_markup: { inline_keyboard: [[{ text: c.cmd === 'boost' ? '⚡ Boost' : '📣 See ad slots', url: 'https://t.me/' + bot.username + '?start=' + start }]] } });
+  }
   if (c.cmd === 'status') {
     const g = await getGroup(store, chatId);
     if (!g) return say(env, chatId, 'Not tracking anything here yet. /setup <code>&lt;contract address&gt;</code>');
@@ -624,7 +649,7 @@ async function sendTest(ctx, chatId, g) {
     const buy = { sol: 0.05, usd: 0.05 * eth, tokens: price > 0 && eth > 0 ? (0.05 * eth) / price : 1_000_000, buyer: '', sig: '' };
     const bot = await me(env, store).catch(() => ({ username: '' }));
     const token = { sym: g.sym, mcap: t && t.mcap, addr: g.token };
-    const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: eth, botName: bot.username, env, test: true });
+    const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: eth, botName: bot.username, env, test: true, ad: await alertAd(store) });
     return sendAlert(env, store, chatId, g, caption, keyboard);
   }
   const t = await tokenInfo(env, g.mint);
@@ -635,7 +660,7 @@ async function sendTest(ctx, chatId, g) {
     buyer: '', sig: '', newHolder: true,
   };
   const bot = await me(env, store).catch(() => ({ username: '' }));
-  const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true });
+  const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true, ad: await alertAd(store) });
   return sendAlert(env, store, chatId, g, caption, keyboard);
 }
 
@@ -734,7 +759,7 @@ export async function onEvmBuys(ctx, chain, buys, chatsByToken, ethPrice) {
       if (!allowed(chatId)) continue;
       const buy = { sol: b.eth, usd: b.usd, tokens: b.tokens, buyer: b.buyer || '', sig: b.tx };
       const token = { sym: g.sym, mcap: b.mcap, addr: b.token };
-      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: ethPrice, botName: bot.username, env });
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: ethPrice, botName: bot.username, env, ad: await alertAd(store) });
       if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
         sent++;
         if (b.ts) {
@@ -746,6 +771,123 @@ export async function onEvmBuys(ctx, chain, buys, chatsByToken, ethPrice) {
     }
   }
   return { sent, stale };
+}
+
+/* ================================================================== shop */
+/* Boosts and ads, bought in a private chat with the bot through the very
+   routes the site uses (ctx.self → /api/boost/order, /api/boost/sweep): one
+   order system, one gold-share cap, one sweep, one treasury. Nothing here
+   prices anything itself. */
+
+const when = t => new Date(t).toUTCString().replace(/^\w+, /, '').replace(/:\d\d GMT$/, ' UTC');
+
+async function askForToken(ctx, chatId, what) {
+  return say(ctx.env, chatId, (what === 'boost'
+    ? '⚡ <b>Boost a token</b> — its bubble turns gold and grows past everyone on pumpbubble.fun.'
+    : '📣 <b>Advertise</b> — a slot on the map\u2019s rail, or a line under every buy alert in every group I\u2019m in.')
+    + '\n\nSend me the token\u2019s contract address — Solana, Base, Ethereum or Robinhood Chain.');
+}
+
+export function shopKeyboard(ca, what = '') {
+  const b = Object.values(BOOST_TIERS).map(t => ({ text: `⚡ ${t.label} $${t.usd} · ×${t.mult} · ${t.hours}h`, callback_data: `buy:b:${t.id}:${ca}` }));
+  const a = Object.values(AD_TIERS).map(t => ({ text: `📣 ${t.label} $${t.usd} · ${t.hours}h`, callback_data: `buy:a:${t.id}:${ca}` }));
+  return what === 'ad' ? [...a.map(x => [x]), ...b.map(x => [x])] : [...b.map(x => [x]), ...a.map(x => [x])];
+}
+
+async function shopFor(ctx, chatId, ca, what = '') {
+  const { env } = ctx;
+  const t = await resolveAnyToken(isEvmAddr(ca) ? ca.toLowerCase() : ca, env.IMG_SECRET).catch(() => null);
+  if (!t) return say(env, chatId, 'No token found at that address. Check it and send it again.');
+  const chain = (CHAINS[t.chain] && CHAINS[t.chain].name) || (t.chain === 'solana' || !t.chain ? 'Solana' : t.chain);
+  return say(env, chatId,
+    `<b>$${tgEsc(t.sym)}</b> — ${tgEsc(t.name)} · ${tgEsc(chain)}${t.mcap ? ' · MCap ' + fmtUsd(t.mcap) : ''}\n\n`
+    + '⚡ <b>Boost</b>: a golden bubble on the map, sized by what was paid, fading over its hours.\n'
+    + '📣 <b>Map ad</b>: a slot on the moving rail above the map.\n'
+    + '📣 <b>Buy-alert ad</b>: your token on a line under every buy alert, in every group I post in.\n\n'
+    + 'Paid in SOL. Pick one:',
+    { reply_markup: { inline_keyboard: shopKeyboard(isEvmAddr(ca) ? ca.toLowerCase() : ca, what) } });
+}
+
+async function onShop(ctx, q, data) {
+  const { env, store } = ctx;
+  const chatId = q.message && q.message.chat && q.message.chat.id;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery',
+    { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  if (!chatId) return ack();
+  if (data === 'shop:boost' || data === 'shop:ads') { await ack(); return askForToken(ctx, chatId, data === 'shop:boost' ? 'boost' : 'ads'); }
+
+  if (data.startsWith('buy:')) {
+    const [, kind, tier, ca] = data.split(':');
+    if (!isCA(ca || '') || !ctx.self) return ack('Try again in a moment.', true);
+    await ack('Making your quote…');
+    const r = await ctx.self('/api/boost/order', {
+      mint: ca, tier, kind: kind === 'a' ? 'ad' : 'boost', notify: chatId,
+    }, String(q.from.id)).catch(() => null);
+    if (!r || !r.ok) return say(env, chatId, '⚠️ ' + tgEsc((r && r.error) || 'Could not make a quote right now — try again in a minute.'));
+    const o = r.order;
+    const head = o.kind === 'ad'
+      ? `📣 <b>${tgEsc(AD_TIERS[o.tier] ? AD_TIERS[o.tier].label : 'Ad')} for $${tgEsc(o.sym)}</b> — ${o.hours}h, `
+        + (o.startsAt && o.startsAt > Date.now() + 60_000 ? 'starts ' + when(o.startsAt) : 'starts as soon as it is paid')
+      : `⚡ <b>Boost $${tgEsc(o.sym)}</b> — ${tgEsc(o.tier)} ×${o.projection ? o.projection.to : o.mult} for ${o.hours}h`;
+    return say(env, chatId,
+      `${head}\n\n$${o.usd} — send exactly\n<code>${o.amountSol}</code> SOL\nto\n<code>${tgEsc(o.treasury)}</code>\n\n`
+      + 'The exact amount is how your payment is found — send exactly it, in one transfer, from any wallet. '
+      + 'Tap the amount and the address to copy them. Quote valid 30 minutes; a payment is matched for 24 hours, '
+      + 'and I will message you here when it lands.',
+      { reply_markup: { inline_keyboard: [[{ text: '✅ I\u2019ve paid — check', callback_data: 'chk:' + o.id }]] } });
+  }
+
+  if (data.startsWith('chk:')) {
+    const id = data.slice(4);
+    if (!/^ord_[A-Za-z0-9]{1,24}$/.test(id)) return ack();
+    /* the same sweep the cron runs: finds the payment, activates, notifies */
+    if (ctx.self) await ctx.self('/api/boost/sweep', null, String(q.from.id)).catch(() => null);
+    const found = await paidById(store, id);
+    if (!found) return ack('Not seen yet. Payments show within a minute or so of confirming — I will message you when it lands.', true);
+    await ack('✅ Paid');
+    return tg(env, 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id,
+      reply_markup: { inline_keyboard: [[{ text: '✅ Paid', callback_data: 'chk:' + id }]] } }).catch(() => null);
+  }
+  return ack();
+}
+
+async function paidById(store, id) {
+  for (const key of ['boosts', 'ads', 'alertads']) {
+    let list = [];
+    try { list = (await store.get(key)) || []; } catch {}
+    const hit = list.find(x => x && x.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/* Called by the sweep for anything bought from the bot. */
+export async function notifyPaid(env, b) {
+  const chat = num(b && b.notify);
+  if (!chat) return null;
+  const origin = site(env);
+  let text;
+  if (b.kind === 'ad') {
+    const t = AD_TIERS[b.slot];
+    text = `✅ <b>Payment received</b> — your ${tgEsc(t ? t.label : 'ad')} for ${tgEsc(b.title)} `
+      + (b.from > Date.now() + 60_000 ? `starts ${when(b.from)}` : 'is live now') + `, until ${when(b.until)}.`;
+  } else {
+    const link = isMint(b.mint) ? `\n\n🫧 <a href="${origin}/s/${encodeURIComponent(b.mint)}">See it on the map</a>` : `\n\n🫧 <a href="${origin}">See it on the map</a>`;
+    text = `✅ <b>Payment received</b> — $${tgEsc(b.sym)} is gold on the map at ×${b.mult} until ${when(b.until)}.${link}`;
+  }
+  return tg(env, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
+}
+
+/* The paid line under buy alerts, read through a minute's cache. */
+let adMem = { at: 0, v: null };
+export async function alertAd(store) {
+  const now = Date.now();
+  if (now - adMem.at < 60_000) return adMem.v;
+  let list = [];
+  try { list = (await store.get('alertads')) || []; } catch {}
+  const v = list.find(a => a && (a.from || 0) <= now && a.until > now) || null;
+  adMem = { at: now, v };
+  return v;
 }
 
 /* ============================================================== settings */
@@ -1054,13 +1196,24 @@ async function onPrivate(ctx, msg) {
   const { env, store } = ctx;
   const c = command(msg.text || '');
   const uid = msg.from && msg.from.id;
-  if (!c || !uid) return;
+  if (!uid) return;
+  /* a pasted contract address is the start of a purchase */
+  const pasted = String(msg.text || '').trim();
+  if (!c && isCA(pasted)) return shopFor(ctx, msg.chat.id, pasted);
+  if (!c) return;
+  if (c.cmd === 'start' && c.arg) {
+    const [what, ca] = [c.arg.split('_')[0], c.arg.slice(c.arg.indexOf('_') + 1)];
+    if ((what === 'boost' || what === 'ad') && isCA(ca)) return shopFor(ctx, msg.chat.id, ca, what);
+    if (what === 'boost' || what === 'ads' || what === 'ad') return askForToken(ctx, msg.chat.id, what);
+  }
+  if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') return askForToken(ctx, msg.chat.id, c.cmd);
   if (c.cmd === 'start' || c.cmd === 'help') {
     return say(env, msg.chat.id,
       '🫧 <b>pumpbubble</b> — the live bubble map for pump.fun, Base, Robinhood Chain and the market.\n\n'
       + 'To add buy alerts to your group: add me there and run <code>/setup &lt;contract address&gt;</code>.\n\n'
-      + 'Want anything from me here? Pick what you like — nothing is sent otherwise.',
+      + 'Promote a token right here, or pick what you would like from me — nothing is sent otherwise.',
       { reply_markup: { inline_keyboard: [
+        [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
         [{ text: '🫧 Daily Bubble Index', callback_data: 'sub:index' }],
         [{ text: '🔥 Trending tokens', callback_data: 'sub:trend' }],
         [{ text: 'No thanks', callback_data: 'sub:none' }],
@@ -1078,6 +1231,7 @@ async function onCallback(ctx, q) {
   const uid = q.from && q.from.id;
   const chatId = q.message && q.message.chat && q.message.chat.id;
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
+  if (uid && (data.startsWith('shop:') || data.startsWith('buy:') || data.startsWith('chk:'))) return onShop(ctx, q, data);
   if (uid && data.startsWith('cap:')) return onCaptcha(ctx, q, data.slice(4));
   if (!uid || !data.startsWith('sub:')) { await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {}); return; }
   const pick = data.slice(4);
@@ -1205,7 +1359,7 @@ export async function onTrade(ctx, payload, solUsd) {
       if (!g || g.mint !== buy.mint) continue;
       if (num(g.minBuy) > 0 && usd < num(g.minBuy)) { skipped++; continue; }
       if (!allowed(chatId)) { skipped++; continue; }
-      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env });
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store) });
       if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides
