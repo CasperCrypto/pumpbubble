@@ -189,24 +189,6 @@ after that only to skip the wait, since both then ship the same code. A second d
 minute after the first also restarts every isolate again, which is the likeliest cause of the
 smoke test's post-deploy 502s.
 
-## The toolbar on a phone
-
-Below 820px the toolbar is two rows: the tabs as a swipeable strip (`#mode`), then `#tools` —
-timeframe, Filters, the two links. On desktop `#tools` is `display:contents`, so the one-row layout
-is untouched. The single row it replaced was 2,134px of sideways scroll on a 375px phone: three tabs
-visible, no sign of the other nine, and the timeframe three screens to the right. Three pieces carry it:
-
-- `edgeFade()` masks whichever edge of a strip has more to scroll to — the only sign it scrolls.
-- `showActiveTab()` (called from `lightMode()`) centres the open tab, so `?source=casinos` opens
-  with Casinos lit and on screen rather than three swipes away.
-- `placeSize()` moves the Mcap / Gain / Vol element into the Filters sheet on a phone and back on a
-  wide screen. The node moves, so its listener and its lit button go with it; there is one control.
-
-Smart money's sub-bar becomes full-width segmented controls with short labels (All / Today / Week /
-Month) and a one-line note. **The phone block must come after the base toolbar rules** — the first
-cut sat above `#chips{…}`, the same-specificity desktop rule won, and both strips rendered centred
-and 400px off-screen.
-
 ## Conventions
 
 - No dependencies, front end or back. If a library is genuinely needed, argue for it first.
@@ -672,6 +654,15 @@ BANKED / OPEN / TOTAL with a dash, not a zero, where pump.fun gave nothing; hold
 the pill's window / MCAP. The window label sits on the tag line, not beside the title: Archivo Black
 capitals average ~0.7em, not the 0.62 the mixed-case estimate uses, and the first render ran the
 title into it. `/s/top10` and the popup switch to `kind=table` for these sources on their own.
+
+**On a phone both tables are lists** (≤700px): rank, picture, name with its second line at full
+width, and one right-hand column with the two numbers that matter stacked — market cap over the 24h
+move, banked over total — whose header halves each sort. `table-layout:fixed` gives the name every
+pixel the numbers do not need; the first phone cut kept four number columns and squeezed names to
+70px. Desktop-only cells carry `c-dt`, phone-only `c-ph`. The sub-bar goes full-width with short
+board labels (All / Today / Week / Month) below 820px. **The map and the main toolbar were not
+touched on purpose**: a two-row phone toolbar was built and reverted the same hour — the operator
+was clear the bubble view on mobile was already right and only the tables needed work.
 
 **Card art goes through the map's image proxy first** (`logoDataUri(t, via)`, `via` =
 `ctx.fetchImage`). The first live table card had six letter discs in ten: all ipfs.io art, which

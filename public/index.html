@@ -303,20 +303,50 @@ button,input{font-family:inherit}
 #smTable .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 #smTable th.num{text-align:right}
 #smTable .up{color:var(--up,#26d985)}#smTable .dn{color:var(--dn,#ff4d6a)}
+/* phone-only cells: the two numbers that matter, stacked in one column */
+#smTable .c-ph{display:none}
+#smTable .stk b,#smTable .stk small{display:block}
+#smTable .stk small{font-size:11px;font-weight:700;margin-top:2px}
+#smTable th [data-sort],#smTable th [data-tsort]{cursor:pointer}
+#smTable th .on{color:var(--ink)}
 @media (max-width:700px){
-  /* a phone keeps the four numbers that matter: who is it, how many hold it,
-     how big, how it moved — the rest is one tap away in the card */
-  #smTable{padding:6px 6px 70px}
-  #smTable .c-who,#smTable .c-vol,#smTable .c-h1,#smTable .htxt{display:none}
-  #smTable td{padding:8px 4px}#smTable th{padding:6px 4px}#smTable table{font-size:12px}
-  #smTable .tk{gap:7px}#smTable .tk img,#smTable .tk .ph{width:26px;height:26px}
-  #smTable .tk small{max-width:70px}
-  #smTable td:first-child{width:18px}
+  /* A phone reads these as a list, not a spreadsheet. Four number columns
+     squeezed the names to 70px ("Anonymous…") and ran the last column into
+     the screen edge under the Share button. So: rank, picture, name with its
+     second line at full width, and on the right the two numbers that matter
+     stacked — market cap over the 24h move, or banked over the total. Fixed
+     layout gives the name every pixel the numbers do not need. The rest is
+     one tap away in the card. */
+  #smTable{padding:4px 8px 76px}
+  #smTable table{table-layout:fixed;font-size:13px;border-spacing:0 5px}
+  #smTable .c-dt,#smTable .c-who,#smTable .c-vol,#smTable .c-h1,#smTable .htxt{display:none}
+  #smTable .c-ph{display:table-cell}
+  #smTable th{padding:6px 5px;font-size:10px}
+  #smTable td{padding:7px 5px}
+  #smTable th:first-child{width:26px}
+  #smTable th.c-held{width:64px}
+  #smTable th.c-ph{width:104px}
+  #smTable td:first-child{width:auto;text-align:center;font-size:12px}
+  #smTable .tk{gap:9px;overflow:hidden}
+  #smTable .tk>div{min-width:0;overflow:hidden}
+  #smTable .tk b,#smTable .tk small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:none}
+  #smTable .tk img,#smTable .tk .ph{width:30px;height:30px}
+  #smTable .held{font-size:14px}
+  #smTable .stk b{font-size:13.5px}
+}
+/* Smart money's own tabs on a phone: full-width segmented controls with
+   short labels, the note on one line. On one scrolling row the board tabs
+   ran off the right edge. */
+.sb-short{display:none}
+@media (max-width:819px){
+  #subbar{flex-wrap:wrap;overflow:visible;padding:6px 10px 7px;gap:6px}
+  #subbar .seg{flex:1 1 100%;min-width:0}
+  #subbar .seg button{flex:1 1 0;min-width:0;min-height:40px;padding:0 6px;justify-content:center}
+  #subbar .subnote{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
+  .sb-full{display:none}
+  .sb-short{display:inline}
 }
 #subbar .subnote{font-size:11px;color:var(--dim);white-space:nowrap}
-.sb-short{display:none}
-#tools{display:contents}
-
 #chips{
   position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
@@ -354,42 +384,6 @@ button,input{font-family:inherit}
 .iconbtn:hover{background:var(--glass2)}
 .iconbtn.act{border-color:rgba(40,224,140,.5);color:var(--mint2)}
 .spacer{flex:1 0 8px}
-
-/* ============ the toolbar on a phone ============
-   On desktop the tabs, timeframe, size and links share one row. On a phone
-   that row was 2,134px of sideways scroll on a 375px screen: three tabs
-   showed, nothing said there were nine more, and the timeframe started three
-   screens to the right, where nobody finds it. So a phone gets two rows —
-   the tabs as their own swipeable strip, fading at whichever edge has more,
-   with the open tab scrolled into view; then the timeframe and Filters, whole
-   and on screen. Mcap / Gain / Vol moves into the Filters sheet (`placeSize`). */
-@media (max-width:819px){
-  #chips{flex-direction:column;align-items:stretch;gap:6px;padding:8px 0;overflow:visible}
-  #chips #mode{overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;
-    background:none;border:0;border-radius:0;padding:0 12px;gap:6px}
-  #chips #mode::-webkit-scrollbar,#tools::-webkit-scrollbar{display:none}
-  #chips #mode button{background:var(--glass);border:1px solid var(--line)}
-  #chips #mode button.on{background:linear-gradient(180deg,rgba(40,224,140,.26),rgba(40,224,140,.10));
-    border-color:rgba(40,224,140,.45);color:#fff;box-shadow:none}
-  #tools{display:flex;align-items:center;gap:8px;padding:0 12px;overflow-x:auto;scrollbar-width:none}
-  #chips .fr{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent);
-    mask-image:linear-gradient(90deg,#000 calc(100% - 44px),transparent)}
-  #chips .fl{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px);
-    mask-image:linear-gradient(90deg,transparent,#000 44px)}
-  #chips .fl.fr{-webkit-mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent);
-    mask-image:linear-gradient(90deg,transparent,#000 44px,#000 calc(100% - 44px),transparent)}
-
-  /* Smart money's own tabs: full-width segmented controls, short labels, and
-     the explanation on one line. 40px, not 44: each target is a half or a
-     quarter of the screen wide, and two 44px rows here cost the table 8px
-     more than it can spare under the toolbar. */
-  #subbar{flex-wrap:wrap;overflow:visible;padding:6px 12px 7px;gap:6px}
-  #subbar .seg{flex:1 1 100%;min-width:0}
-  #subbar .seg button{flex:1 1 0;min-width:0;min-height:40px;padding:0 6px;justify-content:center}
-  #subbar .subnote{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
-  .sb-full{display:none}
-  .sb-short{display:inline}
-}
 
 /* ============ stage ============ */
 #stage{position:relative;z-index:5;flex:1;min-height:0}
@@ -750,9 +744,6 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="prediction">Prediction</button>
     <button data-mode="casinos">Casinos</button>
   </div>
-  <!-- #tools is layout-transparent on desktop (display:contents) and the
-       second row on a phone, under the tab strip -->
-  <div id="tools">
   <div class="seg acc" id="tf">
     <button data-tf="h1" class="on">1H</button>
     <button data-tf="h24">24H</button>
@@ -782,7 +773,6 @@ body.embed #brandbadge.on{display:flex}
   <a class="iconbtn" href="/partners" title="Put this map on your own site">&lt;/&gt; Embed</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
-  </div>
 </div>
 
 <!-- ================= Smart money's own tabs ================= -->
@@ -857,7 +847,6 @@ body.embed #brandbadge.on{display:flex}
       <button data-n="200">200</button>
     </div>
   </div>
-  <div class="frow" id="szRow" hidden><label>Bubble size</label><div id="szPhone"></div></div>
   <div class="frow"><label>Movement</label>
     <div class="seg" id="mvSeg">
       <button data-mv="all" class="on">All</button>
@@ -1031,28 +1020,6 @@ function feedId(){
 function lightMode(){
   const m=S.mode==='traders'?'smart':S.mode;
   document.querySelectorAll('#mode [data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
-  showActiveTab();
-}
-/* On a phone the tab strip scrolls, so the open tab has to be on screen —
-   a deep link to ?source=casinos otherwise opens with its tab three swipes
-   away and nothing lit. Instant the first time, smooth after. */
-var tabShown=false;
-function showActiveTab(){
-  const strip=document.getElementById('mode'),on=strip&&strip.querySelector('button.on');
-  if(!on||strip.scrollWidth<=strip.clientWidth+2)return;
-  const a=strip.getBoundingClientRect(),b=on.getBoundingClientRect();
-  const left=strip.scrollLeft+(b.left-a.left)-(strip.clientWidth-b.width)/2;
-  try{strip.scrollTo({left:Math.max(0,left),behavior:tabShown?'smooth':'auto'})}catch{strip.scrollLeft=Math.max(0,left)}
-  tabShown=true;
-}
-/* A strip that scrolls says so: it fades at whichever edge has more. */
-function edgeFade(el){
-  if(!el)return;
-  const upd=()=>{const max=el.scrollWidth-el.clientWidth;
-    el.classList.toggle('fl',el.scrollLeft>4);el.classList.toggle('fr',max>4&&el.scrollLeft<max-4)};
-  el.addEventListener('scroll',upd,{passive:true});addEventListener('resize',upd);
-  if(window.ResizeObserver)new ResizeObserver(upd).observe(el);
-  upd();
 }
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
@@ -1372,8 +1339,11 @@ function renderSmartTable(list){
   const pc=v=>v==null||!Number.isFinite(+v)?'<span style="color:var(--dim)">\u2014</span>':`<span class="${v>=0?'up':'dn'}">${esc(fmtPct(v))}</span>`;
   const who=t=>(t.smartWho||[]).slice(0,3).map(w=>'<b>'+esc(w.xh?'@'+w.xh:w.name)+'</b>').join(', ')+(t.smartN>3?' +'+(t.smartN-3)+' more':'');
   const th=(k,label,cls='')=>`<th class="${cls}${SM_SORT===k?' on':''}" ${k?'data-sort="'+k+'"':''}>${label}${SM_SORT===k?' \u2193':''}</th>`;
-  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Token')+th('held','Held by')+th('','Who','c-who')
-    +th('mcap','Market cap','num')+th('h1','1H','num c-h1')+th('h24','24H','num')+th('vol','Volume 24h','num c-vol')
+  /* the phone column sorts by either of its two numbers */
+  const sp=(k,label)=>`<span class="${SM_SORT===k?'on':''}" data-sort="${k}">${label}${SM_SORT===k?' \u2193':''}</span>`;
+  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Token')+th('held','Held by','c-held')+th('','Who','c-who')
+    +th('mcap','Market cap','num c-dt')+th('h1','1H','num c-h1')+th('h24','24H','num c-dt')+th('vol','Volume 24h','num c-vol')
+    +'<th class="num c-ph">'+sp('mcap','Mcap')+' \u00b7 '+sp('h24','24H')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
@@ -1381,10 +1351,11 @@ function renderSmartTable(list){
         +`<td><div class="tk">${av}<div><b>$${esc(t.sym)}</b><small>${esc(t.name||'')}</small></div></div></td>`
         +`<td><span class="held">\ud83e\udde0 ${t.smartN||0}</span> <span class="htxt">top trader${t.smartN===1?'':'s'}</span></td>`
         +`<td class="who c-who">${who(t)}</td>`
-        +`<td class="num">${esc(fmtUsd(t.mcap||0))}</td>`
+        +`<td class="num c-dt">${esc(fmtUsd(t.mcap||0))}</td>`
         +`<td class="num c-h1">${pc(t.pc&&t.pc.h1)}</td>`
-        +`<td class="num">${pc(t.pc&&t.pc.h24)}</td>`
-        +`<td class="num c-vol">${esc(fmtUsd(t.vol||0))}</td></tr>`;
+        +`<td class="num c-dt">${pc(t.pc&&t.pc.h24)}</td>`
+        +`<td class="num c-vol">${esc(fmtUsd(t.vol||0))}</td>`
+        +`<td class="num c-ph stk"><b>${esc(fmtUsd(t.mcap||0))}</b><small>${pc(t.pc&&t.pc.h24)}</small></td></tr>`;
     }).join('')
     +'</tbody></table>';
 }
@@ -1400,28 +1371,31 @@ function renderTraderTable(box,list){
     :Math.abs(v)<1?'<span style="color:var(--dim)">$0</span>'
     :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'\u2212'}${esc(fmtUsd(Math.abs(v)))}</span>`;
   const th=(k,label,cls='')=>`<th class="${cls}${TR_SORT===k?' on':''}" ${k?'data-tsort="'+k+'"':''}>${label}${TR_SORT===k?' \u2193':''}</th>`;
-  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num')+th('open','Open positions','num c-h1')
-    +th('total','Total PnL','num')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+  const sp=(k,label)=>`<span class="${TR_SORT===k?'on':''}" data-tsort="${k}">${label}${TR_SORT===k?' \u2193':''}</span>`;
+  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num c-dt')+th('open','Open positions','num c-h1')
+    +th('total','Total PnL','num c-dt')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+    +'<th class="num c-ph">'+sp('realized','Banked')+' \u00b7 '+sp('total','Total')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
       const handle=t.xh?'@'+t.xh:'';
       return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
         +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' <span style="color:var(--up,#26d985)">\u2713</span>':''}</b><small>${esc(handle)}</small></div></div></td>`
-        +`<td class="num"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
+        +`<td class="num c-dt"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
         +`<td class="num c-h1">${money(t.unrealized)}</td>`
-        +`<td class="num">${money(t.total)}</td>`
+        +`<td class="num c-dt">${money(t.total)}</td>`
         +`<td class="num c-vol">${t.positions!=null?esc(String(t.positions)):'\u2014'}</td>`
         +`<td class="who c-who">${(t.top||[]).map(p=>'<b>$'+esc(p.sym)+'</b>').join(', ')}</td>`
-        +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td></tr>`;
+        +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td>`
+        +`<td class="num c-ph stk"><b class="up">+${esc(fmtUsd(t.realized||0))}</b><small><span style="color:var(--dim)">total</span> ${money(t.total)}</small></td></tr>`;
     }).join('')
     +'</tbody></table>';
 }
 
 document.getElementById('smTable').addEventListener('click',e=>{
-  const ht=e.target.closest('th[data-tsort]');
+  const ht=e.target.closest('[data-tsort]');
   if(ht){TR_SORT=ht.dataset.tsort;rebuild();return}
-  const h=e.target.closest('th[data-sort]');
+  const h=e.target.closest('[data-sort]');
   if(h){SM_SORT=h.dataset.sort;rebuild();return}
   const r=e.target.closest('tr[data-id]');if(!r)return;
   const t=S.tokens.find(x=>x.id===r.dataset.id);if(t)openCard(t);
@@ -2429,24 +2403,6 @@ wire('tf',b=>{
   rebuild();
 });
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
-
-/* On a phone the size control lives in the Filters sheet; the toolbar's
-   second row has room for the timeframe and Filters, not both segments.
-   The element itself moves, so its listener and its lit button go with it. */
-(function placeSize(){
-  const mq=matchMedia('(max-width:819px)');
-  const sz=document.getElementById('sz'),row=document.getElementById('szRow');
-  const put=()=>{
-    if(mq.matches)document.getElementById('szPhone').appendChild(sz);
-    else document.getElementById('tools').insertBefore(sz,document.getElementById('openSheet'));
-    row.hidden=!mq.matches;
-    showActiveTab();
-  };
-  put();
-  if(mq.addEventListener)mq.addEventListener('change',put);else if(mq.addListener)mq.addListener(put);
-})();
-edgeFade(document.getElementById('mode'));
-edgeFade(document.getElementById('tools'));
 wire('cntSeg',b=>{S.limit=+b.dataset.n;rebuild()});
 wire('mvSeg',b=>{S.mv=b.dataset.mv;rebuild()});
 
