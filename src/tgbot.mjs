@@ -1314,12 +1314,20 @@ async function onPrivate(ctx, msg) {
   }
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') return askForToken(ctx, msg.chat.id, c.cmd);
   if (c.cmd === 'start' || c.cmd === 'help') {
+    /* Add-to-group asks for the admin rights the guard needs up front —
+       Telegram's startgroup link can request them — so an owner is not sent
+       back to promote the bot by hand before the captcha works. */
+    const bot = await me(env, store).catch(() => null);
+    const add = bot && /^\w+$/.test(bot.username || '')
+      ? [[{ text: '➕ Add me to your group', url: 'https://t.me/' + bot.username + '?startgroup=setup&admin=delete_messages+restrict_members+pin_messages+invite_users' }]]
+      : [];
     return say(env, msg.chat.id,
       '🫧 <b>pumpbubble</b> — the live bubble map for pump.fun, Base, Robinhood Chain and the market.\n\n'
       + 'To add buy alerts to your group: add me there and run <code>/setup &lt;contract address&gt;</code>.\n\n'
       + 'Promote a token right here: a golden bubble, an ad on the map or under every buy alert, or a DM to everyone on my list.\n\n'
       + '<i>' + DISCLOSURE + '</i>',
       { reply_markup: { inline_keyboard: [
+        ...add,
         [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
         [UNSUB],
       ] } });
