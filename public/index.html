@@ -442,6 +442,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
    beside two others, which is how you price something at $149 and present it
    like a tooltip. */
 #card .acts{display:flex;gap:9px;flex-wrap:wrap}
+#card .join{display:block;margin-top:10px;font-size:12px;font-weight:700;color:var(--dim);text-decoration:none}
+#card .join:hover{color:var(--ink)}
 #card .acts button{
   flex:1;height:46px;border-radius:13px;border:1px solid var(--line);background:var(--glass2);
   color:var(--ink);font-weight:900;font-size:14px;cursor:pointer
@@ -831,6 +833,7 @@ body.embed #brandbadge.on{display:flex}
     <button class="pf" id="cShare">Share ↗</button>
     <button class="bo" id="cBoost"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></svg>BOOST</button>
   </div>
+  <a id="cJoin" class="join" hidden target="_blank" rel="noopener">New to pump.fun? Create an account →</a>
 </div>
 
 <!-- ================= filter sheet ================= -->
@@ -2050,6 +2053,10 @@ function openCard(t){
   /* Only for something with a mint, and only when a referral is set up. */
   document.getElementById('cBuy').style.display =
     (BUY.enabled && t && t.mint) ? '' : 'none';
+  /* the operator's pump.fun invite, on Solana tokens only */
+  const jn=document.getElementById('cJoin');
+  jn.hidden=!(BUY.join && t && t.mint && /^https:\/\/pump\.fun\/join\//.test(BUY.join));
+  if(!jn.hidden)jn.href=BUY.join;
   const e=id=>document.getElementById(id);
   const im=e('cIm');
   if(t.img){im.outerHTML=`<img class="im" id="cIm" src="${esc(t.img)}" alt="">`}

@@ -52,6 +52,9 @@ crons = ["*/5 * * * *"]
 # is what you want for the one value that decides where money goes.
 TREASURY_WALLET = "6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C"
 AD_CONTACT = "https://t.me/casper_crypto"
+# The operator's pump.fun invite link: shown to new traders on Solana token
+# cards and in the bot's Start menu (src/refs.mjs pumpJoin). Public by nature.
+PUMP_JOIN = "https://pump.fun/join/HermesCryptos"
 
 # SOLANA_RPC is deliberately NOT here.
 #

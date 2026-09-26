@@ -63,6 +63,17 @@ export const PROVIDERS = {
   },
 };
 
+/* The operator's pump.fun invite link (`PUMP_JOIN`). pump.fun credits a
+   referrer when someone *creates an account* through it — it lands on an
+   "invited you" page, not on a coin — so it cannot sit behind a Buy button
+   (someone tapping Buy wants that token). It goes where new traders are: a
+   line on the card of a Solana token, and the bot's Start menu. Only a
+   pump.fun/join link is accepted, so the setting cannot point anywhere else. */
+export function pumpJoin(env = {}) {
+  const u = String(env.PUMP_JOIN || '').trim();
+  return /^https:\/\/pump\.fun\/join\/[A-Za-z0-9_-]{2,40}$/.test(u) ? u : '';
+}
+
 /* What the page needs to build a link itself.
 
    Deliberately not a per-token URL in the feed: 300 tokens would carry 300
@@ -72,12 +83,14 @@ export function buyConfig(env = {}) {
   const id = String(env.REF_PROVIDER || '').toLowerCase();
   const p = PROVIDERS[id];
   const ref = String(env.REF_CODE || '').trim();
+  const join = pumpJoin(env);
 
   /* No provider configured is the normal state until somebody signs up, and it
      has to be a quiet no rather than a half-working button. */
-  if (!p) return { enabled: false, providers: Object.keys(PROVIDERS) };
+  if (!p) return { enabled: false, providers: Object.keys(PROVIDERS), ...(join ? { join } : {}) };
 
   return {
+    ...(join ? { join } : {}),
     enabled: true,
     provider: p.id,
     label: p.label,

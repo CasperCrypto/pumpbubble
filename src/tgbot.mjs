@@ -31,7 +31,7 @@
 
 import { resolveAnyToken, isCA, isMint, isEvmAddr, clean, PUMP } from './core.mjs';
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
-import { buyUrl } from './refs.mjs';
+import { buyUrl, pumpJoin } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
@@ -1594,6 +1594,7 @@ async function onPrivate(ctx, msg) {
       { reply_markup: { inline_keyboard: [
         ...add,
         [{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }],
+        ...(pumpJoin(env) ? [[{ text: '🟢 New to pump.fun? Create an account', url: pumpJoin(env) }]] : []),
         [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
         [UNSUB],
       ] } });
