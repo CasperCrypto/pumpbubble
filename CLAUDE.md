@@ -1430,6 +1430,17 @@ over a token already gold, at most five at a time. It is the outreach pitch in o
 bot and your token is gold on the map for an hour" — built the night the numbers came in: 22 site
 views in a week, one group, $0. Distribution, not features, is the bottleneck.
 
+**Our own links, everywhere a user is** (2026-09-26): the Telegram group (`TG_COMMUNITY`,
+t.me/pumpbubble) as a round button beside BOOST on every screen, on the bot's Start menu and in
+the setup reply; the bot (t.me/pumpbubblebot, Telegram's add-to-group screen asking for the
+guard's admin rights) as "🤖 Free buy bot" in the toolbar and "🤖 Free buy alerts for $X in your
+Telegram group" on every token's card; the operator's pump.fun invite (`PUMP_JOIN`) on Solana
+cards and the Start menu. **The page has no global `[hidden]` rule** — `#card .join{display:block}`
+beat the attribute and put the invite on every card, stocks included, until
+`#card .join[hidden]{display:none}`. And `scripts/page-refs.test.mjs` now parses every inline
+script: a second `const cb` in `openCard` was a SyntaxError that killed the whole page, and the
+text-level checks passed it.
+
 **Copy trading and sniping are deep links, not custody — decided, not deferred.** ⚡ Copy buy opens
 the same swap as the Buy button (the referral trading bot when `REF_PROVIDER`/`REF_CODE` are set,
 Jupiter otherwise). Executing trades for users means holding their keys and money in a Worker; one

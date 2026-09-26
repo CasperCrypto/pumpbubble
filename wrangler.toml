@@ -55,6 +55,8 @@ AD_CONTACT = "https://t.me/casper_crypto"
 # The operator's pump.fun invite link: shown to new traders on Solana token
 # cards and in the bot's Start menu (src/refs.mjs pumpJoin). Public by nature.
 PUMP_JOIN = "https://pump.fun/join/HermesCryptos"
+# Our own Telegram group, linked from the bot's Start menu and setup reply.
+TG_COMMUNITY = "https://t.me/pumpbubble"
 
 # SOLANA_RPC is deliberately NOT here.
 #

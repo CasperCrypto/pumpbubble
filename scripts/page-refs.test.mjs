@@ -117,5 +117,18 @@ for (const [name, fn, input, want] of cases) {
   else no(name + '(' + String(input) + ')', 'got ' + got + ', want ' + want);
 }
 
+/* Every inline script must parse. A redeclared `const` inside one function is
+   a SyntaxError that stops the whole page — the map, the tabs, everything —
+   and nothing above notices, because it reads the page as text. That exact
+   bug (a second `const cb` in openCard) was caught in the browser before it
+   shipped; this catches the next one before anyone has to look. */
+{
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  let bad = '';
+  for (const s of scripts) { try { new Function(s); } catch (e) { bad = e.message; break; } }
+  if (scripts.length && !bad) ok('every inline script parses', scripts.length + ' script' + (scripts.length > 1 ? 's' : ''));
+  else no('every inline script parses', bad || 'no inline script found');
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

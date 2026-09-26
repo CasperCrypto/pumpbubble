@@ -48,6 +48,9 @@ export const SITE = 'https://pumpbubble.fun';
 const DEXS = 'https://api.dexscreener.com';
 
 export const enabled = (env = {}) => !!env.TG_BOT_TOKEN;
+/* our own Telegram group (TG_COMMUNITY), linked from the Start menu and the
+   setup reply; only a t.me link is accepted */
+export const community = (env = {}) => /^https:\/\/t\.me\/[A-Za-z0-9_]{4,40}$/.test(String(env.TG_COMMUNITY || '')) ? env.TG_COMMUNITY : 'https://t.me/pumpbubble';
 const site = (env = {}) => String(env.PUBLIC_ORIGIN || SITE).replace(/\/+$/, '');
 
 /* KV layout. Indexes are kept as plain arrays because the store has no prefix
@@ -622,7 +625,8 @@ async function onGroup(ctx, msg) {
       `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)}\n`
       + `MCap ${fmtUsd(t.mcap)} · ${t.grad === false ? 'bonding curve' : 'graduated'}\n\n`
       + head
-      + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
+      + 'Set the picture, emoji and minimum buy with the buttons below.\n'
+      + `Questions or ideas: <a href="${community(env)}">our Telegram group</a>.` + warn,
       settingsMarkup());
   }
 
@@ -764,7 +768,8 @@ async function setupEvm(ctx, msg, addr, want) {
     `✅ Tracking <b>${tgEsc(cfg.sym)}</b> — ${tgEsc(cfg.name)} on ${CHAINS[chain].name}\n`
     + `MCap ${fmtUsd(num(top.marketCap) || num(top.fdv))} · watching ${pools.length} pool${pools.length > 1 ? 's' : ''}${dexes ? ' (' + tgEsc(dexes) + ')' : ''}\n\n`
     + head
-    + 'Set the picture, emoji and minimum buy with the buttons below.' + warn,
+    + 'Set the picture, emoji and minimum buy with the buttons below.\n'
+    + `Questions or ideas: <a href="${community(env)}">our Telegram group</a>.` + warn,
     settingsMarkup());
 }
 
@@ -1594,6 +1599,7 @@ async function onPrivate(ctx, msg) {
       { reply_markup: { inline_keyboard: [
         ...add,
         [{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }],
+        [{ text: '💬 Join the pumpbubble community', url: community(env) }],
         ...(pumpJoin(env) ? [[{ text: '🟢 New to pump.fun? Create an account', url: pumpJoin(env) }]] : []),
         [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
         [UNSUB],
