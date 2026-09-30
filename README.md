@@ -6,6 +6,13 @@ change, gold means someone paid to make it big.
 Ticker, image and market cap come from pump.fun itself. Price change and volume come from
 DexScreener, because pump.fun exposes no change field.
 
+## Links
+
+- Site: https://pumpbubble.fun
+- X: https://x.com/pumpbubblefun
+- Telegram group: https://t.me/pumpbubble
+- Free buy bot for your group: https://t.me/pumpbubblebot
+
 ## Run it
 
 ```bash

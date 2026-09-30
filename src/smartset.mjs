@@ -44,7 +44,12 @@ export async function smartWallets(now = Date.now()) {
    hundred. These wallets trade all day and every transaction is a billed
    webhook delivery on the same webhook as every group's buy alerts — running
    the plan out of credits would silence the buybot everywhere. */
-export const SMART_WATCH = 100;
+/* Twenty-five, not a hundred. Every transaction of every watched wallet is a
+   Helius delivery, and every delivery is a Worker request: on the free plan's
+   100,000 a day, the site went dark (Cloudflare 1027) on 2026-09-30 with the
+   top hundred on the webhook. The best twenty-five by profit banked carry
+   most of the signal for a quarter of the requests. */
+export const SMART_WATCH = 25;
 export function topSmart(map, n = SMART_WATCH) {
   return new Map([...(map || new Map()).entries()].sort((a, b) => a[1].rank - b[1].rank).slice(0, n));
 }

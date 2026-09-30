@@ -321,6 +321,29 @@ export const SOURCES = {
     chain: 'mixed', ttl: 300_000, enrich: false, boostable: true, quality: 'major', history: false,
     fetch: () => smartMoney(['monthly']),
   },
+  /* Callers: pump.fun's callouts, measured — src/callers.mjs. Composed in
+     api.mjs from the CallersDO, which does the polling on its own clock; the
+     lifetime here only bounds how stale one isolate's copy may be. */
+  calls: {
+    id: 'calls', label: 'Live calls', group: 'Callers',
+    chain: 'mixed', ttl: 20_000, enrich: false, boostable: true, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'callers-daily': {
+    id: 'callers-daily', label: 'Top callers', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'callers-weekly': {
+    id: 'callers-weekly', label: 'Top callers', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'callers-monthly': {
+    id: 'callers-monthly', label: 'Top callers', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
   'traders-daily': {
     id: 'traders-daily', label: 'Traders', group: 'Traders',
     chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,

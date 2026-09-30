@@ -96,6 +96,16 @@ export class Audience {
   async isSmart(uid) { return !!(await this.s.get('sm:' + String(Math.floor(+uid)).padStart(15, '0'))); }
   async smartFans() { return [...(await this.s.list({ prefix: 'sm:' })).keys()].map(k => +k.slice(3)); }
 
+  /* the same switch for the week's top callers (src/callers.mjs): each new
+     call of theirs arrives here with Buy and Chart */
+  async callFan(uid, on) {
+    uid = Math.floor(+uid);
+    if (on) await this.s.put('cf:' + String(uid).padStart(15, '0'), 1); else await this.s.delete('cf:' + String(uid).padStart(15, '0'));
+    return { ok: true, calls: !!on };
+  }
+  async isCallFan(uid) { return !!(await this.s.get('cf:' + String(Math.floor(+uid)).padStart(15, '0'))); }
+  async callFans() { return [...(await this.s.list({ prefix: 'cf:' })).keys()].map(k => +k.slice(3)); }
+
   /* every wallet somebody follows — what the Helius webhook has to watch */
   async wallets() { return [...(await this.s.list({ prefix: 'f:' })).keys()].map(k => k.slice(2)); }
 
@@ -120,6 +130,7 @@ export class Audience {
     for (const x of await this.following(uid)) await this.unfollow(uid, x.wallet);
     await this.s.delete('w:' + uid);
     await this.smart(uid, false);
+    await this.callFan(uid, false);
     return this.remove(uid);
   }
 

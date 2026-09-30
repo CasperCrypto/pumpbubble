@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { handle } from '../src/api.mjs';
 import { memoryArena } from '../src/taps.mjs';
 import { memoryGuard } from '../src/guard.mjs';
+import { memoryCallers } from '../src/callers.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -62,6 +63,8 @@ const ctx = {
   arena: memoryArena(),
   /* the group guard, in memory — production keeps one Durable Object per group */
   guard: memoryGuard(),
+  /* the callers' watcher, in memory — production keeps it in a Durable Object */
+  callers: memoryCallers(),
   /* Lets the shared API render /market in dev the same way the worker does. */
   async readAsset(rel) {
     try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }

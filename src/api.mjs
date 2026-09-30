@@ -6,7 +6,7 @@
 
 import { sponsoredDm } from './audience.mjs';
 import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
-         signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests } from './core.mjs';
+         signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests, fastImage } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
 import { buyConfig, swapConfig } from './refs.mjs';
 import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
@@ -125,7 +125,8 @@ const caches = new Map();
    rasteriser and is printed onto an image that carries our domain. */
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending',
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
-  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly' };
+  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
+  callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
 const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
@@ -144,6 +145,9 @@ const TEN_SHARE = {
   'smart-daily': 'What today\u2019s top pump.fun traders are holding',
   'smart-weekly': 'What this week\u2019s top pump.fun traders are holding',
   'smart-monthly': 'What this month\u2019s top pump.fun traders are holding',
+  'callers-daily': 'The best callers on pump.fun today — by how often their calls reach 2×',
+  'callers-weekly': 'The best callers on pump.fun this week — by how often their calls reach 2×',
+  'callers-monthly': 'The best callers on pump.fun this month — by how often their calls reach 2×',
   'traders-daily': 'Who actually banked on pump.fun today — realized profit, not paper gains',
   'traders-weekly': 'Who actually banked on pump.fun this week — realized profit, not paper gains',
   'traders-monthly': 'Who actually banked on pump.fun this month — realized profit, not paper gains',
@@ -160,6 +164,7 @@ const TEN_SHARE = {
    a bubble with no percentage has nothing to say and the card would print a
    dash where the number is the point. */
 function pickTen(tokens, tf) {
+  if ((tokens || []).some(t => t && t.kind === 'caller')) return tokens.filter(t => t && t.caller && t.sym).slice(0, 10);
   return (tokens || [])
     /* `!= null` first — Number(null) is 0, which is finite, and would have put
        an unmeasured window on the card's share page as "+0%" */
@@ -197,6 +202,7 @@ function resolveSource(url) {
   if (SOURCES[q]) return SOURCES[q];
   /* a link to the tab, with no period in it, is the daily board */
   if (q === 'traders') return SOURCES['traders-daily'];
+  if (q === 'callers') return SOURCES['callers-weekly'];
   const legacy = LEGACY_MODES[url.searchParams.get('mode') || ''];
   return SOURCES[legacy] || SOURCES[DEFAULT_SOURCE];
 }
@@ -362,6 +368,98 @@ async function tapsSnapshot(ctx) {
   };
 }
 
+/* --------------------------------------------------------------- Callers */
+/* The watcher is one Durable Object (src/callers.mjs, worker/index.js), and
+   every visitor's poll would otherwise be a request to it. Cached per isolate
+   for twenty seconds, its own tick, and signed here, because the image
+   secret lives with the API rather than with the watcher. */
+const callCache = new Map();
+async function callersRead(ctx, op, body = {}) {
+  if (!ctx.callers) return null;
+  const key = op + ':' + (body.window || '');
+  const c = callCache.get(key) || {};
+  if (c.data && Date.now() - c.at < 20_000) return c.data;
+  if (c.inflight) return c.inflight;
+  c.inflight = (async () => {
+    try { const d = await ctx.callers(op, body); callCache.set(key, { at: Date.now(), data: d }); return d; }
+    catch { callCache.set(key, { at: c.at || 0, data: c.data }); return c.data || null; }
+  })();
+  callCache.set(key, c);
+  return c.inflight;
+}
+const signMem = new Map();
+async function signedImg(ctx, raw) {
+  if (!raw || !ctx.env.IMG_SECRET) return '';
+  const u = fastImage(raw);
+  const hit = signMem.get(u);
+  if (hit) return hit;
+  try {
+    const out = '/api/img?u=' + encodeURIComponent(u) + '&s=' + await signUrl(u, ctx.env.IMG_SECRET);
+    if (signMem.size > 4000) signMem.clear();
+    signMem.set(u, out);
+    return out;
+  } catch { return ''; }
+}
+const NULL_PC = () => ({ m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null });
+const callersMeta = d => d && d.status
+  ? { calls: d.status.calls, callers: d.status.callers, withStats: d.status.withStats, lastOk: d.status.lastOk } : null;
+
+/* Live calls as token rows: the called coin is the row, so the card's Chart,
+   Buy and Boost work as they do for any token; the call rides along. One row
+   per call — two callers on one coin are two rows. */
+async function callsSnapshot(ctx) {
+  const d = await callersRead(ctx, 'live', { limit: 150 });
+  const tokens = [];
+  for (const c of (d && d.rows) || []) {
+    const by = c.caller || {};
+    tokens.push({
+      id: 'call:' + c.id, kind: 'call', chain: 'solana', mint: c.mint, addr: '',
+      sym: c.sym, name: c.name, img: await signedImg(ctx, c.rawImg),
+      mcap: c.mcapNow || 0, vol: 0, liq: 0, price: 0, pc: NULL_PC(),
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'call',
+      call: {
+        id: c.id, at: c.at, mcapAtCall: c.mcapAtCall, now: c.now, peak: c.peak, peakAt: c.peakAt,
+        thesis: c.thesis, views: c.views, likes: c.likes, status: c.status, heldUsd: c.heldUsd, pnlUsd: c.pnlUsd, seenAt: c.seenAt,
+        by: { wallet: by.wallet, name: by.name, xh: by.xh, img: await signedImg(ctx, by.avatar), verified: !!by.verified,
+          rank: by.rank || 0, hit2: by.hit2, n: by.n, calls: by.calls },
+      },
+    });
+  }
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
+    sampleArt: '', solid: tokens.length, signed: true, source: 'calls', sourceLabel: 'Live calls', boostable: true,
+    tokens, callers: callersMeta(d),
+  };
+}
+
+/* Top callers as people rows, like Top traders: no mint and no address, so
+   the card shows Profile rather than Buy and Boost. */
+async function callersSnapshot(ctx, win) {
+  const d = await callersRead(ctx, 'board', { window: win });
+  const tokens = [];
+  for (const r of (d && d.rows) || []) {
+    tokens.push({
+      id: 'caller:' + r.wallet, kind: 'caller', mint: '', addr: '', wallet: r.wallet,
+      sym: r.name, name: r.xh ? '@' + r.xh : r.name, xh: r.xh, verified: !!r.verified,
+      img: await signedImg(ctx, r.avatar),
+      mcap: Math.max(1, Math.round((r.score || 0) * 1e6)), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'caller', rank: r.rank, period: win,
+      caller: { n: r.n, hit2: r.hit2, hit15: r.hit15, med: r.med, avg: r.avg, ttpMs: r.ttpMs, best: r.best, score: r.score,
+        banked: r.banked, soldOf: r.soldOf, seenCalls: r.seenCalls, lastAt: r.lastAt, recent: r.recent || [] },
+    });
+  }
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
+    sampleArt: '', solid: tokens.length, signed: true, source: 'callers-' + win, sourceLabel: 'Top callers', boostable: false,
+    tokens, callers: callersMeta(d),
+  };
+}
+/* feeds whose empty answer is a state (nothing yet), not an outage */
+const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly']);
+/* feeds drawn as tables of people or calls, where a re-added paid bubble
+   would be a stray row rather than a gold bubble */
+const TABLE_FEED = id => id === 'calls' || id.startsWith('callers-') || id.startsWith('traders-');
+
 async function snapshot(ctx, source, force = false) {
   const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
   const cache = cacheFor(src.id);
@@ -432,6 +530,10 @@ async function snapshot(ctx, source, force = false) {
           })()
         : src.id === 'taps'
         ? await tapsSnapshot(ctx)
+        : src.id === 'calls'
+        ? await callsSnapshot(ctx)
+        : src.id.startsWith('callers-')
+        ? await callersSnapshot(ctx, src.id.slice(8))
         : await buildSnapshot({
             source: src,
             hist: ctx.hist,
@@ -483,7 +585,7 @@ async function snapshot(ctx, source, force = false) {
 
       /* The arena is allowed to be empty, and allowed to shrink: nobody has
          added a token yet, or the idle ones were pruned. Neither is an outage. */
-      const empty = src.id !== 'taps' && (got === 0 || (had > 0 && got < had * 0.25) || enrichBroke);
+      const empty = !EMPTY_OK.has(src.id) && (got === 0 || (had > 0 && got < had * 0.25) || enrichBroke);
 
       if (empty && had) {
         /* Keep the good data, and come back well before the normal lifetime. */
@@ -708,7 +810,7 @@ export async function handle(req, ctx) {
          bubbles, one of them with no data behind it. */
       const have = new Set(tokens.map(t => t.addr || t.mint));
       const readd = [];
-      for (const [mint, b] of byMint) {
+      for (const [mint, b] of TABLE_FEED(src.id) ? [] : byMint) {
         if (have.has(mint)) continue;
 
         /* Art has to go through the signed proxy, exactly like every token in
@@ -837,6 +939,7 @@ export async function handle(req, ctx) {
         solid: snap.solid,
         /* Trending only: whether pump.fun's board answered, and how fast. */
         movers: snap.movers || undefined,
+        callers: snap.callers || undefined,
         events: snap.events || undefined,
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
@@ -1139,8 +1242,8 @@ export async function handle(req, ctx) {
          per source, window, hour and names, like the bubble card. */
       if (url.searchParams.get('kind') === 'table') {
         const srcId = BOARD_SRC[url.searchParams.get('source') || 'smart'];
-        if (!srcId || !(srcId.startsWith('smart') || srcId.startsWith('traders'))) {
-          return json({ ok: false, error: 'the table card is for Smart money' }, 400);
+        if (!srcId || !(srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers'))) {
+          return json({ ok: false, error: 'the table card is for Smart money and Callers' }, 400);
         }
         const snap = await snapshot(ctx, sourceOf(srcId));
         const hid = await hiddenSet(ctx);
@@ -1167,7 +1270,21 @@ export async function handle(req, ctx) {
         const logos = await Promise.all(top.map(t => logoDataUri(t, via).catch(() => null)));
         const period = { h24: '24H', d7: '7D', d30: '30D', h1: '1H' }[tf] || '24H';
         let spec;
-        if (traders) {
+        if (srcId.startsWith('callers')) {
+          /* the hit rate is the ranking, so it leads; median peak says how big,
+             calls says how much of a record it is */
+          const win = { 'callers-daily': '24H', 'callers-weekly': '7D', 'callers-monthly': '30D' }[srcId] || '7D';
+          spec = {
+            title: 'TOP CALLERS ON PUMP.FUN', sub: win + ' \u00b7 HOW OFTEN THEIR CALLS HIT 2\u00d7', nameLabel: 'CALLER',
+            cols: [{ label: 'HIT 2\u00d7', x: 760 }, { label: 'MEDIAN PEAK', x: 960 }, { label: 'CALLS', x: 1152 }],
+            rows: top.map((t, i) => ({
+              title: t.xh ? '@' + t.xh : t.sym, subtitle: t.xh ? t.sym : '', logo: logos[i],
+              values: [{ text: Math.round((t.caller.hit2 || 0) * 100) + '%', color: T_UP },
+                       { text: t.caller.med ? (+t.caller.med).toFixed(1) + '\u00d7' : '\u2014', color: '#ffffff' },
+                       { text: String(t.caller.n || 0), color: '#c9d3de' }],
+            })),
+          };
+        } else if (traders) {
           spec = {
             title: 'TOP TRADERS BY REALIZED PNL', sub: period + ' \u00b7 NOT PAPER GAINS', nameLabel: 'TRADER',
             cols: [{ label: 'BANKED', x: 760 }, { label: 'OPEN', x: 960 }, { label: 'TOTAL', x: 1152 }],
@@ -1334,9 +1451,11 @@ export async function handle(req, ctx) {
       if (top.length < 3) return Response.redirect(url.origin + '/', 302);
 
       const qs = (srcId === 'trending' ? '' : '?source=' + srcId);
-      const q = 'kind=' + (srcId.startsWith('smart') || srcId.startsWith('traders') ? 'table' : 'bubbles')
+      const q = 'kind=' + (srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers') ? 'table' : 'bubbles')
         + '&source=' + srcId + '&tf=' + tf;
-      const desc = srcId.startsWith('traders')
+      const desc = srcId.startsWith('callers')
+        ? top.slice(0, 5).map(t => (t.xh ? '@' + t.xh : t.sym) + ' ' + Math.round((t.caller.hit2 || 0) * 100) + '% hit 2\u00d7').join(' · ')
+        : srcId.startsWith('traders')
         ? top.slice(0, 6).map(t => (t.xh ? '@' + t.xh : t.sym) + ' +' + (mcapLabel(t.realized) || '$0')).join(' · ')
         : top.slice(0, 6).map(t => '$' + t.sym + ' ' + (Number(t.pc[tf]) >= 0 ? '+' : '')
           + Number(t.pc[tf]).toFixed(0) + '%').join(' · ');
@@ -1349,7 +1468,7 @@ export async function handle(req, ctx) {
         cardUrl: url.origin + '/api/card?' + q,
         mapUrl: url.origin + '/?source=' + srcId,
         tweetUrl: 'https://twitter.com/intent/tweet?text='
-          + encodeURIComponent(TEN_SHARE[srcId] || 'Top 10') + '&url=' + encodeURIComponent(share),
+          + encodeURIComponent(TEN_SHARE[srcId] || 'Top 10') + '&url=' + encodeURIComponent(share) + '&via=pumpbubblefun',
         alt: desc,
       }), {
         headers: {
@@ -1383,7 +1502,7 @@ export async function handle(req, ctx) {
         cardUrl: url.origin + '/api/card?' + q,
         mapUrl: url.origin + '/' + (srcId === 'pumpfun' ? '' : '?source=' + srcId),
         tweetUrl: 'https://twitter.com/intent/tweet?text='
-          + encodeURIComponent(BOARD_TITLE[srcId]) + '&url=' + encodeURIComponent(share),
+          + encodeURIComponent(BOARD_TITLE[srcId]) + '&url=' + encodeURIComponent(share) + '&via=pumpbubblefun',
         alt: desc,
       }), {
         headers: {
@@ -1428,7 +1547,7 @@ export async function handle(req, ctx) {
         cardUrl: url.origin + '/api/card?' + q,
         mapUrl: url.origin + '/' + (found.srcId === 'pumpfun' ? '' : '?source=' + found.srcId),
         tweetUrl: 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text)
-          + '&url=' + encodeURIComponent(share),
+          + '&url=' + encodeURIComponent(share) + '&via=pumpbubblefun',
       }), {
         headers: {
           'content-type': 'text/html; charset=utf-8',

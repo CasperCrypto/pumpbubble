@@ -197,6 +197,25 @@ after that only to skip the wait, since both then ship the same code. A second d
 minute after the first also restarts every isolate again, which is the likeliest cause of the
 smoke test's post-deploy 502s.
 
+## The request budget
+
+**On the free plan every Worker invocation counts against 100,000 a day, per account**: every API
+call, every `/api/img`, every Telegram and Helius webhook delivery, every cron tick. Static files
+(the page, CSS, `public/*`) are free and unlimited — which is why the map's shell still loaded while
+every route answered Cloudflare **error 1027** on 2026-09-30, and "Smart money could not refresh"
+was the first symptom anyone saw. The count resets at 00:00 UTC.
+
+What spends it, in the order to suspect: Helius deliveries (every transaction of every watched
+wallet is one request, so `SMART_WATCH` is 25, down from the 100 that were on the webhook that day);
+a map open in a tab (a refresh every 15 s — now paused while the tab is hidden); the image proxy
+(one request per bubble's art on a first visit; the browser caches it after). `[observability]` is
+on at a tenth of requests, so the dashboard's Logs name the route that is spending it.
+
+**A second Cloudflare account for the bot is not the fix**: the bot shares KV and Durable Objects
+with the site, its shop calls the site's own routes (those would land on the site's account anyway),
+and a second free account opened to get round a limit risks both. Workers Paid ($5/month, ten
+million requests a month) is, and it also lifts the CPU and KV-write limits described below.
+
 ## Conventions
 
 - No dependencies, front end or back. If a library is genuinely needed, argue for it first.
@@ -205,6 +224,12 @@ smoke test's post-deploy 502s.
   100 bubbles × 64 verts × ≤7 neighbours is the current budget. `step()` measures ~0.4ms;
   `draw()` is the expensive half and is the first place to look if frames drop.
 - Test both viewports before calling something done: 1440×900 and 390×844.
+- **Icons, not emoji, in the site's UI.** One hand-drawn line-icon sprite sits at the top of
+  `public/index.html`'s body (`<symbol id="i-…">`), used through `ic(name, cls)`; the canvas draws
+  the same shapes from the same path data (`icon2d`, `faceLabel`), so a bubble's face and a button
+  never disagree. Emoji render differently on every phone and cannot take the page's colours. They
+  stay where they belong: Telegram messages and the ready-made X post text. `swap.html` carries the
+  few icons it uses.
 - `node scripts/check.mjs <url>` before and after a deploy.
 
 ## Roadmap (suggested order)
@@ -677,6 +702,66 @@ was clear the bubble view on mobile was already right and only the tables needed
 ipfs.io answered 429 to the card's direct fetch while `/api/img` served every one in ~0.1s from the
 edge cache the map had already filled. The proxy is a cache hit with no upstream call, and on a miss
 it walks the same gateways; the old direct path stays as the fallback. Every card kind passes it.
+
+## Callers
+
+`src/callers.mjs`, the `CallersDO` watcher in `worker/index.js`, sources `calls` and
+`callers-daily|weekly|monthly`, the Calls tab. Asked for as "callouts on pump.fun — maybe a
+leaderboard of traders by callouts; value, dopamine, flex". A pump.fun callout is a public call on
+a coin the caller holds, pushed to their followers; pump.fun ranks callers behind a login (its
+`/callout/leaderboard` answers 401). This ranks them in the open.
+
+**What is public, measured 2026-09-30:**
+
+| endpoint | what | how it behaved |
+|---|---|---|
+| `GET /home-feed` | ~150 live calls, pump.fun's own ranking, each with the caller's position in the coin (held, value, realized and total PnL) | fine polled every 3 s |
+| `GET /home-feed/new` | the 25 newest calls — about forty a minute | fine polled every 2 s |
+| `GET /users/<wallet>/callout-stats` | per day/week/month: calls, share reaching 1.2×/1.5×/2×, average and median peak multiple, time to peak, distribution | a burst of 40 in 2.4 s, no complaint |
+| `GET /callout/list/<wallet>` | every call of one caller | **429, `Retry-After: 584`** after a burst of 40, locked out for minutes |
+
+So per-caller polling is off the table: the two feeds are the stream and the stats endpoint the
+record. Every call carries `multiple` (now, against the call's price) and `maxMultiplier` (the peak
+since) — checked against live prices: SI at 24.2× by Jupiter's price, pump.fun said 24.7×.
+
+**Measured, not believed:**
+
+- **Peak and now, never only the peak.** TIGRINO peaked 19.7× after its call and sat at 0.31× —
+  whoever followed and held lost 69%. The table and the card show both.
+- **The ranking is the 2× hit rate at the lower edge of its 95% Wilson interval**, with a minimum
+  of calls per window (2 a day, 5 a week, 10 a month). Five for five (0.57) does edge out 28 for 40
+  (0.55) — that is the interval doing its job, and the test fixture says so — while 3 for 3 cannot
+  beat 20 for 30. An average is one moonshot: a trader that week averaged 3.0× on a median of 1.76×.
+- **Whether the caller still holds** is their own position in the feed, as of when it was read —
+  "sold", "took profit", "still holding" are measurements, not verdicts.
+- **The live table is calls worth reading**: from a caller with a record (5+ calls this week, a
+  quarter reaching 2×) or a call 1,000+ people have looked at. The raw stream is forty a minute,
+  most from accounts with generated names — the first four on the first run were ArrowWellServer,
+  TideMintPapyrus, ShrubCampAction and a fourth like them.
+
+**Why a Durable Object, again:** one process polls pump.fun once however many people are looking,
+on its own 20-second alarm, and keeps the book (calls, callers, records) in memory, saved every two
+minutes as one storage write. The clock schedules everything — the ranked feed every minute, the
+PnL boards every half hour (their callers are fetched first: they have a record of banking), coin
+market caps every three minutes — so a restart does not refetch everything on every tick. A cold
+book (a fresh deploy) fetches 15 records a tick until 150 callers have one, then 6. A tick is at
+most ~21 requests, inside the 50 a Worker invocation may make. The cron's `tick` restarts the
+alarm if a deploy ever lost it. Verified under `wrangler dev`: 144 calls from 337 callers within
+seconds of the first read, the weekly board filling as records arrive.
+
+**On the page** both views are tables in the Smart money tables' container (`TABLE_MODES`), rows
+as the feed pipeline expects: a call is a token row (`kind: 'call'`, one per call — two callers on
+one coin are two rows), so the card's Chart, Buy and Boost work; a caller is a people row like a
+trader (`kind: 'caller'`, Profile opens pump.fun). Table feeds skip the paid-bubble re-add
+(`TABLE_FEED`) — a gold token has no place in a table of people — and may be empty (`EMPTY_OK`,
+`EMPTY_MODES`) without reading as an outage. The share card is a leaderboard (`/api/card?kind=table
+&source=callers-weekly`: HIT 2× / MEDIAN PEAK / CALLS).
+
+**In the bot**: /callers shows the week's top ten and a switch; "Follow top callers" (AudienceDO
+`cf:<user>`) sends each new call from the week's top 20 the moment the watcher sees it, through the
+same paced fan-out queue the wallet tracker uses, with Buy (our swap), Chart and a way out. An alert
+is considered once per call and only while under 15 minutes old — a restart does not replay the
+past hour.
 
 ## The generative card
 
@@ -1510,9 +1595,12 @@ over a token already gold, at most five at a time. It is the outreach pitch in o
 bot and your token is gold on the map for an hour" — built the night the numbers came in: 22 site
 views in a week, one group, $0. Distribution, not features, is the bottleneck.
 
-**Our own links, everywhere a user is** (2026-09-26): the Telegram group (`TG_COMMUNITY`,
-t.me/pumpbubble) as a round button beside BOOST on every screen, on the bot's Start menu and in
-the setup reply; the bot (t.me/pumpbubblebot, Telegram's add-to-group screen asking for the
+**Our own links, everywhere a user is** (2026-09-26, X added 2026-09-30): X (`X_PROFILE`,
+x.com/pumpbubblefun) and the Telegram group (`TG_COMMUNITY`, t.me/pumpbubble) as round buttons
+beside BOOST on every screen (on a phone the live pill gives way so BOOST never leaves the edge),
+on the bot's Start menu and in the setup reply, and in the footer of every other page and every
+share page; share links carry `via=pumpbubblefun` and the pages `twitter:site`, so each post
+credits the account; the bot (t.me/pumpbubblebot, Telegram's add-to-group screen asking for the
 guard's admin rights) as "🤖 Free buy bot" in the toolbar and "🤖 Free buy alerts for $X in your
 Telegram group" on every token's card; the operator's pump.fun invite (`PUMP_JOIN`) on Solana
 cards and the Start menu. **The page has no global `[hidden]` rule** — `#card .join{display:block}`

@@ -39,6 +39,7 @@ import { TIERS as BOOST_TIERS, AD_TIERS, welcomeGold } from './boosts.mjs';
 import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
 import { smartWallets, topSmart, smartSignal } from './smartset.mjs';
 import { BOT_BONUS } from './taps.mjs';
+import { TOP_N as CALL_TOP_N } from './callers.mjs';
 
 /* Said at every Start, because pressing Start is what puts somebody on the
    list the operator can DM (src/audience.mjs). */
@@ -50,6 +51,8 @@ const DEXS = 'https://api.dexscreener.com';
 export const enabled = (env = {}) => !!env.TG_BOT_TOKEN;
 /* our own Telegram group (TG_COMMUNITY), linked from the Start menu and the
    setup reply; only a t.me link is accepted */
+/* our X account (X_PROFILE), beside the group; only an x.com profile link */
+export const xProfile = (env = {}) => /^https:\/\/x\.com\/[A-Za-z0-9_]{1,15}$/.test(String(env.X_PROFILE || '')) ? env.X_PROFILE : 'https://x.com/pumpbubblefun';
 export const community = (env = {}) => /^https:\/\/t\.me\/[A-Za-z0-9_]{4,40}$/.test(String(env.TG_COMMUNITY || '')) ? env.TG_COMMUNITY : 'https://t.me/pumpbubble';
 const site = (env = {}) => String(env.PUBLIC_ORIGIN || SITE).replace(/\/+$/, '');
 
@@ -191,7 +194,10 @@ export const BOT_PROFILE = {
     '➕ Free buy bot for your token’s group: every buy with your picture, a join captcha, a welcome message.',
     '👛 Track any wallet — every buy and sell, copy it in one tap.',
     '🧠 Follow pump.fun’s top traders by profit actually banked.',
+    '📣 pump.fun\u2019s best callers, measured — their new calls here first.',
     '⚡ Make a token gold on the map, or advertise it.',
+    '',
+    'News: x.com/pumpbubblefun',
     '',
     'Tap Start below.',
   ].join('\n'),
@@ -203,6 +209,7 @@ export const BOT_PROFILE = {
       { command: 'track', description: '👛 Track a wallet: /track WALLET name' },
       { command: 'wallets', description: '📋 Your tracked wallets' },
       { command: 'toptraders', description: '🧠 Follow pump.fun’s top traders' },
+      { command: 'callers', description: '📣 Top callers — their calls, first' },
       { command: 'boost', description: '⚡ Make a token gold on the map' },
       { command: 'ads', description: '📣 Advertise a token' },
       { command: 'help', description: '❓ How everything works' },
@@ -755,7 +762,7 @@ async function onGroup(ctx, msg) {
       + `MCap ${fmtUsd(t.mcap)} · ${t.grad === false ? 'bonding curve' : 'graduated'}\n\n`
       + head
       + 'Set the picture, emoji and minimum buy with the buttons below.\n'
-      + `Questions or ideas: <a href="${community(env)}">our Telegram group</a>.` + warn,
+      + `Questions or ideas: <a href="${community(env)}">our Telegram group</a> · news on <a href="${xProfile(env)}">X</a>.` + warn,
       settingsMarkup());
   }
 
@@ -898,7 +905,7 @@ async function setupEvm(ctx, msg, addr, want) {
     + `MCap ${fmtUsd(num(top.marketCap) || num(top.fdv))} · watching ${pools.length} pool${pools.length > 1 ? 's' : ''}${dexes ? ' (' + tgEsc(dexes) + ')' : ''}\n\n`
     + head
     + 'Set the picture, emoji and minimum buy with the buttons below.\n'
-    + `Questions or ideas: <a href="${community(env)}">our Telegram group</a>.` + warn,
+    + `Questions or ideas: <a href="${community(env)}">our Telegram group</a> · news on <a href="${xProfile(env)}">X</a>.` + warn,
     settingsMarkup());
 }
 
@@ -1733,6 +1740,7 @@ async function onPrivate(ctx, msg) {
   if (c.cmd === 'help') return sendHelp(ctx, msg.chat.id, 'menu');
   if (c.cmd === 'buybot' || c.cmd === 'setup') return sendHelp(ctx, msg.chat.id, 'group');
   if (c.cmd === 'toptraders' || c.cmd === 'smart') return sendHelp(ctx, msg.chat.id, 'traders');
+  if (c.cmd === 'callers' || c.cmd === 'calls') return sendCallers(ctx, msg.chat.id, uid);
   return say(env, msg.chat.id, 'I don\u2019t know that command. Type / to see mine, or:',
     { reply_markup: { inline_keyboard: [[MENU_BTN, { text: '❓ How it works', callback_data: 'help:menu' }]] } });
 }
@@ -1751,6 +1759,7 @@ export function mainMenu(env, bot) {
     + '➕ <b>Buy bot</b> — free buy alerts, a join captcha and a welcome for your token\u2019s group\n'
     + '👛 <b>Wallet tracker</b> — every buy and sell of any wallet, copied in one tap\n'
     + '🧠 <b>Top traders</b> — follow pump.fun\u2019s best, by profit actually banked\n'
+    + '📣 <b>Callers</b> — pump.fun\u2019s best callers, measured; their calls here first\n'
     + '⚡ <b>Promote</b> — make a token gold on the map, or advertise it\n\n'
     + 'Or just paste a token or wallet address here.\n\n'
     + '<i>' + DISCLOSURE + '</i>';
@@ -1760,9 +1769,11 @@ export function mainMenu(env, bot) {
      back to promote the bot by hand before the captcha works. */
   if (bot && /^\w+$/.test(bot.username || '')) kb.push([{ text: '➕ Add the buy bot to my group', url: addToGroupUrl(bot) }]);
   kb.push([{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }]);
+  kb.push([{ text: '📣 Top callers', callback_data: 'call:menu' }, { text: '🔥 Live calls', url: site(env) + '/?source=calls' }]);
   kb.push([{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Advertise', callback_data: 'shop:ads' }]);
   kb.push([{ text: '🫧 Open the map', url: site(env) }, { text: '💬 Community', url: community(env) }]);
-  kb.push([{ text: '❓ How it works', callback_data: 'help:menu' }, UNSUB]);
+  kb.push([{ text: '𝕏 Follow on X', url: xProfile(env) }, { text: '❓ How it works', callback_data: 'help:menu' }]);
+  kb.push([UNSUB]);
   if (pumpJoin(env)) kb.push([{ text: '🟢 New to pump.fun? Create an account', url: pumpJoin(env) }]);
   return { text, keyboard: kb };
 }
@@ -1776,6 +1787,7 @@ export function helpScreen(env, bot, topic) {
       keyboard: [
         [{ text: '➕ Buy bot for my group', callback_data: 'help:group' }],
         [{ text: '👛 Wallet tracker', callback_data: 'help:wallets' }, { text: '🧠 Top traders', callback_data: 'help:traders' }],
+        [{ text: '📣 Callers', callback_data: 'help:callers' }],
         [{ text: '⚡ Boosts and ads', callback_data: 'help:promote' }, { text: '🔕 Messages and safety', callback_data: 'help:privacy' }],
         [MENU_BTN],
       ],
@@ -1800,6 +1812,14 @@ export function helpScreen(env, bot, topic) {
         + 'pump.fun\u2019s top traders by profit actually banked — not paper gains. Follow them with one tap and their bigger buys and exits (1 SOL or more) arrive here, with ⚡ Copy buy.\n\n'
         + 'Their buys are also marked 🧠 SMART BUY in every group running the bot.',
       keyboard: [[{ text: '🧠 Follow top traders', callback_data: 'trk:smart' }, { text: '🫧 See them', url: site(env) + '/?source=traders' }], back],
+    },
+    callers: {
+      text: '📣 <b>Callers</b>\n\n'
+        + 'On pump.fun anyone can make a public call on a coin they hold. pumpbubble ranks the callers by how often their calls reach 2×, '
+        + 'adjusted for how many they made, so one lucky call does not top the board.\n\n'
+        + 'Every call shows what a follower kept — the peak, and where it is now — and whether the caller still holds it.\n\n'
+        + 'Follow the top callers and each new call arrives here the moment it is made, with Buy and Chart.',
+      keyboard: [[{ text: '📣 Top callers', callback_data: 'call:menu' }, { text: '🔥 Live calls', url: site(env) + '/?source=calls' }], back],
     },
     promote: {
       text: '⚡ <b>Boosts and ads</b>\n\n'
@@ -1842,6 +1862,79 @@ async function sendHelp(ctx, chatId, topic, messageId = 0) {
   return showScreen(ctx.env, chatId, messageId, h.text, h.keyboard);
 }
 
+/* ============================================================== callers */
+/* The week's top callers (src/callers.mjs, read from the CallersDO), and the
+   switch that sends their new calls here. The ranking is explained in one
+   line on the screen itself: a board people act on has to say what it
+   measures. */
+const pctOf = x => Math.round((+x || 0) * 100) + '%';
+export function callersScreen(env, rows, on) {
+  const list = (rows || []).slice(0, 10).map(r => `${r.rank}. <b>${tgEsc(r.xh ? '@' + r.xh : r.name)}</b>${r.verified ? ' ✓' : ''}`
+    + ` — ${pctOf(r.hit2)} of ${r.n} calls hit 2×` + (r.med ? `, median peak ${(+r.med).toFixed(1)}×` : '')).join('\n');
+  const text = '📣 <b>Top callers this week</b>\n'
+    + '<i>Ranked by how often their calls reach 2×, adjusted for how many they made — one lucky call does not top the board.</i>\n\n'
+    + (list || 'The board is filling up: the first records arrive within a few minutes.')
+    + '\n\n' + (on
+      ? `✅ Each new call from the top ${CALL_TOP_N} arrives here the moment it is made.`
+      : `Follow them and each new call from the top ${CALL_TOP_N} arrives here the moment it is made, with Buy and Chart.`);
+  const keyboard = [
+    [{ text: on ? '✅ Following top callers' : '📣 Follow top callers', callback_data: 'call:follow' }],
+    [{ text: '🔥 Live calls', url: site(env) + '/?source=calls' }, { text: '🏆 Full board', url: site(env) + '/?source=callers' }],
+    [MENU_BTN],
+  ];
+  return { text, keyboard };
+}
+async function sendCallers(ctx, chatId, uid, messageId = 0) {
+  let rows = [], on = false;
+  if (ctx.callers) { try { rows = ((await ctx.callers('board', { window: 'weekly' })) || {}).rows || []; } catch { rows = []; } }
+  if (ctx.audience && uid) { try { on = !!((await ctx.audience('isCallFan', { id: uid })) || {}).calls; } catch { on = false; } }
+  const s = callersScreen(ctx.env, rows, on);
+  return showScreen(ctx.env, chatId, messageId, s.text, s.keyboard);
+}
+async function onCalls(ctx, q, act) {
+  const { env } = ctx;
+  const chatId = q.message && q.message.chat && q.message.chat.id;
+  const uid = q.from.id;
+  const ack = (text, alert = false) => tg(env, 'answerCallbackQuery', { callback_query_id: q.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {});
+  if (!chatId) return ack();
+  const mid = q.message && q.message.message_id;
+  if (act === 'menu') { await ack(); return sendCallers(ctx, chatId, uid, mid); }
+  if (!ctx.audience) return ack('Call alerts are not switched on in this deployment.', true);
+  if (act === 'follow') {
+    const now = !((await ctx.audience('isCallFan', { id: uid }).catch(() => null)) || {}).calls;
+    await ctx.audience('callFan', { id: uid, on: now }).catch(() => null);
+    await ack(now ? '📣 Following the top callers — their new calls arrive here.' : 'Stopped the call alerts.', true);
+    return sendCallers(ctx, chatId, uid, mid);
+  }
+  if (act === 'off') {
+    await ctx.audience('callFan', { id: uid, on: false }).catch(() => null);
+    return ack('Stopped the call alerts. /callers to turn them back on.', true);
+  }
+  return ack();
+}
+
+/* One new call from a top caller, as a DM. The caller's record comes first
+   — it is why the message exists — then the coin, the thesis in their words,
+   the address to check, and a line saying a record is not a promise. */
+export function formatCallAlert(env, call, caller) {
+  const who = caller && caller.xh ? '@' + caller.xh : (caller && caller.name) || 'a top caller';
+  const html = `📣 <b>NEW CALL</b> — ${tgEsc(who)}${caller && caller.verified ? ' ✓' : ''}\n`
+    + (caller ? `#${Math.floor(+caller.rank || 0)} caller this week · ${pctOf(caller.hit2)} of ${Math.floor(+caller.n || 0)} calls reached 2×`
+      + (caller.med ? ` · median peak ${(+caller.med).toFixed(1)}×` : '') + '\n' : '')
+    + `\n<b>$${tgEsc(clean(call.sym, 12))}</b>${call.name ? ' — ' + tgEsc(clean(call.name, 48)) : ''}\n`
+    + `Called at ${fmtUsd(call.mcapAtCall)} market cap\n`
+    + (call.thesis ? `\n\u201c${tgEsc(clean(call.thesis, 180))}\u201d\n` : '')
+    + `\n<code>${tgEsc(call.mint)}</code>\n`
+    + '<i>A caller\u2019s record is not a promise. Not financial advice.</i>';
+  const origin = site(env);
+  const buttons = [
+    [{ text: '🛒 Buy $' + clean(call.sym, 12), url: buyOrSwap(env, origin, call.mint) },
+     { text: '📊 Chart', url: 'https://pump.fun/coin/' + encodeURIComponent(call.mint) }],
+    [{ text: '📣 All calls', url: origin + '/?source=calls' }, { text: '🔕 Stop call alerts', callback_data: 'call:off' }],
+  ];
+  return { html, buttons };
+}
+
 async function onCallback(ctx, q) {
   const { env, store } = ctx;
   const data = String(q.data || '');
@@ -1860,6 +1953,7 @@ async function onCallback(ctx, q) {
     const mid = q.message && q.message.message_id;
     return data === 'menu' ? sendMenu(ctx, chatId, mid) : sendHelp(ctx, chatId, data.slice(5), mid);
   }
+  if (uid && data.startsWith('call:')) return onCalls(ctx, q, data.slice(5));
   if (uid && data.startsWith('vcap:')) return onVerifyAnswer(ctx, q, data.slice(5));
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
   if (uid && (data.startsWith('shop:') || data.startsWith('buy:') || data.startsWith('chk:'))) return onShop(ctx, q, data);

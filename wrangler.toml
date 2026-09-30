@@ -31,6 +31,13 @@ workers_dev = true
 keep_vars = true
 
 # Static files. Anything not matched by /api/* is served from here.
+# Request logs in the Cloudflare dashboard (Workers & Pages → pumpbubble →
+# Logs), sampled at one in ten: enough to see which route spends the free
+# plan's 100,000 requests a day, well inside the free log allowance.
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -57,6 +64,8 @@ AD_CONTACT = "https://t.me/casper_crypto"
 PUMP_JOIN = "https://pump.fun/join/HermesCryptos"
 # Our own Telegram group, linked from the bot's Start menu and setup reply.
 TG_COMMUNITY = "https://t.me/pumpbubble"
+# Our X account, linked from the bot's Start menu and setup reply.
+X_PROFILE = "https://x.com/pumpbubblefun"
 # The /swap page's fee (src/refs.mjs swapConfig). JUP_REFERRAL is the public key
 # of a Jupiter referral account (referral.jup.ag), which is where the fee lands;
 # it goes in every swap it earns on, so it is config, not a secret. Uncomment
@@ -120,6 +129,17 @@ class_name = "AudienceDO"
 [[migrations]]
 tag = "v4-audience"
 new_sqlite_classes = ["AudienceDO"]
+
+# Callers (src/callers.mjs): one watcher that reads pump.fun's callout feeds
+# every 20 seconds and keeps the callers' records, so the map's Calls tab and
+# the bot's call alerts never poll pump.fun per visitor.
+[[durable_objects.bindings]]
+name = "CALLERS"
+class_name = "CallersDO"
+
+[[migrations]]
+tag = "v5-callers"
+new_sqlite_classes = ["CallersDO"]
 
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]

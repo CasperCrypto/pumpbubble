@@ -41,6 +41,13 @@ body{background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh;
   font:500 14px/1.35 ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;
   -webkit-font-smoothing:antialiased}
 button,input{font-family:inherit;color:inherit}
+.ic{width:1.15em;height:1.15em;flex:0 0 auto;display:inline-block;vertical-align:-.2em;
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic.f{fill:currentColor;stroke:none}
+.okc .ic{width:30px;height:30px;stroke-width:3}
+.links{margin-top:-4px}
+.links a{color:var(--dim);text-decoration:none;font-weight:800;display:inline-flex;align-items:center;gap:5px}
+.links a:hover{color:var(--ink)}
 a{color:inherit}
 
 /* the map's ambient light and grain */
@@ -241,6 +248,15 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 </style>
 </head>
 <body>
+<!-- the map's icon set, the few this page uses (see public/index.html) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-bubbles" viewBox="0 0 24 24"><path d="M9 8a5.5 5.5 0 1 1 0 11A5.5 5.5 0 0 1 9 8zM17 3.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7zM18 14.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M17.75 3h3.07l-6.72 7.68L22 21h-6.19l-4.85-6.34L5.41 21H2.34l7.19-8.21L1.95 3h6.35l4.38 5.79zM16.67 19.18h1.7L7.38 4.72H5.56z"/></symbol>
+<symbol id="i-telegram" viewBox="0 0 24 24"><path d="M21.9 4.3 18.7 19.5c-.2 1-.9 1.3-1.7.8l-4.8-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.9 8.9-8c.4-.3-.1-.5-.6-.2L6.5 13.3 1.8 11.8c-1-.3-1-1 .2-1.5L20.5 3.2c.9-.3 1.6.2 1.4 1.1z"/></symbol>
+<symbol id="i-bot" viewBox="0 0 24 24"><path d="M6.5 9h11A2.5 2.5 0 0 1 20 11.5v5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-5A2.5 2.5 0 0 1 6.5 9zM12 5.5V9M12 3.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM9 13.5v1M15 13.5v1M2 12.5v3M22 12.5v3"/></symbol>
+</defs></svg>
 <div id="aura"><b></b><b></b><b></b></div>
 <div id="grain"></div>
 
@@ -271,7 +287,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
       <div title="Distinct wallets that traded it in the last 24 hours"><u>Traders</u><b id="sTrad">—</b></div>
     </div>
     <div class="chips" id="chips"></div>
-    <div class="hlinks"><a class="pill" id="hChart" target="_blank" rel="noopener">Chart ↗</a><a class="pill" id="hBubble">🫧 Bubble</a></div>
+    <div class="hlinks"><a class="pill" id="hChart" target="_blank" rel="noopener">Chart ↗</a><a class="pill" id="hBubble"><svg class="ic" aria-hidden="true"><use href="#i-bubbles"/></svg>Bubble</a></div>
   </section>
 
   <section class="panel" id="swap" hidden>
@@ -305,15 +321,20 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   </section>
 
   <section class="panel" id="done" hidden>
-    <div class="okc">✓</div>
+    <div class="okc"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div>
     <h2 id="dTitle"></h2>
     <p class="sub" id="dSub"></p>
     <a id="dTx" target="_blank" rel="noopener">View on Solscan ↗</a>
-    <a id="dBoost" href="/">⚡ Boost it on the map</a>
+    <a id="dBoost" href="/"><svg class="ic f" aria-hidden="true"><use href="#i-bolt"/></svg> Boost it on the map</a>
     <button class="ghost" id="dAgain" type="button">Trade again</button>
   </section>
 
   <p class="fine" id="fine">Routed by Jupiter. Your wallet signs every trade; pumpbubble never holds your funds or keys.</p>
+  <p class="fine links">
+    <a href="https://x.com/pumpbubblefun" target="_blank" rel="noopener"><svg class="ic f" aria-hidden="true"><use href="#i-x"/></svg>Follow on X</a> ·
+    <a href="https://t.me/pumpbubble" target="_blank" rel="noopener"><svg class="ic f" aria-hidden="true"><use href="#i-telegram"/></svg>Telegram</a> ·
+    <a href="https://t.me/pumpbubblebot" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg>Buy bot</a>
+  </p>
 </main>
 
 <div id="sheet" hidden>
@@ -343,6 +364,8 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   var LAST = 'pb.swap.wallet';
 
   var $ = function (id) { return document.getElementById(id); };
+  /* one icon from the sprite at the top of the body */
+  function ic(n, c) { return '<svg class="ic' + (c ? ' ' + c : '') + '" aria-hidden="true"><use href="#i-' + n + '"/></svg>'; }
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var store = {
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -583,9 +606,9 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     /* What the chain says about the token, measured and neutral. Never a
        verdict: intent is unknowable, authorities and concentration are not. */
     var a = j.audit || {}, chips = [];
-    if (a.mintAuthorityDisabled === true) chips.push(['ok', '✓ Mint authority off']);
+    if (a.mintAuthorityDisabled === true) chips.push(['ok', 'Mint authority off']);
     else if (a.mintAuthorityDisabled === false) chips.push(['warn', 'Mint authority on']);
-    if (a.freezeAuthorityDisabled === true) chips.push(['ok', '✓ Freeze authority off']);
+    if (a.freezeAuthorityDisabled === true) chips.push(['ok', 'Freeze authority off']);
     else if (a.freezeAuthorityDisabled === false) chips.push(['warn', 'Freeze authority on']);
     if (a.topHoldersPercentage != null) chips.push([a.topHoldersPercentage > 30 ? 'warn' : '', 'Top holders own ' + Math.round(a.topHoldersPercentage) + '%']);
     if (a.devBalancePercentage != null && a.devBalancePercentage >= 10) chips.push(['warn', 'Dev holds ' + Math.round(a.devBalancePercentage) + '%']);
@@ -594,7 +617,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
       chips.push(['warn', fmtCount(s24.numTraders) + ' traders made ' + fmtCount(trades) + ' trades (24h)']);
     }
     if (j.organicScoreLabel) chips.push([j.organicScoreLabel === 'high' ? 'ok' : j.organicScoreLabel === 'low' ? 'warn' : '', 'Organic activity: ' + j.organicScoreLabel]);
-    $('chips').innerHTML = chips.map(function (c) { return '<span class="chip ' + c[0] + '">' + esc(c[1]) + '</span>'; }).join('');
+    $('chips').innerHTML = chips.map(function (c) { return '<span class="chip ' + c[0] + '">' + (c[0] === 'ok' ? ic('check') : '') + esc(c[1]) + '</span>'; }).join('');
 
     var pumpish = j.launchpad === 'pump.fun' || /pump$/.test(S.mint);
     $('hChart').href = pumpish ? 'https://pump.fun/coin/' + encodeURIComponent(S.mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(S.mint);
@@ -854,7 +877,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
         + '<button class="wopt" type="button" id="sOff">Disconnect</button>';
       $('sCopy').onclick = function () {
         var b = this;
-        (navigator.clipboard ? navigator.clipboard.writeText(ACCT.address) : Promise.reject()).then(function () { b.textContent = 'Copied ✓'; }, function () { b.textContent = 'Copy it from above'; });
+        (navigator.clipboard ? navigator.clipboard.writeText(ACCT.address) : Promise.reject()).then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy it from above'; });
       };
       $('sOff').onclick = function () { disconnect(); closeSheet(); };
     } else if (wallets.length) {
@@ -978,7 +1001,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     var bo = $('dBoost');
     bo.hidden = sell;
     bo.href = '/?boost=' + encodeURIComponent(S.mint);
-    bo.textContent = '⚡ Make $' + sym() + ' gold on the map';
+    bo.innerHTML = ic('bolt', 'f') + ' Make $' + esc(sym()) + ' gold on the map';
     view('done');
   }
 

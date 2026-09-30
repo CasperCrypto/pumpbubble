@@ -10,7 +10,8 @@
    ========================================================================== */
 
 import { Guard, runGuard } from '../src/guard.mjs';
-import { guardExpire, onEvmBuys, sendDm } from '../src/tgbot.mjs';
+import { guardExpire, onEvmBuys, sendDm, formatCallAlert } from '../src/tgbot.mjs';
+import { CallerBook, pollOnce, WINDOWS as CALL_WINDOWS } from '../src/callers.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
@@ -164,6 +165,9 @@ export class AudienceDO {
       case 'smart': out = await this.a.smart(b.id, !!b.on); break;
       case 'isSmart': out = { ok: true, smart: await this.a.isSmart(b.id) }; break;
       case 'smartFans': out = { ok: true, list: await this.a.smartFans() }; break;
+      case 'callFan': out = await this.a.callFan(b.id, !!b.on); break;
+      case 'isCallFan': out = { ok: true, calls: await this.a.isCallFan(b.id) }; break;
+      case 'callFans': out = { ok: true, list: await this.a.callFans() }; break;
       case 'wallets': out = { ok: true, list: await this.a.wallets() }; break;
       case 'route': out = await this.a.route(b.wallets); break;
       case 'fanout':
@@ -256,6 +260,75 @@ export class TapArena {
       await this.state.storage.put('arena', this.arena.toJSON());
     }
   }
+}
+
+/* Callers (src/callers.mjs): one watcher for pump.fun's callout feeds. Its
+   alarm is the heartbeat — one pollOnce every 20 seconds — so the map and
+   the bot read a book that is already warm, and pump.fun is asked each
+   thing once however many people are looking. Any request (the cron's
+   `tick` every five minutes) restarts the alarm if a deploy lost it. The
+   book is saved every two minutes: one storage write, not one per call. */
+const CALLERS_TICK_MS = 20_000;
+export class CallersDO {
+  constructor(state, env) { this.state = state; this.env = env; this.book = null; this.savedAt = Date.now(); }
+  async load() {
+    if (this.book) return;
+    this.book = CallerBook.from(await this.state.storage.get('book'));
+  }
+  async fetch(req) {
+    await this.load();
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    const now = Date.now();
+    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(now + 1000);
+    const win = CALL_WINDOWS[b.window] ? b.window : 'weekly';
+    let out;
+    switch (b.op) {
+      case 'board': out = { ok: true, window: win, rows: this.book.board(win, now), status: this.book.status(now) }; break;
+      case 'live': out = { ok: true, rows: this.book.live(now, Math.min(200, Math.max(1, +b.limit || 150))), status: this.book.status(now) }; break;
+      case 'status': out = { ok: true, ...this.book.status(now) }; break;
+      default: out = { ok: true };
+    }
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async alarm() {
+    await this.load();
+    const now = Date.now();
+    try { await pollOnce(this.book, now); }
+    catch (e) { this.book.polls.lastError = String(e && e.message || e).slice(0, 120); }
+    try { await this.sendAlerts(now); } catch { /* the next tick tries the next calls */ }
+    if (now - this.savedAt > 120_000) {
+      this.savedAt = now;
+      try { await this.state.storage.put('book', this.book.toJSON(now)); } catch { /* next save */ }
+    }
+    await this.state.storage.setAlarm(Date.now() + CALLERS_TICK_MS);
+  }
+  /* New calls from the week's top callers, to whoever asked for them, through
+     the audience's paced queue — the same one the wallet tracker uses. */
+  async sendAlerts(now) {
+    const list = this.book.alerts(now);
+    if (!list.length || !this.env.TG_BOT_TOKEN) return;
+    const aud = audienceClient(this.env);
+    if (!aud) return;
+    const fans = ((await aud('callFans')) || {}).list || [];
+    if (!fans.length) return;
+    for (const a of list) {
+      const { html, buttons } = formatCallAlert(this.env, a.call, a.caller);
+      await aud('fanout', { uids: fans, html, buttons });
+    }
+  }
+}
+
+function callersClient(env) {
+  if (!env.CALLERS) return null;
+  const stub = () => env.CALLERS.get(env.CALLERS.idFromName('callers'));
+  return async (op, body = {}) => {
+    const r = await stub().fetch('https://callers/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, ...body }),
+    });
+    return r.json();
+  };
 }
 
 /* The API talks to the arena through one async call, the same one the Node
@@ -408,6 +481,7 @@ async function makeCtx(env, execCtx) {
     guard: guardClient(env),
     evm: evmClient(env),
     audience: audienceClient(env),
+    callers: callersClient(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),
@@ -557,6 +631,9 @@ export default {
         /* Telegram buybot: registers its webhook once TG_BOT_TOKEN exists. A
            no-op without the token and a one-call check with it. */
         await handle(new Request('https://pumpbubble.fun/api/tg/ensure'), ctx);
+        /* The callers' watcher runs on its own alarm; this only restarts it if
+           a deploy or an error ever lost it. */
+        if (ctx.callers) await ctx.callers('tick').catch(() => null);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {

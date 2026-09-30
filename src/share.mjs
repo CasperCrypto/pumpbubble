@@ -231,6 +231,7 @@ export function page({ title, desc, canonical, cardUrl, mapUrl, tweetUrl, alt, h
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@pumpbubblefun">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(desc)}">
 <meta name="twitter:image" content="${esc(cardUrl)}">
@@ -248,6 +249,7 @@ a.btn{display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 22px;
 .go{background:linear-gradient(180deg,#8ff7b4,#25c464);color:#05210f}
 .x{background:#12171f;color:#e8eef6;border:1px solid #223}
 .n{font-size:13px;color:#7d8a99}
+.f{font-size:12.5px;color:#7d8a99}.f a{color:#c9d3de;text-decoration:none;font-weight:700}
 </style></head><body>
 <img src="${esc(cardUrl)}" alt="${esc(alt)}" width="1200" height="630">
 <div class="row">
@@ -255,6 +257,7 @@ a.btn{display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 22px;
   <a class="btn x" href="${esc(tweetUrl)}" rel="noopener">Share on X</a>
 </div>
 <div class="n">${esc(desc)}</div>
+<div class="f">Follow <a href="https://x.com/pumpbubblefun" rel="noopener">@pumpbubblefun on X</a> · <a href="https://t.me/pumpbubble" rel="noopener">Telegram</a> · <a href="https://t.me/pumpbubblebot" rel="noopener">free buy bot</a></div>
 </body></html>`;
 }
 

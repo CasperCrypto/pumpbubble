@@ -140,7 +140,7 @@ try {
   is('a help topic replaces the menu in place', !!ed && ed.body.message_id === 7, true);
   is('the group guide starts with the add button', ed && ed.body.reply_markup.inline_keyboard[0][0].url.includes('startgroup'), true);
   is('and says where /setup goes', ed && ed.body.text.includes('/setup'), true);
-  is('every topic has a way back', ['menu', 'group', 'wallets', 'traders', 'promote', 'privacy']
+  is('every topic has a way back', ['menu', 'group', 'wallets', 'traders', 'callers', 'promote', 'privacy']
     .every(t => helpScreen(env, { username: 'pumpbubblebot' }, t).keyboard.flat().some(b => b.callback_data === 'menu')), true);
   is('an unknown topic falls back to the topic list', helpScreen(env, null, 'nope').text, helpScreen(env, null, 'menu').text);
   is('the safety topic warns about fake verifications', /never ask for a private key/.test(helpScreen(env, null, 'privacy').text), true);
