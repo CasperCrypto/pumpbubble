@@ -14,6 +14,7 @@ import { guardExpire, onEvmBuys, sendDm } from '../src/tgbot.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
+import { SWAP_CSP } from '../src/refs.mjs';
 import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
@@ -499,6 +500,25 @@ export default {
         "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors *");
       /* an embed is a widget, not a document to be indexed on its own */
       h.set('x-robots-tag', 'noindex');
+      h.set('cache-control', 'public, max-age=0, must-revalidate');
+      return new Response(res.body, { status: res.status, headers: h });
+    }
+
+    /* /swap is Jupiter's widget (public/swap.html), and it is the one page
+       that loads code from somebody else: the plugin and its CSS from
+       plugin.jup.ag, Inter from Google Fonts, quotes and wallets over any
+       https/wss host, token art from anywhere. So it gets its own policy, set
+       here like /embed's so nothing depends on how _headers rules merge — and
+       the map's strict one is untouched. It renders no token string except
+       through esc(), and nothing of ours on it moves money. Popups stay
+       allowed for wallets that sign in a window of their own. */
+    if (p === '/swap') {
+      const page = new URL(request.url);
+      page.pathname = '/swap';
+      const res = await env.ASSETS.fetch(new Request(page, { headers: request.headers }));
+      const h = new Headers(res.headers);
+      h.set('content-security-policy', SWAP_CSP);
+      h.set('cross-origin-opener-policy', 'same-origin-allow-popups');
       h.set('cache-control', 'public, max-age=0, must-revalidate');
       return new Response(res.body, { status: res.status, headers: h });
     }

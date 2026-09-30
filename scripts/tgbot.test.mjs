@@ -198,7 +198,7 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
   const bad = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
     ad: { title: '$X', url: 'javascript:alert(1)' } });
   is('an ad with a non-http link is not printed', bad.caption.includes('javascript:'), false);
-  is('buy button falls back to a plain swap when no referral is set', keyboard.inline_keyboard[1][0].url.startsWith('https://jup.ag/swap/SOL-'), true);
+  is('buy button opens our swap page when no referral is set', keyboard.inline_keyboard[1][0].url, 'https://pumpbubble.fun/swap?mint=' + MINT);
 }
 {
   const { keyboard } = formatBuy({ buy, token: { ...token, grad: true }, group, solUsd: 104 });

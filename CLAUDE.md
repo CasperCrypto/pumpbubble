@@ -17,10 +17,11 @@ Business model, in priority order:
    are expected to out-earn big team packages. *Built: self-serve, on-chain, no processor.*
 2. **Ad slots** — the rail above the map. Sold slots come from KV so a slot can be filled without
    a deploy. Empty slots stay visible on purpose: they are the sales pitch. *Built, sold manually.*
-3. **Trade referrals** — a Buy button on each bubble routed through Jupiter or a trading-bot
-   referral (Axiom / Photon / BullX / Trojan). Expected to out-earn ads at volume, zero sales
-   effort. *Built — `src/refs.mjs`. Dormant until `REF_PROVIDER` and `REF_CODE` are set; the
-   button does not render without a code, because one that earns nothing still spends the click.*
+3. **Trade referrals and our own swap** — a Buy button on each Solana bubble, the bot's Buy and
+   ⚡ Copy buy. A trading-bot referral (Axiom / Photon / BullX / Trojan) wins when `REF_PROVIDER`
+   and `REF_CODE` are set; otherwise Buy opens **our `/swap` page** (Jupiter's widget, our fee on
+   every quote once `JUP_REFERRAL` is set). Expected to out-earn ads at volume, zero sales effort.
+   *Built — `src/refs.mjs`, `public/swap.html`; see "The swap page".*
 4. **Pro subscription** — alerts, more bubbles, saved filters, no ads. *Not built.*
 
 ## Current state
@@ -77,6 +78,13 @@ the whole architecture.
 - **pump.fun** `frontend-api-v3.pump.fun/coins` — the spine: mint, **ticker**, **image**,
   **market cap**, graduation state, ATH, creation and last-trade time. 6 pages × 50 = 300 tokens,
   ~2s cold. Deep pagination works; no rate limiting observed at this volume.
+  **One coin by mint is `/coins-v2/<mint>`** (`pumpCoin()`, v3 as the spare). pump.fun retired
+  `GET /coins/<mint>` — 404 "Cannot GET" — and it was found on 2026-09-30 only because the swap
+  page could not name UDR, a token on the map: every single-token lookup (the boost box, a boost
+  for a token off the map, the bot's `/setup` and alert market cap, Tap wars adds) had been
+  answering "no token found" for anything not already in a warm feed, which is why nothing looked
+  broken from the map. `scripts/check.mjs` now resolves wrapped SOL, which is on no tab, so the
+  cold path is exercised after every deploy.
 - **DexScreener** `/tokens/v1/solana/{mints}` (30 per call) — price change and volume *only*.
   pump.fun exposes no change field and colour is the whole point of the map. Coverage of graduated
   pump.fun mints measured at ~98%.
@@ -935,6 +943,33 @@ tab: the state was right and the page said otherwise, which is worse than either
 being wrong alone — and the links this site generates for itself are what land
 there.
 
+## The swap page
+
+`public/swap.html` at `/swap?mint=<mint>`, `swapConfig()` / `buyOrSwap()` / `SWAP_CSP` in
+`src/refs.mjs`, `/api/swap-config`. Jupiter's own swap widget (the Plugin, `plugin-v1.js`,
+integrated mode) on our domain, with our token header above it and a way back to the token's page.
+
+**It is where Buy goes when no trading bot is configured** — the map card's Buy (now shown on every
+Solana token), the bot's Buy and ⚡ Copy buy. The old rule was "no code, no button", because a link
+out to someone else's terminal with no referral spends the click and earns nothing. This link
+keeps the visitor on pumpbubble, and it starts earning the day the fee account exists, without a
+deploy: set `JUP_REFERRAL` (the public key of a referral account made at referral.jup.ag, with a
+wrapped-SOL fee account so SOL-in buys pay in SOL) and optionally `JUP_FEE_BPS` (50–255, default
+50 — the plugin's floor; Jupiter keeps a fifth). Without it the widget quotes with Jupiter's own
+0.1% and says nothing about our fee; with it the page says the quote includes one. A referral
+trading bot still wins when both are set — that is the operator's explicit choice.
+
+**The page has its own Content-Security-Policy, set by the Worker** (`run_worker_first` includes
+`/swap`, served like `/embed`), so it never depends on how `_headers` rules merge and the map's
+strict policy is untouched. Details and the reason it is acceptable are in `docs/security.md`.
+Nothing on the page moves money of ours: no treasury address, no boost box, the visitor's wallet
+signs every swap in Jupiter's widget.
+
+Two things learned building it: **Jupiter fixes the widget at 360×550** (the empty lower half fills
+with rate and fee once an amount is typed), so the header matches 360px rather than fighting it;
+and `.tok{display:flex}` beat the `hidden` attribute exactly as `#card .join` did on the map — an
+empty header bar showed for tokens that failed to resolve until `.tok[hidden]{display:none}`.
+
 ## Where the Chart button goes
 
 `chartUrl(t)` routes by the **token**, never by the tab being viewed. Keying off `S.mode` was wrong
@@ -1443,7 +1478,7 @@ text-level checks passed it.
 
 **Copy trading and sniping are deep links, not custody — decided, not deferred.** ⚡ Copy buy opens
 the same swap as the Buy button (the referral trading bot when `REF_PROVIDER`/`REF_CODE` are set,
-Jupiter otherwise). Executing trades for users means holding their keys and money in a Worker; one
+our `/swap` page otherwise). Executing trades for users means holding their keys and money in a Worker; one
 bug or breach empties every user at once, and the liability is the operator's. The trading bots
 that already do sniping and auto-copy are the execution layer, and they pay referral for the flow.
 

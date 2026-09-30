@@ -64,7 +64,7 @@ if (REMOVE) {
 /* Real metadata, so the bubble carries the token's own art and ticker. The
    re-add path reads these when the token is not in the current feed, which is
    exactly when a permanent boost most needs them. */
-const r = await fetch('https://frontend-api-v3.pump.fun/coins/' + MINT);
+const r = await fetch('https://frontend-api-v3.pump.fun/coins-v2/' + MINT)  // /coins/<mint> is retired (core.mjs pumpCoin);
 if (!r.ok) { console.error('  pump.fun returned ' + r.status); process.exit(1); }
 const c = await r.json();
 

@@ -15,7 +15,7 @@
      - nothing is ever made up where no source answered.
    ========================================================================== */
 
-import { enrich, scoreQuality, _dexMemForTests, _actMemForTests } from '../src/core.mjs';
+import { enrich, scoreQuality, pumpCoin, fetchCoin, _dexMemForTests, _actMemForTests } from '../src/core.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
@@ -124,6 +124,53 @@ try {
     is('mints without a pair are not re-asked every build', calls + pumpCalls, 0);
   }
 } finally { globalThis.fetch = real; }
+
+/* One coin by mint. pump.fun retired GET /coins/<mint> (404 "Cannot GET"),
+   and every single-token lookup — boost box, /setup, Tap wars adds — failed
+   as "no token found" for anything not in a warm feed. Pinned: the retired
+   route is never asked, v2 is, v3 catches a v2 failure, and a record for some
+   other mint is not accepted as this one. */
+{
+  const M = mint(7);
+  const coin = { mint: M, symbol: 'UDR', name: 'United', usd_market_cap: 5e8, complete: true, image_uri: '' };
+  const asked = [];
+  const route = (fail = {}) => async (url) => {
+    const u = String(url);
+    asked.push(u);
+    if (u.includes('/coins/' + M)) return new Response('{"message":"Cannot GET"}', { status: 404 });
+    for (const v of ['v2', 'v3']) {
+      if (u.includes('/coins-' + v + '/')) {
+        if (fail[v] === 'down') return new Response('', { status: 503 });
+        if (fail[v] === 'other') return new Response(JSON.stringify({ ...coin, mint: mint(8) }), { status: 200 });
+        return new Response(JSON.stringify(coin), { status: 200 });
+      }
+    }
+    return new Response('[]', { status: 200 });   // enrichment calls: nothing to add
+  };
+  try {
+    globalThis.fetch = route();
+    let c = await pumpCoin(M);
+    is('a coin resolves through /coins-v2/', c && c.symbol, 'UDR');
+    is('the retired /coins/<mint> is never asked', asked.some(u => u.includes('/coins/' + M)), false);
+    is('v2 answered, so v3 was not asked', asked.some(u => u.includes('/coins-v3/')), false);
+
+    asked.length = 0; globalThis.fetch = route({ v2: 'down' });
+    c = await pumpCoin(M);
+    is('v3 answers when v2 is down', c && c.symbol, 'UDR');
+
+    asked.length = 0; globalThis.fetch = route({ v2: 'other', v3: 'other' });
+    is('a record for another mint is refused', await pumpCoin(M), null);
+
+    globalThis.fetch = route({ v2: 'down', v3: 'down' });
+    is('both down is null, not a throw', await pumpCoin(M), null);
+    is('not a mint, not asked', await pumpCoin('0xabc'), null);
+
+    globalThis.fetch = route();
+    const t = await fetchCoin(M, '');
+    is('fetchCoin builds the token from it', t && t.sym, 'UDR');
+    is('with its market cap', t && t.mcap, 5e8);
+  } finally { globalThis.fetch = real; }
+}
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

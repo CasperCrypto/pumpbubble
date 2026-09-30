@@ -29,9 +29,9 @@
    without running a server.
    ========================================================================== */
 
-import { resolveAnyToken, isCA, isMint, isEvmAddr, clean, PUMP } from './core.mjs';
+import { resolveAnyToken, pumpCoin, isCA, isMint, isEvmAddr, clean } from './core.mjs';
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
-import { buyUrl, pumpJoin } from './refs.mjs';
+import { buyOrSwap, pumpJoin } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
@@ -203,7 +203,7 @@ export function emojiRow(usd, emoji = '🟢', step = 20) {
    figures, 🟢 otherwise. Everything from the token is escaped; every link is
    validated. */
 /* Where a token's buttons go, by chain. Solana: pump.fun or DexScreener,
-   Buy through the referral when one is set. EVM: DexScreener, Buy on
+   Buy through the referral when one is set, else our /swap page. EVM: DexScreener, Buy on
    Uniswap where it runs (Robinhood Chain falls back to the chart). */
 export function tokenLinks(env, g, token = {}) {
   const origin = site(env);
@@ -222,7 +222,7 @@ export function tokenLinks(env, g, token = {}) {
   const mint = token.mint || g.mint;
   return {
     chart: token.grad === false ? 'https://pump.fun/coin/' + encodeURIComponent(mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(mint),
-    buy: buyUrl(env, mint) || ('https://jup.ag/swap/SOL-' + encodeURIComponent(mint)),
+    buy: buyOrSwap(env, origin, mint),
     bubble: origin + '/s/' + encodeURIComponent(mint),
     boost: origin + '/?boost=' + encodeURIComponent(mint),
   };
@@ -279,7 +279,7 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   lines.push(`🫧 <a href="${links.bubble}">${tgEsc(sym)} on the bubble map</a>`);
 
   /* Chart goes to a chart; Buy through the referral where one is configured
-     and to a plain swap when not — a button that says Buy and does nothing
+     and to our own swap page when not — a button that says Buy and does nothing
      is worse than no button. */
   const keyboard = {
     inline_keyboard: [
@@ -392,10 +392,7 @@ async function poolAndSocials(mint) {
   let pool = '';
   const socials = {};
   try {
-    const r = await fetch(PUMP + '/coins/' + encodeURIComponent(mint), {
-      headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000),
-    });
-    const c = r.ok ? await r.json() : null;
+    const c = await pumpCoin(mint, 8000);
     if (c && c.complete) {
       const p = c.pump_swap_pool || c.pool_address || c.raydium_pool || '';
       if (isMint(p)) pool = p;

@@ -8,7 +8,7 @@ import { sponsoredDm } from './audience.mjs';
 import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
          signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
-import { buyConfig } from './refs.mjs';
+import { buyConfig, swapConfig } from './refs.mjs';
 import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page, logoDataUri } from './share.mjs';
 import { seedFor } from './bubblecard.mjs';
@@ -1085,6 +1085,14 @@ export async function handle(req, ctx) {
         accent: safeAccent(cfg.accent),
         home: 'https://pumpbubble.fun',
       }, 200, { 'cache-control': 'public, max-age=60' });
+    }
+
+    /* --------------------------------------------------- /api/swap-config */
+    /* The swap page's fee: our Jupiter referral account and its bps, or
+       `fee: false`. Public by construction — the account is written into
+       every swap it earns on. */
+    if (path === '/api/swap-config') {
+      return json({ ok: true, ...swapConfig(ctx.env) }, 200, { 'cache-control': 'public, max-age=300' });
     }
 
     /* --------------------------------------------------------- /api/token */

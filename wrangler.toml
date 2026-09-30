@@ -38,7 +38,7 @@ binding = "ASSETS"
 # /market matches market.html, so the server-rendering branch never ran and the
 # raw shell went out with its placeholders intact. These paths must reach the
 # worker first.
-run_worker_first = ["/market", "/board", "/embed"]
+run_worker_first = ["/market", "/board", "/embed", "/swap"]
 
 # Keeps a warm snapshot + persists market-cap history when traffic is quiet.
 [triggers]
@@ -57,6 +57,12 @@ AD_CONTACT = "https://t.me/casper_crypto"
 PUMP_JOIN = "https://pump.fun/join/HermesCryptos"
 # Our own Telegram group, linked from the bot's Start menu and setup reply.
 TG_COMMUNITY = "https://t.me/pumpbubble"
+# The /swap page's fee (src/refs.mjs swapConfig). JUP_REFERRAL is the public key
+# of a Jupiter referral account (referral.jup.ag), which is where the fee lands;
+# it goes in every swap it earns on, so it is config, not a secret. Uncomment
+# with the real key once the account exists — until then swaps carry no fee.
+# JUP_REFERRAL = ""
+JUP_FEE_BPS = "50"
 
 # SOLANA_RPC is deliberately NOT here.
 #

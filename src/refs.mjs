@@ -74,6 +74,44 @@ export function pumpJoin(env = {}) {
   return /^https:\/\/pump\.fun\/join\/[A-Za-z0-9_-]{2,40}$/.test(u) ? u : '';
 }
 
+/* Our own swap page (`public/swap.html`, `/swap?mint=`): Jupiter's widget,
+   on our domain, with our fee on the quote once `JUP_REFERRAL` is set.
+
+   It is the Buy button's destination whenever no trading-bot referral is
+   configured. That bends the rule above on purpose: the rule exists because
+   a link out to somebody else's terminal with no code on it spends the click
+   and earns nothing. This link keeps the visitor on pumpbubble, and the day
+   the referral account exists every click earns, with no deploy.
+
+   The fee account is a Jupiter referral account — a public key, not a secret.
+   Jupiter takes 50-255 bps in the plugin and keeps a fifth of it. */
+export const SWAP_PATH = '/swap?mint=';
+/* The swap page's Content-Security-Policy (served by worker/index.js). Wider
+   than the map's because Jupiter's widget needs it; still no framing, no
+   forms, no plugins, and scripts only from us and plugin.jup.ag. */
+export const SWAP_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://plugin.jup.ag",
+  "style-src 'self' 'unsafe-inline' https://plugin.jup.ag https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com https://plugin.jup.ag",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https: wss:",
+  "frame-src https:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+export const JUP_FEE_MIN = 50, JUP_FEE_MAX = 255;
+export function swapConfig(env = {}) {
+  const acct = String(env.JUP_REFERRAL || '').trim();
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(acct)) return { fee: false };
+  const raw = Math.round(Number(env.JUP_FEE_BPS) || JUP_FEE_MIN);
+  const feeBps = Math.min(JUP_FEE_MAX, Math.max(JUP_FEE_MIN, raw));
+  return { fee: true, referralAccount: acct, feeBps };
+}
+
 /* What the page needs to build a link itself.
 
    Deliberately not a per-token URL in the feed: 300 tokens would carry 300
@@ -84,13 +122,14 @@ export function buyConfig(env = {}) {
   const p = PROVIDERS[id];
   const ref = String(env.REF_CODE || '').trim();
   const join = pumpJoin(env);
+  const swap = SWAP_PATH + '__MINT__';
 
-  /* No provider configured is the normal state until somebody signs up, and it
-     has to be a quiet no rather than a half-working button. */
-  if (!p) return { enabled: false, providers: Object.keys(PROVIDERS), ...(join ? { join } : {}) };
+  /* No trading-bot referral: Buy opens our own swap page instead. */
+  if (!p) return { enabled: false, swap, providers: Object.keys(PROVIDERS), ...(join ? { join } : {}) };
 
   return {
     ...(join ? { join } : {}),
+    swap,
     enabled: true,
     provider: p.id,
     label: p.label,
@@ -105,4 +144,11 @@ export function buyUrl(env, mint) {
   const cfg = buyConfig(env);
   if (!cfg.enabled || !mint) return '';
   return cfg.template.replace('__MINT__', encodeURIComponent(mint));
+}
+
+/* Where a Buy for a Solana mint goes from outside the page (the bot's Buy
+   and Copy buy): the trading-bot referral when set, else our swap page. */
+export function buyOrSwap(env, origin, mint) {
+  if (!mint) return '';
+  return buyUrl(env, mint) || origin + SWAP_PATH + encodeURIComponent(mint);
 }

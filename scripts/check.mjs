@@ -98,6 +98,41 @@ try {
   fail('/api/boosts', e.message);
 }
 
+/* ------------------------------------------------------ one token by CA */
+/* A token outside every warm feed has to resolve on its own. pump.fun
+   retired GET /coins/<mint> and this was invisible for days: the boost box,
+   /setup and Tap wars all said "no token found", while any token already on
+   the map still resolved from the feed. Wrapped SOL is on no tab of ours and
+   pump.fun's coin record names it, so it exercises the cold path. */
+try {
+  const res = await get('/api/token?mint=So11111111111111111111111111111111111111112', 20000);
+  const j = await res.json();
+  j.ok && j.token && j.token.sym
+    ? pass('token lookup off the map', `$${j.token.sym} via ${j.from}`)
+    : fail('token lookup off the map', `HTTP ${res.status} ${j.error || ''} — boost box, /setup and Tap wars adds are down`);
+} catch (e) {
+  fail('token lookup off the map', e.message);
+}
+
+/* ------------------------------------------------------------- swap */
+/* /swap carries Jupiter's policy; the map must not. */
+try {
+  const res = await get('/swap?mint=So11111111111111111111111111111111111111112', 20000);
+  const csp = res.headers.get('content-security-policy') || '';
+  res.status === 200 && csp.includes('https://plugin.jup.ag') && /frame-ancestors 'none'/.test(csp)
+    ? pass('/swap', 'Jupiter policy, never framed')
+    : fail('/swap', `HTTP ${res.status}, csp: ${csp.slice(0, 80)}`);
+  const home = (await get('/', 20000)).headers.get('content-security-policy') || '';
+  /connect-src 'self';/.test(home) && !home.includes('jup.ag')
+    ? pass('map CSP still strict')
+    : fail('map CSP', 'loosened: ' + home.slice(0, 120));
+  const cfg = await (await get('/api/swap-config', 15000)).json();
+  cfg.ok ? pass('/api/swap-config', cfg.fee ? `fee ${cfg.feeBps} bps` : 'no fee account set (JUP_REFERRAL)')
+    : fail('/api/swap-config', 'not ok');
+} catch (e) {
+  fail('/swap', e.message);
+}
+
 /* ------------------------------------------------------------- health */
 try {
   const j = await (await get('/api/health')).json();

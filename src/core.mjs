@@ -168,11 +168,34 @@ export async function fetchPumpCoins({ pages = 6, perPage = 50, sort = 'market_c
    community that came here specifically to boost their own coin — is invisible
    to it. Being unable to sell those is leaving money on the table, and it is
    the exact case where someone arrives with a contract address in hand. */
+/* One pump.fun coin record by mint.
+
+   **pump.fun retired `GET /coins/<mint>`** — it answers 404 "Cannot GET" now,
+   found 2026-09-30 when production could not name UDR, a token sitting on the
+   map: three lookups in four 404'd in 0.3s, and the one that worked was served
+   from a warm feed. Everything that names a single token went through that
+   route — the boost box, a boost for a token off the map, the bot's /setup and
+   its alert market cap, adding to Tap wars — so all of it failed quietly as
+   "no token found". `/coins-v2/<mint>` is the same record (socials included
+   when the creator set any); v3 is the spare. The list pages and the batch
+   `coins-v2/mints` are unaffected. */
+export const COIN_PATHS = ['/coins-v2/', '/coins-v3/'];
+export async function pumpCoin(mint, ms = 7000) {
+  if (!isMint(mint)) return null;
+  for (const p of COIN_PATHS) {
+    try {
+      const c = await jget(PUMP + p + encodeURIComponent(mint), { ms });
+      if (c && c.mint === mint) return c;
+    } catch { /* next route */ }
+  }
+  return null;
+}
+
 export async function fetchCoin(mint, secret) {
   if (!isMint(mint)) return null;
   try {
-    const c = await jget(PUMP + '/coins/' + mint, { ms: 7000 });
-    if (!c || !c.mint) return null;
+    const c = await pumpCoin(mint);
+    if (!c) return null;
     const t = normalizeCoin(c);
     /* one enrichment call so the quote can show real numbers */
     try { await enrich([t]); } catch { /* price change is optional here */ }

@@ -78,7 +78,7 @@ const sub = arg('sub', 'sponsored');
 const mint = arg('mint', null);
 
 if (mint) {
-  const r = await fetch('https://frontend-api-v3.pump.fun/coins/' + mint);
+  const r = await fetch('https://frontend-api-v3.pump.fun/coins-v2/' + mint)  // /coins/<mint> is retired (core.mjs pumpCoin);
   if (!r.ok) { console.error('  pump.fun returned ' + r.status); process.exit(1); }
   const c = await r.json();
   title = title || c.symbol || c.name || '';

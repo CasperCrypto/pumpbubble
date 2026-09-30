@@ -2062,9 +2062,9 @@ addEventListener('pointerup',e=>{
 const card=document.getElementById('card'),scrim=document.getElementById('scrim');
 function openCard(t){
   S.target=t;
-  /* Only for something with a mint, and only when a referral is set up. */
+  /* Only for something with a mint: the referral when set up, else our swap. */
   document.getElementById('cBuy').style.display =
-    (BUY.enabled && t && t.mint) ? '' : 'none';
+    ((BUY.enabled || BUY.swap) && t && t.mint) ? '' : 'none';
   /* installing the bot for a token: only for something with an address */
   const botLink=document.getElementById('cBot');
   botLink.hidden=!(t && (t.mint || t.addr));
@@ -2377,12 +2377,15 @@ document.getElementById('cOpen').onclick=()=>{
   open(url,'_blank','noopener');
   closeAll();
 };
-/* The Buy button exists only when a referral is configured and the token is
-   actually buyable through it. A button that opens a terminal with no referral
-   attached earns nothing and still costs the click. */
+/* Buy goes to the trading-bot referral when one is configured, and to our own
+   /swap page (Jupiter, our fee once JUP_REFERRAL is set) when not. A new tab
+   either way, so the map stays where it was. */
 document.getElementById('cBuy').onclick=()=>{
-  const t=S.target;if(!t||!t.mint||!BUY.enabled)return;
-  open(BUY.template.replace('__MINT__',encodeURIComponent(t.mint)),'_blank','noopener');
+  const t=S.target;if(!t||!t.mint)return;
+  const m=encodeURIComponent(t.mint);
+  if(BUY.enabled)open(BUY.template.replace('__MINT__',m),'_blank','noopener');
+  else if(BUY.swap&&/^\/swap\?mint=__MINT__$/.test(BUY.swap))open(BUY.swap.replace('__MINT__',m),'_blank','noopener');
+  else return;
   closeAll();
 };
 document.getElementById('cBoost').onclick=()=>{const t=S.target;closeAll();openBoost(t)};
