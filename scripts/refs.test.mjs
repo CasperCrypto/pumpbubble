@@ -8,7 +8,6 @@
    slotted in behind "Create an account".
    ========================================================================== */
 
-import { readFileSync } from 'node:fs';
 import { pumpJoin, buyConfig, buyUrl, buyOrSwap, swapConfig, SWAP_CSP } from '../src/refs.mjs';
 
 let pass = 0, fail = 0;
@@ -48,27 +47,17 @@ is('and to its floor', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: '10' }).fee
 is('a set bps holds', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: '100' }).feeBps, 100);
 is('garbage bps is the floor', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: 'lots' }).feeBps, 50);
 
-/* The policy the swap page is served with: Jupiter's hosts in, still no
-   framing, forms or plugins, and scripts from nowhere else. */
+/* The policy the swap page is served with: the map's, plus Jupiter's API in
+   connect-src and nothing else. No third-party script, frame or image host. */
 const csp = Object.fromEntries(SWAP_CSP.split(/;\s*/).map(d => { const [k, ...v] = d.split(' '); return [k, v.join(' ')]; }));
-is('scripts: us and plugin.jup.ag only', csp['script-src'], "'self' 'unsafe-inline' 'wasm-unsafe-eval' https://plugin.jup.ag");
+is('scripts: our own only', csp['script-src'], "'self' 'unsafe-inline'");
+is('images: ours and data: (wallet icons)', csp['img-src'], "'self' data:");
+is('network: us and Jupiter\'s API', csp['connect-src'], "'self' https://lite-api.jup.ag https://api.jup.ag");
 is('never framed', csp['frame-ancestors'], "'none'");
 is('no forms', csp['form-action'], "'none'");
 is('no plugins', csp['object-src'], "'none'");
 is('no eval', /'unsafe-eval'/.test(SWAP_CSP), false);
-
-/* The swap page's own script: it parses, and it only hands the widget a
-   Solana address. */
-{
-  const html = readFileSync(new URL('../public/swap.html', import.meta.url), 'utf8');
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-  let bad = '';
-  for (const s of scripts) { try { new Function(s); } catch (e) { bad = e.message; } }
-  is('swap.html script parses', bad, '');
-  is('swap.html loads the plugin from Jupiter', /<script src="https:\/\/plugin\.jup\.ag\/plugin-v1\.js"/.test(html), true);
-  is('swap.html validates the mint before using it', html.includes('[1-9A-HJ-NP-Za-km-z]{32,44}'), true);
-  is('swap.html escapes what it prints', /esc\(t\.sym/.test(html) && /esc\(t\.name/.test(html), true);
-}
+is('no bare scheme or wildcard source', /(^|\s)(https?:|wss?:|\*)(\s|;|$)/.test(SWAP_CSP), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

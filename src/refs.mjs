@@ -86,18 +86,20 @@ export function pumpJoin(env = {}) {
    The fee account is a Jupiter referral account — a public key, not a secret.
    Jupiter takes 50-255 bps in the plugin and keeps a fifth of it. */
 export const SWAP_PATH = '/swap?mint=';
-/* The swap page's Content-Security-Policy (served by worker/index.js). Wider
-   than the map's because Jupiter's widget needs it; still no framing, no
-   forms, no plugins, and scripts only from us and plugin.jup.ag. */
+/* The swap page's Content-Security-Policy (served by worker/index.js). It is
+   the map's, plus one thing: connect-src to Jupiter's API, where quotes come
+   from and signed trades go. No third-party script runs on the page — the
+   wallet connection is the Wallet Standard's events and the swap is our own
+   code — so scripts, images and styles stay 'self' (wallet icons are
+   data: URIs, token art is our signed /api/img). */
+export const JUP_HOSTS = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
 export const SWAP_CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://plugin.jup.ag",
-  "style-src 'self' 'unsafe-inline' https://plugin.jup.ag https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com https://plugin.jup.ag",
-  "img-src 'self' data: blob: https:",
-  "connect-src 'self' https: wss:",
-  "frame-src https:",
-  "worker-src 'self' blob:",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self' " + JUP_HOSTS.join(' '),
+  "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

@@ -26,16 +26,15 @@ It is a payment-theft vector, not a defacement.
 3. **Content-Security-Policy** (`public/_headers`). `connect-src 'self'` and `img-src 'self'` mean
    injected script could not phone home or beacon out even if it did run.
 
-**One page is looser on purpose: `/swap`.** It embeds Jupiter's swap widget, which loads its code
-and CSS from `plugin.jup.ag`, Inter from Google Fonts, and talks to quote, RPC and wallet hosts
-it chooses. So `worker/index.js` serves it with its own policy (`SWAP_CSP` in `src/refs.mjs`):
-scripts from us and `plugin.jup.ag` only, `connect-src https: wss:`, images from anywhere, still
-no framing, no forms, no plugins, no `unsafe-eval`. What makes that acceptable is what the page
-does *not* do: it shows no payment address of ours, holds no keys, and prints only a regex-checked
-mint and our own API's fields through `esc()`. The visitor's own wallet signs every swap. If the
-page ever grows a treasury address or a boost box, it inherits the map's threat model and the
-policy has to tighten first. `scripts/check.mjs` checks both policies after every deploy — the
-map's must still say `connect-src 'self'` and never mention `jup.ag`.
+**`/swap` talks to one more host: Jupiter's API.** The swap page is our own code — no widget, no
+wallet library — so its policy (`SWAP_CSP` in `src/refs.mjs`, set by `worker/index.js`) is the
+map's with `connect-src` extended to `lite-api.jup.ag` and `api.jup.ag`, where quotes come from
+and signed trades go. Scripts, styles and images stay `'self'` (wallet icons are `data:` URIs,
+token art is our signed `/api/img`). The page shows no payment address of ours and holds no keys:
+the visitor's own wallet signs a transaction Jupiter built, after the page has checked it is for
+the mints, amount and wallet that were asked for. If the page ever grows a treasury address or a
+boost box, it inherits the map's threat model in full. `scripts/check.mjs` checks both policies
+after every deploy — the map's must still say `connect-src 'self';` and never mention `jup.ag`.
 
 **Known weakness.** The CSP still needs `script-src 'unsafe-inline'`, because the whole front end
 is deliberately one self-contained file. Moving the script into its own file and dropping

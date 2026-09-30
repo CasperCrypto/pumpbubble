@@ -4,108 +4,1087 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Swap · pumpbubble.fun</title>
-<meta name="description" content="Buy any Solana token in your own wallet, powered by Jupiter.">
+<meta name="description" content="Buy or sell any Solana token from your own wallet, routed by Jupiter.">
+<meta name="theme-color" content="#040508">
 <link rel="icon" href="/favicon.png">
 <!--
-  The swap lives on its own page because Jupiter's widget loads its code,
-  wallet adapters and token art from many hosts. The map keeps its strict
-  Content-Security-Policy (it renders attacker-chosen token names next to a
-  payment address); this page relaxes it for Jupiter alone, and renders only
-  a validated mint and our own API's escaped fields. _headers has the policy.
+  Our own swap. The map's look, Jupiter's routing, the visitor's wallet.
 
-  Nothing here holds keys or money: the visitor connects their own wallet in
-  Jupiter's widget and signs every swap themselves. When the operator has a
-  Jupiter referral account set (JUP_REFERRAL), the widget adds pumpbubble's
-  fee to the quote, and the page says so under the swap.
+  Nothing third-party runs here: the page talks to Jupiter's Ultra API for
+  quotes and execution (lite-api.jup.ag, api.jup.ag as the spare) and finds
+  wallets through the Wallet Standard — the events Phantom, Solflare and
+  Backpack already answer — so there is no wallet library and no widget
+  script. The wallet signs the transaction Jupiter built; we never see a key
+  and never hold funds. Before a transaction goes to the wallet it is checked
+  against what was asked for (mints, amount, taker), because it came from
+  somebody else's server.
+
+  Token strings reach the page only through esc() or textContent, art only
+  as our own signed /api/img path, wallet icons only as data:image URIs.
+  worker/index.js serves this page with its own CSP (SWAP_CSP in
+  src/refs.mjs): the map's, plus connect-src to Jupiter's API hosts.
 -->
 <style>
-:root{--bg:#06090c;--glass:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--ink:#eef3f7;--dim:#8b98a8;--mint:#28e08c}
-*{box-sizing:border-box}
-body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#0d2a1b 0%,var(--bg) 55%) fixed;color:var(--ink);
-  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
-/* 360px is the widget's own width (Jupiter fixes it); the rest matches it */
-.wrap{max-width:360px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-header{display:flex;align-items:center;gap:10px}
-header img{width:26px;height:26px}
-header b{font-weight:900;letter-spacing:.01em}
-header a{margin-left:auto;color:var(--dim);text-decoration:none;font-size:13px;font-weight:700}
-header a:hover{color:var(--ink)}
-.tok{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--glass)}
-/* display:flex beats the hidden attribute; the map's card learned this too */
-.tok[hidden]{display:none}
-.tok .im{width:40px;height:40px;border-radius:50%;background:#1a2230;object-fit:cover;flex:0 0 auto;display:grid;place-items:center;font-weight:900}
-.tok .n{min-width:0}
-.tok .n b{display:block;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tok .n small{color:var(--dim);font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tok .mc{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;font-weight:800}
-.tok .mc small{display:block;color:var(--dim);font-weight:600;font-size:11px}
-#jupiter{min-height:550px;border-radius:16px;overflow:hidden}
-.note{color:var(--dim);font-size:12.5px;line-height:1.55}
-.note a{color:var(--mint)}
-.err{border:1px solid rgba(255,90,90,.35);background:rgba(255,90,90,.08);padding:12px 14px;border-radius:12px}
+:root{
+  --bg:#040508;--ink:#eef2f7;--dim:#7d8699;--faint:#5d6577;
+  --line:rgba(255,255,255,.08);--glass:rgba(255,255,255,.045);--glass2:rgba(255,255,255,.075);
+  --mint:#28e08c;--mint2:#5ff7b4;--rose:#ff4d6a;--rose2:#ff8fa3;--gold:#ffc93c;
+  --safe:env(safe-area-inset-bottom,0px);
+  --num:800 30px/1.1 ui-sans-serif,-apple-system,"SF Pro Display","Segoe UI",Inter,Roboto,sans-serif;
+}
+/* One rule this page does have, learned twice on the map: a display rule
+   silently beats the hidden attribute. */
+[hidden]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh;
+  font:500 14px/1.35 ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,input{font-family:inherit;color:inherit}
+a{color:inherit}
+
+/* the map's ambient light and grain */
+#aura{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+#aura b{position:absolute;display:block;border-radius:50%;filter:blur(110px);opacity:.16}
+#aura b:nth-child(1){width:52vmax;height:52vmax;left:-18vmax;top:-22vmax;background:#0d6b4a}
+#aura b:nth-child(2){width:46vmax;height:46vmax;right:-20vmax;bottom:-24vmax;background:#5a1030}
+#aura b:nth-child(3){width:34vmax;height:34vmax;left:38%;top:34%;background:#123f5a;opacity:.12}
+#grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.045;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* top bar, as on the map */
+#top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
+  padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));
+  background:linear-gradient(180deg,rgba(5,7,10,.92),rgba(5,7,10,.55));
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;min-width:0}
+.mark{width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:block;object-fit:cover;
+  box-shadow:0 0 18px rgba(40,224,140,.55);background:#000}
+.wordmark{font-weight:800;letter-spacing:-.035em;font-size:17px;white-space:nowrap}
+.wordmark span{background:linear-gradient(92deg,var(--mint2),#fff 55%,var(--mint2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.wordmark i{font-style:normal;color:var(--dim);font-weight:700}
+@media (max-width:380px){.wordmark i{display:none}}
+.pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;
+  background:var(--glass);border:1px solid var(--line);font-size:12px;font-weight:800;color:var(--dim);
+  white-space:nowrap;text-decoration:none;cursor:pointer}
+.pill:hover{color:var(--ink);background:var(--glass2)}
+#back{margin-left:auto}
+#wBtn{height:34px;padding:0 14px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:7px;
+  border:1px solid rgba(40,224,140,.45);background:rgba(40,224,140,.10);color:var(--mint2);
+  font-weight:800;font-size:12.5px;white-space:nowrap}
+#wBtn:hover{background:rgba(40,224,140,.16)}
+#wBtn.on{border-color:var(--line);background:var(--glass);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+#wBtn img{width:16px;height:16px;border-radius:4px}
+#wBtn .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint)}
+
+.wrap{position:relative;z-index:2;max-width:440px;margin:0 auto;
+  padding:16px 16px calc(30px + var(--safe));display:flex;flex-direction:column;gap:12px}
+@media (min-width:820px){.wrap{padding-top:34px}}
+
+/* ---- the token, drawn like one of the map's bubbles ---- */
+.hero{--tone:125,134,153;position:relative;overflow:hidden;padding:16px;border-radius:22px;
+  background:linear-gradient(180deg,rgba(19,23,32,.92),rgba(10,13,19,.92));border:1px solid var(--line)}
+.hero.up{--tone:40,224,140}
+.hero.dn{--tone:255,77,106}
+.hero::before{content:"";position:absolute;width:260px;height:260px;left:-80px;top:-120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(var(--tone),.24),transparent 68%);pointer-events:none}
+.hrow{position:relative;display:flex;align-items:center;gap:13px}
+.av{width:58px;height:58px;border-radius:50%;flex:0 0 auto;object-fit:cover;background:#1a2030;
+  display:grid;place-items:center;font-weight:900;font-size:22px;color:#08110c;
+  box-shadow:0 0 0 2px rgba(var(--tone),.6),0 0 30px rgba(var(--tone),.38)}
+span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(var(--tone),.9) 45%,rgba(var(--tone),.45))}
+.who{min-width:0;flex:1}
+.who h1{margin:0;font-size:22px;font-weight:900;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who .nm{color:var(--dim);font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.px{text-align:right;flex:0 0 auto}
+.px b{display:block;font-size:17px;font-weight:900;font-variant-numeric:tabular-nums}
+.px span{font-size:12.5px;font-weight:900;font-variant-numeric:tabular-nums;color:rgb(var(--tone))}
+.stats{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px}
+.stats div{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:8px 9px;min-width:0}
+.stats u{display:block;text-decoration:none;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);font-weight:800;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats b{font-size:13.5px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:359px){.stats{grid-template-columns:repeat(2,1fr)}}
+.chips{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;
+  font-size:11px;font-weight:800;background:var(--glass);border:1px solid var(--line);color:var(--dim)}
+.chip.ok{color:var(--mint2);border-color:rgba(40,224,140,.3);background:rgba(40,224,140,.07)}
+.chip.warn{color:var(--gold);border-color:rgba(255,201,60,.35);background:rgba(255,201,60,.07)}
+.hlinks{position:relative;display:flex;gap:6px;margin-top:12px}
+.hlinks a{flex:1;justify-content:center}
+
+/* ---- the swap ---- */
+.panel{position:relative;padding:14px;border-radius:22px;
+  background:linear-gradient(180deg,rgba(19,23,32,.97),rgba(8,10,15,.97));
+  border:1px solid var(--line);border-top-color:rgba(40,224,140,.3);box-shadow:0 26px 70px rgba(0,0,0,.55)}
+.panel.sell{border-top-color:rgba(255,77,106,.32)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-bottom:12px;border-radius:14px;
+  background:rgba(255,255,255,.035);border:1px solid var(--line)}
+.seg button{height:36px;border:0;border-radius:10px;background:transparent;color:var(--dim);
+  font-weight:900;font-size:13.5px;letter-spacing:.02em;cursor:pointer}
+.seg button:hover{color:var(--ink)}
+#tBuy.on{background:linear-gradient(180deg,rgba(61,240,155,.22),rgba(15,174,102,.1));color:var(--mint2);
+  box-shadow:inset 0 0 0 1px rgba(40,224,140,.38)}
+#tSell.on{background:linear-gradient(180deg,rgba(255,112,136,.2),rgba(224,48,79,.08));color:var(--rose2);
+  box-shadow:inset 0 0 0 1px rgba(255,77,106,.38)}
+.box{padding:12px 13px;border-radius:16px;background:var(--glass);border:1px solid var(--line);transition:border-color .15s}
+.box:focus-within{border-color:rgba(40,224,140,.45)}
+.panel.sell .box:focus-within{border-color:rgba(255,77,106,.45)}
+.lab{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;
+  font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:800}
+.bal{border:0;background:none;padding:0;cursor:pointer;font:inherit;font-size:11.5px;letter-spacing:0;
+  text-transform:none;color:var(--dim);font-weight:700;font-variant-numeric:tabular-nums}
+.bal b{color:var(--ink)}
+.bal em{font-style:normal;margin-left:6px;font-weight:900;color:var(--mint2)}
+.panel.sell .bal em{color:var(--rose2)}
+.usd{font-size:11.5px;letter-spacing:0;text-transform:none;font-weight:700;font-variant-numeric:tabular-nums}
+.line{display:flex;align-items:center;gap:10px}
+#amt{flex:1;min-width:0;width:100%;padding:0;border:0;outline:none;background:none;
+  font:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+#amt::placeholder{color:#3a4150}
+#out{flex:1;min-width:0;font:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#out.wait{color:#3a4150}
+.tok{flex:0 0 auto;display:flex;align-items:center;gap:7px;height:36px;padding:0 12px 0 5px;border-radius:999px;
+  background:rgba(255,255,255,.07);border:1px solid var(--line);font-weight:900;font-size:14px;max-width:48%}
+.tok span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ti{width:26px;height:26px;flex:0 0 auto;border-radius:50%;object-fit:cover;display:grid;place-items:center;
+  font-size:13px;font-weight:900;color:#08110c;background:#2a3140}
+.ti.sol{background:linear-gradient(135deg,#9945ff,#14f195);color:#fff;font-size:15px}
+.presets{display:flex;gap:6px;margin-top:10px}
+.presets button{flex:1;height:30px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+  font-weight:800;font-size:12px;cursor:pointer;font-variant-numeric:tabular-nums}
+.presets button:hover:not(:disabled){background:var(--glass2);border-color:rgba(255,255,255,.18)}
+.presets button:disabled{opacity:.35;cursor:default}
+#flip{position:relative;z-index:2;display:grid;place-items:center;width:38px;height:38px;margin:-9px auto;
+  border-radius:12px;border:1px solid var(--line);background:#10151f;color:var(--dim);cursor:pointer}
+#flip:hover{color:var(--ink);border-color:rgba(255,255,255,.2)}
+#flip svg{width:16px;height:16px}
+.kvs{margin-top:10px;padding:2px 2px 0}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:4px 2px;font-size:12px;color:var(--dim);font-weight:600}
+.kv b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums;text-align:right;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv b.warn{color:var(--gold)}.kv b.bad{color:var(--rose)}.kv b.ok{color:var(--mint2)}
+#msg{margin:10px 2px 0;font-size:12.5px;line-height:1.45;font-weight:700;color:var(--dim)}
+#msg.bad{color:var(--rose2)}
+#go{width:100%;height:54px;margin-top:12px;border:0;border-radius:15px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  font-weight:900;font-size:15.5px;letter-spacing:.01em;
+  background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;box-shadow:0 8px 26px -6px rgba(40,224,140,.55);
+  transition:transform .1s}
+.panel.sell #go{background:linear-gradient(180deg,#ff8398,#e0304f);color:#2a0009;box-shadow:0 8px 26px -6px rgba(255,77,106,.5)}
+#go:active:not(:disabled){transform:scale(.985)}
+#go:disabled{cursor:default;background:rgba(255,255,255,.06);color:var(--dim);box-shadow:none}
+.spin{width:13px;height:13px;flex:0 0 auto;border-radius:50%;border:2px solid rgba(255,255,255,.2);
+  border-top-color:var(--mint2);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---- paste a token ---- */
+#pick h1{margin:2px 0 4px;font-size:20px;font-weight:900;letter-spacing:-.02em}
+.sub{margin:0 0 14px;color:var(--dim);font-size:12.5px;line-height:1.5;font-weight:600}
+#pickIn{width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+  outline:none;font:700 16px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
+#pickIn:focus{border-color:rgba(40,224,140,.5)}
+#pickIn::placeholder{color:var(--dim);font-family:inherit;font-weight:600}
+#pickMsg{margin:10px 2px 0;font-size:12.5px;font-weight:700;color:var(--rose2)}
+
+/* ---- done ---- */
+#done{text-align:center;padding:24px 18px 18px}
+.okc{width:60px;height:60px;margin:2px auto 14px;border-radius:50%;display:grid;place-items:center;
+  font-size:28px;font-weight:900;color:#04210f;background:linear-gradient(180deg,#3df09b,#0fae66);
+  box-shadow:0 0 36px rgba(40,224,140,.45)}
+#done h2{margin:0;font-size:21px;font-weight:900;letter-spacing:-.02em}
+#done .sub{margin:4px 0 6px}
+#dTx{display:inline-block;margin:0 0 16px;color:#7fd7ff;font-weight:800;font-size:12.5px;text-decoration:none}
+#dBoost{display:flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:14px;
+  text-decoration:none;font-weight:800;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#2b1c00;
+  background:linear-gradient(180deg,#ffe9a3,var(--gold) 52%,#e6a400);box-shadow:0 8px 26px -6px rgba(255,201,60,.55);
+  position:relative;overflow:hidden}
+/* the same light that crosses every Boost button on the map */
+#dBoost::after{content:"";position:absolute;top:0;left:-45%;width:38%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:skewX(-18deg);animation:shine 3.6s ease-in-out infinite}
+@keyframes shine{0%{left:-45%}55%,100%{left:130%}}
+.ghost{width:100%;height:46px;margin-top:9px;border-radius:13px;border:1px solid var(--line);background:var(--glass2);
+  font-weight:900;font-size:14px;cursor:pointer}
+.ghost:hover{background:rgba(255,255,255,.1)}
+
+.fine{margin:2px 6px 0;text-align:center;color:var(--faint);font-size:11.5px;line-height:1.55;font-weight:600}
+
+/* ---- wallet sheet: a bottom sheet on a phone, a dialog on a desk ---- */
+#sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:end center}
+#sheet .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#sheet .card{position:relative;width:100%;max-width:440px;max-height:88dvh;overflow-y:auto;
+  padding:18px 18px calc(20px + var(--safe));border-radius:22px 22px 0 0;
+  background:linear-gradient(180deg,rgba(19,23,32,.99),rgba(8,10,15,.99));
+  border:1px solid var(--line);border-top-color:rgba(40,224,140,.3);box-shadow:0 -26px 70px rgba(0,0,0,.8);
+  animation:up .32s cubic-bezier(.2,.9,.25,1)}
+@media (min-width:820px){#sheet{place-items:center}#sheet .card{border-radius:22px}}
+@keyframes up{from{transform:translateY(60px);opacity:.4}to{transform:none;opacity:1}}
+.grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 14px}
+#sheet h3{margin:0 0 4px;font-size:18px;font-weight:900;letter-spacing:-.02em}
+.wopt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;margin-bottom:8px;border-radius:14px;
+  border:1px solid var(--line);background:var(--glass);cursor:pointer;text-align:left;text-decoration:none;
+  font-weight:900;font-size:14.5px}
+.wopt:hover{background:var(--glass2);border-color:rgba(40,224,140,.4)}
+.wopt:disabled{opacity:.5;cursor:default}
+.wopt img,.wopt .ti{width:30px;height:30px;border-radius:9px}
+.wopt small{margin-left:auto;color:var(--dim);font-weight:700;font-size:11px}
+.addr{font:800 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9fe0ff;word-break:break-all;
+  padding:12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);margin:10px 0 12px}
+#sMsg{margin:8px 2px 0;font-size:12.5px;font-weight:700;color:var(--rose2)}
+
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none}#dBoost::after{display:none}#sheet .card{animation:none}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <img src="/mark.png" alt="" width="26" height="26">
-    <b>pumpbubble</b><span style="color:var(--dim);font-weight:700">swap</span>
-    <a href="/" id="back">← Back to the map</a>
-  </header>
-  <div class="tok" id="tok" hidden></div>
-  <div id="jupiter"></div>
-  <p class="note" id="note">Swaps run on <a href="https://jup.ag" target="_blank" rel="noopener">Jupiter</a>. You connect your own wallet and sign every trade yourself; pumpbubble never holds your funds.</p>
+<div id="aura"><b></b><b></b><b></b></div>
+<div id="grain"></div>
+
+<header id="top">
+  <a class="brand" href="/"><img class="mark" src="/mark.png" alt="" width="26" height="26"><span class="wordmark"><span>pumpbubble</span><i>.fun</i></span></a>
+  <a class="pill" id="back" href="/">← Map</a>
+  <button id="wBtn" type="button">Connect</button>
+</header>
+
+<main class="wrap">
+  <section class="panel" id="pick" hidden>
+    <h1>Swap any Solana token</h1>
+    <p class="sub">Paste a token's contract address. Jupiter finds the best route; your own wallet signs.</p>
+    <input id="pickIn" placeholder="Token address" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text">
+    <p id="pickMsg" hidden></p>
+  </section>
+
+  <section class="hero" id="hero" hidden>
+    <div class="hrow">
+      <span class="av" id="hIm">?</span>
+      <div class="who"><h1 id="hSym">—</h1><div class="nm" id="hName"></div></div>
+      <div class="px"><b id="hPx">—</b><span id="hChg"></span></div>
+    </div>
+    <div class="stats">
+      <div title="Market cap"><u>Mcap</u><b id="sMcap">—</b></div>
+      <div><u>Liquidity</u><b id="sLiq">—</b></div>
+      <div><u>Holders</u><b id="sHold">—</b></div>
+      <div title="Distinct wallets that traded it in the last 24 hours"><u>Traders</u><b id="sTrad">—</b></div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="hlinks"><a class="pill" id="hChart" target="_blank" rel="noopener">Chart ↗</a><a class="pill" id="hBubble">🫧 Bubble</a></div>
+  </section>
+
+  <section class="panel" id="swap" hidden>
+    <div class="seg" role="tablist" aria-label="Buy or sell">
+      <button id="tBuy" type="button" role="tab" class="on">Buy</button>
+      <button id="tSell" type="button" role="tab">Sell</button>
+    </div>
+    <div class="box">
+      <div class="lab"><span>You pay</span><button class="bal" id="bal" type="button" hidden></button></div>
+      <div class="line">
+        <input id="amt" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to pay">
+        <span class="tok" id="inTok"></span>
+      </div>
+      <div class="presets" id="presets"></div>
+    </div>
+    <button id="flip" type="button" aria-label="Switch between buy and sell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M3 14l4 4 4-4M17 20V6M13 10l4-4 4 4"/></svg></button>
+    <div class="box">
+      <div class="lab"><span>You get</span><span class="usd" id="outUsd"></span></div>
+      <div class="line"><div id="out" class="wait">0</div><span class="tok" id="outTok"></span></div>
+    </div>
+    <div class="kvs" id="kvs" hidden>
+      <div class="kv"><span>Rate</span><b id="kRate"></b></div>
+      <div class="kv"><span>Price impact</span><b id="kImpact"></b></div>
+      <div class="kv"><span>Minimum received</span><b id="kMin"></b></div>
+      <div class="kv"><span>Fee</span><b id="kFee"></b></div>
+      <div class="kv"><span>Network</span><b id="kNet"></b></div>
+      <div class="kv"><span>Route</span><b id="kRoute"></b></div>
+    </div>
+    <p id="msg" aria-live="polite" hidden></p>
+    <button id="go" type="button">Connect wallet</button>
+  </section>
+
+  <section class="panel" id="done" hidden>
+    <div class="okc">✓</div>
+    <h2 id="dTitle"></h2>
+    <p class="sub" id="dSub"></p>
+    <a id="dTx" target="_blank" rel="noopener">View on Solscan ↗</a>
+    <a id="dBoost" href="/">⚡ Boost it on the map</a>
+    <button class="ghost" id="dAgain" type="button">Trade again</button>
+  </section>
+
+  <p class="fine" id="fine">Routed by Jupiter. Your wallet signs every trade; pumpbubble never holds your funds or keys.</p>
+</main>
+
+<div id="sheet" hidden>
+  <div class="bg" id="sBg"></div>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="sTitle">
+    <div class="grab"></div>
+    <h3 id="sTitle">Connect a wallet</h3>
+    <p class="sub" id="sSub"></p>
+    <div id="sBody"></div>
+    <p id="sMsg" hidden></p>
+  </div>
 </div>
 
-<script src="https://plugin.jup.ag/plugin-v1.js" data-preload defer></script>
 <script>
 (function () {
-  var SOL = 'So11111111111111111111111111111111111111112';
-  var q = new URLSearchParams(location.search);
-  var mint = q.get('mint') || '';
-  /* only a Solana address ever reaches the widget or the page */
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) mint = '';
-  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
-  var usd = function (n) { n = +n || 0; return n >= 1e9 ? '$' + (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : n > 0 ? '$' + n.toFixed(0) : '—'; };
-  if (mint) document.getElementById('back').href = '/s/' + encodeURIComponent(mint);
+  'use strict';
 
-  var cfg = fetch('/api/swap-config').then(function (r) { return r.json(); }).catch(function () { return {}; });
-  if (mint) {
-    fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
-      var t = j && j.ok && j.token; if (!t) return;
-      var el = document.getElementById('tok');
-      /* token art is our own signed proxy path, or nothing */
-      var im = typeof t.img === 'string' && t.img.indexOf('/api/img?') === 0
-        ? '<img class="im" src="' + esc(t.img) + '" alt="">'
-        : '<span class="im">' + esc(String(t.sym || '?').charAt(0)) + '</span>';
-      el.innerHTML = im + '<div class="n"><b>$' + esc(t.sym || '?') + '</b><small>' + esc(t.name || '') + '</small></div>'
-        + '<div class="mc">' + usd(t.mcap) + '<small>market cap</small></div>';
-      el.hidden = false;
-    }).catch(function () {});
+  var SOL = 'So11111111111111111111111111111111111111112';
+  var SOL_DEC = 9;
+  var CHAIN = 'solana:mainnet';
+  /* lite-api is keyless; api.jup.ag answers keyless too, at a lower rate */
+  var JUP = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
+  /* MAX keeps this much SOL back: network fees plus one new token account */
+  var RESERVE = 12000000n;
+  var REFRESH_MS = 12000;   // a quote this old is refreshed while it sits on screen
+  var FRESH_MS = 20000;     // and one this old is never signed without re-asking
+  var LAST = 'pb.swap.wallet';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
+  };
+  function isMint(s) { return typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s); }
+
+  /* ------------------------------------------------ amounts, without floats */
+  /* Money is integers in base units end to end; a float only ever reaches the
+     screen. "0.1" SOL is 100000000 lamports, never 0.1 * 1e9. */
+  function toUnits(str, dec) {
+    var s = String(str == null ? '' : str).trim();
+    if (!/^(\d+\.?\d*|\.\d+)$/.test(s)) return 0n;
+    var p = s.split('.'), frac = (p[1] || '').slice(0, dec);
+    while (frac.length < dec) frac += '0';
+    return BigInt(p[0] || '0') * (10n ** BigInt(dec)) + BigInt(frac || '0');
+  }
+  function fromUnits(raw, dec) {
+    var n;
+    try { n = BigInt(raw); } catch (e) { return '0'; }
+    var neg = n < 0n; if (neg) n = -n;
+    var base = 10n ** BigInt(dec), w = n / base;
+    var f = dec ? (n % base).toString().padStart(dec, '0').replace(/0+$/, '') : '';
+    return (neg ? '-' : '') + w.toString() + (f ? '.' + f : '');
+  }
+  function maxSpend(bal, reserve) { return bal > reserve ? bal - reserve : 0n; }
+
+  function trimFix(n, d) { return n.toFixed(d).replace(/\.?0+$/, ''); }
+  function fmtAmt(v) {
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) return '0';
+    if (n >= 1e9) return trimFix(n / 1e9, 2) + 'B';
+    if (n >= 1e6) return trimFix(n / 1e6, 2) + 'M';
+    if (n >= 1e4) return Math.round(n).toLocaleString('en-US');
+    if (n >= 1) return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+    if (n >= 1e-6) return trimFix(n, Math.min(12, 3 - Math.floor(Math.log10(n))));
+    return '<0.000001';
+  }
+  function fmtUsd(n) {
+    n = Number(n);
+    if (!isFinite(n) || n <= 0) return '—';
+    if (n >= 1e9) return '$' + trimFix(n / 1e9, 2) + 'B';
+    if (n >= 1e6) return '$' + trimFix(n / 1e6, 2) + 'M';
+    if (n >= 1e3) return '$' + trimFix(n / 1e3, 1) + 'K';
+    if (n >= 1) return '$' + n.toFixed(2);
+    return '$' + trimFix(n, Math.min(12, 2 - Math.floor(Math.log10(n))));
+  }
+  function fmtPrice(n) {
+    n = Number(n);
+    if (!isFinite(n) || n <= 0) return '—';
+    if (n >= 1) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: n >= 100 ? 2 : 4 });
+    return '$' + trimFix(n, Math.min(14, 3 - Math.floor(Math.log10(n))));
+  }
+  function fmtPct(p) {
+    if (p == null || p === '' || !isFinite(+p)) return '';
+    p = +p;
+    var a = Math.abs(p);
+    return (p >= 0 ? '+' : '−') + (a >= 1000 ? Math.round(a).toLocaleString('en-US') : a.toFixed(a >= 100 ? 0 : 1)) + '%';
+  }
+  function fmtCount(n) {
+    n = Number(n);
+    if (!isFinite(n) || n < 0) return '—';
+    if (n >= 1e6) return trimFix(n / 1e6, 1) + 'M';
+    if (n >= 1e4) return trimFix(n / 1e3, 1) + 'K';
+    return Math.round(n).toLocaleString('en-US');
+  }
+  function short(a) { a = String(a || ''); return a.length > 10 ? a.slice(0, 4) + '…' + a.slice(-4) : a; }
+
+  /* --------------------------------------------------------- bytes */
+  function b64ToBytes(b64) {
+    var bin = atob(b64), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function bytesToB64(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  /* a signature from signAndSendTransaction arrives as bytes; Solscan wants base58 */
+  function b58(bytes) {
+    var A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    var n = 0n, s = '', i;
+    for (i = 0; i < bytes.length; i++) n = n * 256n + BigInt(bytes[i]);
+    while (n > 0n) { s = A[Number(n % 58n)] + s; n = n / 58n; }
+    for (i = 0; i < bytes.length && bytes[i] === 0; i++) s = '1' + s;
+    return s;
   }
 
-  function start(c) {
-    if (!window.Jupiter || !window.Jupiter.init) { return setTimeout(function () { start(c); }, 150); }
-    var formProps = { initialInputMint: SOL, initialOutputMint: mint || undefined };
-    if (c && c.referralAccount && c.feeBps) {
-      formProps.referralAccount = c.referralAccount;
-      formProps.referralFee = c.feeBps;
-      document.getElementById('note').insertAdjacentHTML('beforeend',
-        ' The quote includes a ' + (c.feeBps / 100).toFixed(2).replace(/0$/, '') + '% pumpbubble fee, which keeps the map free.');
+  /* ---------------------------------------------- what Jupiter gave us */
+  /* The transaction is built by somebody else's server, so before it goes
+     to the wallet it must be for exactly what was asked: these mints, this
+     amount in, this wallet. The wallet's own preview is the last check;
+     this is the one before it. */
+  function orderOk(o, want) {
+    return !!o && !!want && o.inputMint === want.inputMint && o.outputMint === want.outputMint &&
+      String(o.inAmount) === String(want.amount) && !!want.taker && o.taker === want.taker &&
+      typeof o.transaction === 'string' && o.transaction.length > 100 &&
+      typeof o.requestId === 'string' && o.requestId.length > 0;
+  }
+  /* network cost the taker pays: signature, priority, and rent for a new
+     token account, each only when the taker is the payer (gasless is not) */
+  function netLamports(o) {
+    if (!o || !o.taker) return 0n;
+    var sum = 0n;
+    [['signatureFeeLamports', 'signatureFeePayer'], ['prioritizationFeeLamports', 'prioritizationFeePayer'], ['rentFeeLamports', 'rentFeePayer']]
+      .forEach(function (k) { if (o[k[1]] === o.taker) { try { sum += BigInt(o[k[0]] || 0); } catch (e) { /* not a number */ } } });
+    return sum;
+  }
+  function routeOf(o) {
+    var seen = [];
+    ((o && o.routePlan) || []).forEach(function (r) {
+      var l = r && r.swapInfo && r.swapInfo.label;
+      if (l && seen.indexOf(l) < 0) seen.push(String(l));
+    });
+    return seen.join(' + ');
+  }
+  function humanErr(msg, side, sym) {
+    var m = String(msg || '');
+    if (/minimum \$?5 for gasless/i.test(m)) return 'Your wallet needs a little SOL for the network fee — or trade $5 or more and Jupiter covers it.';
+    if (/insufficient/i.test(m)) return side === 'sell' ? 'You do not hold that much $' + sym + '.' : 'Not enough SOL for this amount plus network fees.';
+    if (/route/i.test(m)) return 'No route for this trade right now — the pool may be too thin.';
+    return m.slice(0, 160);
+  }
+
+  /* --------------------------------------------------------- wallets */
+  /* The Wallet Standard, both halves of its handshake: announce that the
+     app is ready (wallets already loaded register in reply), and listen for
+     wallets that load later. No library — it is two events. */
+  function isSolanaWallet(w) {
+    var f = w && w.features;
+    return !!(f && f['standard:connect'] && (f['solana:signTransaction'] || f['solana:signAndSendTransaction']) &&
+      Array.isArray(w.chains) && w.chains.some(function (c) { return /^solana:/.test(String(c)); }));
+  }
+  function walletIcon(w) {
+    return typeof w.icon === 'string' && /^data:image\/(png|svg\+xml|webp|jpeg|gif);/i.test(w.icon) ? w.icon : '';
+  }
+  function isPhone() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') ||
+      (window.matchMedia && matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 820);
+  }
+  /* no wallet in this browser: open this same page inside a wallet's own */
+  function walletLinks(href, origin) {
+    var u = encodeURIComponent(href), r = encodeURIComponent(origin);
+    return [
+      { name: 'Phantom', href: 'https://phantom.app/ul/browse/' + u + '?ref=' + r },
+      { name: 'Solflare', href: 'https://solflare.com/ul/v1/browse/' + u + '?ref=' + r },
+    ];
+  }
+
+  var wallets = [], W = null, ACCT = null, offEvents = null;
+  var wsApi = { register: function () {
+    for (var i = 0; i < arguments.length; i++) {
+      var w = arguments[i];
+      if (isSolanaWallet(w) && !wallets.some(function (x) { return x === w || x.name === w.name; })) wallets.push(w);
     }
-    window.Jupiter.init({
-      displayMode: 'integrated',
-      integratedTargetId: 'jupiter',
-      formProps: formProps,
-      branding: { name: 'pumpbubble', logoUri: location.origin + '/mark.png' },
-      defaultExplorer: 'Solscan',
+    onWallets();
+    return function () {};
+  } };
+  window.addEventListener('wallet-standard:register-wallet', function (e) { try { e.detail(wsApi); } catch (x) { /* a broken wallet */ } });
+  try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: wsApi })); } catch (x) { /* old browser */ }
+
+  /* ------------------------------------------------------------ state */
+  var S = {
+    mint: '', side: 'buy', dec: null, tok: null, jt: null,
+    cfg: {}, feeOff: false,
+    solBal: null, tokBal: null,
+    order: null, orderKey: '', orderAt: 0, orderFee: false,
+    quoting: false, busy: '', err: '', errKey: '', note: '', noteBad: false,
+  };
+  var sym = function () { return (S.tok && S.tok.sym) || (S.jt && S.jt.symbol) || 'token'; };
+
+  /* one Jupiter call, falling over to the spare host on a network error or a 5xx */
+  function jup(path, opts) {
+    var i = 0;
+    function attempt() {
+      var base = JUP[i];
+      return fetch(base + path, opts).then(function (r) {
+        if (r.status >= 500 || r.status === 429) { var e = new Error('Jupiter answered ' + r.status); e.retry = true; throw e; }
+        return r.json().then(function (j) {
+          if (j && typeof j === 'object' && !Array.isArray(j)) j._base = base;
+          return j;
+        });
+      }).catch(function (e) {
+        if (e && e.name === 'AbortError') throw e;
+        if (i + 1 < JUP.length && (e.retry || e instanceof TypeError)) { i++; return attempt(); }
+        throw e;
+      });
+    }
+    return attempt();
+  }
+
+  /* ------------------------------------------------------------- views */
+  function view(v) {
+    $('pick').hidden = v !== 'pick';
+    $('hero').hidden = v === 'pick';
+    $('swap').hidden = v !== 'swap';
+    $('done').hidden = v !== 'done';
+    S.view = v;
+  }
+
+  function tokPill(isSol) {
+    if (isSol) return '<span class="ti sol">◎</span><span>SOL</span>';
+    var t = S.tok || {};
+    var im = typeof t.img === 'string' && t.img.indexOf('/api/img?') === 0
+      ? '<img class="ti" alt="" src="' + esc(t.img) + '">'
+      : '<span class="ti">' + esc(sym().charAt(0)) + '</span>';
+    return im + '<span>' + esc(sym()) + '</span>';
+  }
+
+  function renderHero() {
+    var t = S.tok || {}, j = S.jt || {}, s24 = j.stats24h || {};
+    /* The price and its move come from one source. Jupiter's price is the
+       one being traded against, so its 24h change leads; ours is the
+       fallback. Mixing them printed our +1,060,591% (a token hours old,
+       measured from its launch price) beside Jupiter's $0.53. */
+    var chg = s24.priceChange != null ? s24.priceChange : (t.pc && t.pc.h24 != null ? t.pc.h24 : null);
+    var hero = $('hero');
+    hero.classList.toggle('up', chg != null && chg >= 0);
+    hero.classList.toggle('dn', chg != null && chg < 0);
+    $('hSym').textContent = S.tok || S.jt ? '$' + sym() : '…';
+    $('hName').textContent = t.name || j.name || '';
+    var im = $('hIm');
+    if (typeof t.img === 'string' && t.img.indexOf('/api/img?') === 0) {
+      if (im.tagName !== 'IMG') { var n = document.createElement('img'); n.className = 'av'; n.id = 'hIm'; n.alt = ''; im.replaceWith(n); im = n; }
+      if (im.getAttribute('src') !== t.img) im.src = t.img;
+    } else if (im.tagName === 'IMG') {
+      var sp = document.createElement('span'); sp.className = 'av'; sp.id = 'hIm'; im.replaceWith(sp); im = sp;
+    }
+    if (im.tagName !== 'IMG') im.textContent = sym().charAt(0).toUpperCase();
+    $('hPx').textContent = fmtPrice(j.usdPrice || t.price);
+    $('hChg').textContent = chg != null ? fmtPct(chg) + ' 24h' : '';
+    $('sMcap').textContent = fmtUsd(t.mcap || j.mcap);
+    $('sLiq').textContent = fmtUsd(j.liquidity || t.liq);
+    $('sHold').textContent = j.holderCount != null ? fmtCount(j.holderCount) : '—';
+    $('sTrad').textContent = s24.numTraders != null ? fmtCount(s24.numTraders) : '—';
+
+    /* What the chain says about the token, measured and neutral. Never a
+       verdict: intent is unknowable, authorities and concentration are not. */
+    var a = j.audit || {}, chips = [];
+    if (a.mintAuthorityDisabled === true) chips.push(['ok', '✓ Mint authority off']);
+    else if (a.mintAuthorityDisabled === false) chips.push(['warn', 'Mint authority on']);
+    if (a.freezeAuthorityDisabled === true) chips.push(['ok', '✓ Freeze authority off']);
+    else if (a.freezeAuthorityDisabled === false) chips.push(['warn', 'Freeze authority on']);
+    if (a.topHoldersPercentage != null) chips.push([a.topHoldersPercentage > 30 ? 'warn' : '', 'Top holders own ' + Math.round(a.topHoldersPercentage) + '%']);
+    if (a.devBalancePercentage != null && a.devBalancePercentage >= 10) chips.push(['warn', 'Dev holds ' + Math.round(a.devBalancePercentage) + '%']);
+    var trades = (s24.numBuys || 0) + (s24.numSells || 0);
+    if (s24.numTraders > 0 && trades / s24.numTraders >= 100) {
+      chips.push(['warn', fmtCount(s24.numTraders) + ' traders made ' + fmtCount(trades) + ' trades (24h)']);
+    }
+    if (j.organicScoreLabel) chips.push([j.organicScoreLabel === 'high' ? 'ok' : j.organicScoreLabel === 'low' ? 'warn' : '', 'Organic activity: ' + j.organicScoreLabel]);
+    $('chips').innerHTML = chips.map(function (c) { return '<span class="chip ' + c[0] + '">' + esc(c[1]) + '</span>'; }).join('');
+
+    var pumpish = j.launchpad === 'pump.fun' || /pump$/.test(S.mint);
+    $('hChart').href = pumpish ? 'https://pump.fun/coin/' + encodeURIComponent(S.mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(S.mint);
+    $('hBubble').href = '/s/' + encodeURIComponent(S.mint);
+    document.title = (S.side === 'buy' ? 'Buy' : 'Sell') + ' $' + sym() + ' · pumpbubble.fun';
+  }
+
+  function want() {
+    var dec = S.side === 'buy' ? SOL_DEC : S.dec;
+    if (dec == null || !S.mint) return null;
+    var amount = toUnits($('amt').value, dec);
+    if (amount <= 0n) return null;
+    return {
+      inputMint: S.side === 'buy' ? SOL : S.mint,
+      outputMint: S.side === 'buy' ? S.mint : SOL,
+      amount: amount.toString(),
+      taker: ACCT ? ACCT.address : '',
+    };
+  }
+  function keyOf(w) { return w ? [w.inputMint, w.outputMint, w.amount, w.taker].join('|') : ''; }
+  function insufficient(w) {
+    if (!w || !ACCT) return false;
+    var amt = BigInt(w.amount);
+    if (S.side === 'buy') return S.solBal != null && amt > S.solBal;
+    return S.tokBal != null && amt > S.tokBal;
+  }
+
+  function render() {
+    var sell = S.side === 'sell';
+    $('swap').classList.toggle('sell', sell);
+    $('tBuy').classList.toggle('on', !sell);
+    $('tSell').classList.toggle('on', sell);
+    $('tBuy').setAttribute('aria-selected', String(!sell));
+    $('tSell').setAttribute('aria-selected', String(sell));
+    $('inTok').innerHTML = tokPill(!sell);
+    $('outTok').innerHTML = tokPill(sell);
+
+    /* the wallet button */
+    var wb = $('wBtn');
+    if (ACCT) {
+      var ic = W && walletIcon(W);
+      wb.className = 'on';
+      wb.innerHTML = (ic ? '<img alt="" src="' + esc(ic) + '">' : '<span class="dot"></span>') + esc(short(ACCT.address));
+    } else {
+      wb.className = '';
+      wb.textContent = 'Connect';
+    }
+
+    /* balance and presets */
+    var bal = $('bal');
+    if (ACCT && (sell ? S.tokBal != null && S.dec != null : S.solBal != null)) {
+      bal.hidden = false;
+      bal.innerHTML = 'Balance <b>' + esc(fmtAmt(sell ? fromUnits(S.tokBal, S.dec) : fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>';
+    } else bal.hidden = true;
+    var pre = sell
+      ? [['25%', 25], ['50%', 50], ['100%', 100]]
+      : [['0.1', '0.1'], ['0.25', '0.25'], ['0.5', '0.5'], ['1 SOL', '1']];
+    var canPct = ACCT && S.tokBal != null && S.tokBal > 0n && S.dec != null;
+    $('presets').innerHTML = pre.map(function (p) {
+      return '<button type="button" data-v="' + esc(p[1]) + '"' + (sell && !canPct ? ' disabled' : '') + '>' + esc(p[0]) + '</button>';
+    }).join('');
+
+    renderQuote();
+    renderGo();
+  }
+
+  function renderQuote() {
+    var o = S.order, w = want(), fresh = !!o && !!w && S.orderKey === keyOf(w);
+    var sell = S.side === 'sell';
+    var inDec = sell ? S.dec : SOL_DEC, outDec = sell ? SOL_DEC : S.dec;
+    var out = $('out');
+    var ok = fresh && o.outAmount && outDec != null && inDec != null && !(o.error && !o.outAmount);
+    if (!ok) {
+      out.textContent = w && S.quoting ? '…' : '0';
+      out.className = 'wait';
+      $('outUsd').textContent = '';
+      $('kvs').hidden = true;
+    } else {
+      var inAmt = fromUnits(o.inAmount, inDec), outAmt = fromUnits(o.outAmount, outDec);
+      out.textContent = fmtAmt(outAmt);
+      out.className = '';
+      $('outUsd').textContent = o.outUsdValue ? '≈ ' + fmtUsd(o.outUsdValue) : '';
+      var rate = Number(outAmt) / Number(inAmt);
+      $('kRate').textContent = isFinite(rate) && rate > 0
+        ? '1 ' + (sell ? sym() : 'SOL') + ' ≈ ' + fmtAmt(rate) + ' ' + (sell ? 'SOL' : sym()) : '—';
+      var imp = Math.abs(Number(o.priceImpactPct) * 100);
+      var ki = $('kImpact');
+      ki.textContent = isFinite(imp) ? (imp < 0.01 ? '<0.01%' : imp.toFixed(2) + '%') : '—';
+      ki.className = !isFinite(imp) ? '' : imp >= 10 ? 'bad' : imp >= 2 ? 'warn' : '';
+      $('kMin').textContent = o.otherAmountThreshold
+        ? fmtAmt(fromUnits(o.otherAmountThreshold, outDec)) + ' ' + (sell ? 'SOL' : sym()) + (o.slippageBps ? ' · ' + trimFix(o.slippageBps / 100, 2) + '% slippage' : '')
+        : '—';
+      $('kFee').textContent = o.feeBps != null
+        ? trimFix(o.feeBps / 100, 2) + '%' + (S.orderFee ? ' · pumpbubble' : ' · Jupiter') : '—';
+      var net = netLamports(o), kn = $('kNet');
+      kn.className = '';
+      if (o.gasless) { kn.textContent = 'Covered by Jupiter'; kn.className = 'ok'; }
+      else if (!o.taker) kn.textContent = 'Shown once a wallet is connected';
+      else kn.textContent = '≈ ' + fmtAmt(fromUnits(net, SOL_DEC)) + ' SOL' + (BigInt(o.rentFeeLamports || 0) > 0n && o.rentFeePayer === o.taker ? ' incl. token account' : '');
+      $('kRoute').textContent = routeOf(o) || '—';
+      $('kvs').hidden = false;
+    }
+    /* an error is shown only while it still describes what is on screen */
+    var m = $('msg'), text = S.note || (w && S.errKey === keyOf(w) ? S.err : '');
+    m.hidden = !text;
+    m.textContent = text;
+    m.className = text && (S.note ? S.noteBad : true) ? 'bad' : '';
+  }
+
+  function renderGo() {
+    var go = $('go'), w = want(), o = S.order, k = keyOf(w), fresh = !!o && !!w && S.orderKey === k;
+    var verb = (S.side === 'buy' ? 'Buy $' : 'Sell $') + sym();
+    var label = verb, dis = false, spin = false;
+    if (S.busy) { label = S.busy; dis = true; spin = true; }
+    else if (!ACCT) { label = 'Connect wallet'; }
+    else if (!w) { label = S.side === 'sell' && S.dec == null ? 'Loading token…' : 'Enter an amount'; dis = true; }
+    else if (insufficient(w)) { label = S.side === 'buy' ? 'Not enough SOL' : 'Not enough $' + sym(); dis = true; }
+    else if (S.err && S.errKey === k) { dis = true; spin = S.quoting; }
+    else if (!fresh) { label = 'Finding the best price…'; dis = true; spin = true; }
+    else if (!o.transaction) { dis = true; spin = S.quoting; }
+    go.disabled = dis;
+    $('amt').disabled = !!S.busy;
+    go.innerHTML = (spin ? '<span class="spin"></span>' : '') + '<span>' + esc(label) + '</span>';
+  }
+
+  /* ------------------------------------------------------------- quotes */
+  var qTimer = 0, rTimer = 0, qCtl = null, qSeq = 0;
+  function scheduleQuote(ms) { clearTimeout(qTimer); qTimer = setTimeout(quote, ms == null ? 350 : ms); }
+  function armRefresh() {
+    clearTimeout(rTimer);
+    rTimer = setTimeout(function () {
+      if (S.view === 'swap' && !S.busy && !document.hidden && want()) quote(); else armRefresh();
+    }, REFRESH_MS);
+  }
+  function quote() {
+    clearTimeout(qTimer);
+    if (qCtl) { try { qCtl.abort(); } catch (e) { /* done already */ } qCtl = null; }
+    var w = want();
+    if (!w) { S.order = null; S.orderKey = ''; S.quoting = false; S.err = ''; render(); return Promise.resolve(null); }
+    var my = ++qSeq;
+    var ctl = qCtl = window.AbortController ? new AbortController() : null;
+    var p = { inputMint: w.inputMint, outputMint: w.outputMint, amount: w.amount };
+    if (w.taker) p.taker = w.taker;
+    var fee = !!(S.cfg.fee && S.cfg.referralAccount && !S.feeOff);
+    if (fee) { p.referralAccount = S.cfg.referralAccount; p.referralFee = String(S.cfg.feeBps); }
+    S.quoting = true;
+    renderGo();
+    return jup('/ultra/v1/order?' + new URLSearchParams(p).toString(), ctl ? { signal: ctl.signal } : {}).then(function (o) {
+      if (my !== qSeq) return null;
+      /* A fee account Jupiter does not recognise fails the whole quote. The
+         trade matters more than our cut of it: drop the fee, keep trading,
+         and say so in the console for whoever runs the site. */
+      if (o && o.error && fee && /referral/i.test(o.error)) {
+        S.feeOff = true;
+        console.warn('[swap] Jupiter refused the referral account, quoting without our fee:', o.error);
+        return quote();
+      }
+      S.quoting = false;
+      S.order = o; S.orderKey = keyOf(w); S.orderAt = Date.now(); S.orderFee = fee;
+      var e = o && (o.errorMessage || o.error);
+      S.err = e ? humanErr(e, S.side, sym()) : '';
+      S.errKey = keyOf(w);
+      render();
+      armRefresh();
+      return o;
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') return null;
+      if (my !== qSeq) return null;
+      S.quoting = false; S.order = null; S.orderKey = '';
+      S.err = 'Could not reach Jupiter for a price. Check your connection — it retries by itself.';
+      S.errKey = keyOf(w);
+      render();
+      armRefresh();
+      return null;
     });
   }
-  var loadErr = setTimeout(function () {
-    if (!window.Jupiter) document.getElementById('jupiter').innerHTML =
-      '<div class="err">The swap did not load. Check your connection, or buy on <a href="https://jup.ag/swap/SOL-' + encodeURIComponent(mint) + '" target="_blank" rel="noopener">jup.ag</a> directly.</div>';
-  }, 12000);
-  cfg.then(function (c) { start(c); if (window.Jupiter) clearTimeout(loadErr); });
+
+  /* ----------------------------------------------------------- balances */
+  var balTimer = 0;
+  function loadBalances(delay) {
+    clearTimeout(balTimer);
+    if (!ACCT) return;
+    var who = ACCT.address;
+    balTimer = setTimeout(function () {
+      jup('/ultra/v1/holdings/' + encodeURIComponent(who)).then(function (h) {
+        if (!ACCT || ACCT.address !== who || !h || h.error) return;
+        try { S.solBal = BigInt(h.amount || 0); } catch (e) { S.solBal = null; }
+        var list = (h.tokens && h.tokens[S.mint]) || [];
+        var sum = 0n;
+        list.forEach(function (a) { try { sum += BigInt(a.amount || 0); } catch (e) { /* skip */ } });
+        S.tokBal = sum;
+        if (S.dec == null && list[0] && list[0].decimals != null) S.dec = Number(list[0].decimals);
+        render();
+      }).catch(function () { /* the balance line just stays hidden */ });
+    }, delay || 0);
+  }
+
+  /* ------------------------------------------------------------- wallet */
+  function connect(w, silent) {
+    return Promise.resolve(w.features['standard:connect'].connect(silent ? { silent: true } : undefined)).then(function (r) {
+      var accts = (r && r.accounts && r.accounts.length ? r.accounts : w.accounts) || [];
+      var a = accts.filter(function (x) { return !x.chains || x.chains.some(function (c) { return /^solana:/.test(String(c)); }); })[0];
+      if (!a || !isMint(a.address)) throw new Error(silent ? 'not trusted yet' : 'The wallet did not share an account.');
+      setAccount(w, a);
+      store.set(LAST, w.name);
+    });
+  }
+  function setAccount(w, a) {
+    if (offEvents) { try { offEvents(); } catch (e) { /* gone */ } offEvents = null; }
+    W = w; ACCT = a;
+    S.solBal = null; S.tokBal = null;
+    var ev = w.features['standard:events'];
+    if (ev && ev.on) {
+      try {
+        offEvents = ev.on('change', function (p) {
+          if (!p || !p.accounts) return;
+          var next = p.accounts.filter(function (x) { return isMint(x.address); })[0];
+          if (!next) forget(); else if (!ACCT || next.address !== ACCT.address) { ACCT = next; S.solBal = S.tokBal = null; afterAccount(); }
+        });
+      } catch (e) { /* events are optional */ }
+    }
+    afterAccount();
+  }
+  function afterAccount() { S.order = null; S.orderKey = ''; S.note = ''; render(); loadBalances(); quote(); }
+  function forget() {
+    if (offEvents) { try { offEvents(); } catch (e) { /* gone */ } offEvents = null; }
+    W = null; ACCT = null; S.solBal = S.tokBal = null; S.order = null; S.orderKey = '';
+    render(); quote();
+  }
+  function disconnect() {
+    var d = W && W.features['standard:disconnect'];
+    store.set(LAST, null);
+    if (d && d.disconnect) { try { Promise.resolve(d.disconnect()).catch(function () {}); } catch (e) { /* ignore */ } }
+    forget();
+  }
+
+  /* reconnect quietly to the wallet used last time, once it has registered */
+  var triedSilent = false;
+  function onWallets() {
+    if (!triedSilent && !ACCT) {
+      var last = store.get(LAST);
+      var w = last && wallets.filter(function (x) { return x.name === last; })[0];
+      if (w) { triedSilent = true; connect(w, true).catch(function () { /* stays disconnected */ }); }
+    }
+    if (!$('sheet').hidden && !ACCT) openSheet();
+  }
+
+  /* ------------------------------------------------------------ the sheet */
+  function openSheet() {
+    var body = $('sBody'), msg = $('sMsg');
+    msg.hidden = true;
+    if (ACCT) {
+      $('sTitle').textContent = W ? W.name : 'Wallet';
+      $('sSub').textContent = 'Connected. Trades are signed here, in your wallet.';
+      body.innerHTML = '<div class="addr">' + esc(ACCT.address) + '</div>'
+        + '<button class="wopt" type="button" id="sCopy">Copy address</button>'
+        + '<button class="wopt" type="button" id="sOff">Disconnect</button>';
+      $('sCopy').onclick = function () {
+        var b = this;
+        (navigator.clipboard ? navigator.clipboard.writeText(ACCT.address) : Promise.reject()).then(function () { b.textContent = 'Copied ✓'; }, function () { b.textContent = 'Copy it from above'; });
+      };
+      $('sOff').onclick = function () { disconnect(); closeSheet(); };
+    } else if (wallets.length) {
+      $('sTitle').textContent = 'Connect a wallet';
+      $('sSub').textContent = 'Your wallet signs every trade. pumpbubble never sees your keys.';
+      var last = store.get(LAST);
+      body.innerHTML = '';
+      wallets.forEach(function (w) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'wopt';
+        var ic = walletIcon(w);
+        b.innerHTML = (ic ? '<img alt="" src="' + esc(ic) + '">' : '<span class="ti">' + esc(String(w.name || '?').charAt(0)) + '</span>')
+          + '<span>' + esc(w.name) + '</span>' + (w.name === last ? '<small>last used</small>' : '');
+        b.onclick = function () {
+          b.disabled = true; msg.hidden = true;
+          connect(w).then(closeSheet).catch(function (e) {
+            b.disabled = false;
+            var m = String((e && e.message) || e || '');
+            msg.textContent = /reject|denied|cancel|declin/i.test(m) || (e && e.code === 4001) ? 'Cancelled in the wallet.' : (m.slice(0, 140) || 'The wallet did not connect.');
+            msg.hidden = false;
+          });
+        };
+        body.appendChild(b);
+      });
+    } else if (isPhone()) {
+      $('sTitle').textContent = 'Open in your wallet';
+      $('sSub').textContent = 'Phones keep wallets in their own app. This opens the same page inside it, ready to trade.';
+      body.innerHTML = walletLinks(location.href, location.origin).map(function (l) {
+        return '<a class="wopt" href="' + esc(l.href) + '"><span class="ti">' + esc(l.name.charAt(0)) + '</span><span>Open in ' + esc(l.name) + '</span><small>↗</small></a>';
+      }).join('');
+    } else {
+      $('sTitle').textContent = 'No Solana wallet found';
+      $('sSub').textContent = 'Install one, then come back to this page — it connects in one click.';
+      body.innerHTML = [['Phantom', 'https://phantom.com/download'], ['Solflare', 'https://solflare.com/download'], ['Backpack', 'https://backpack.app/downloads']].map(function (l) {
+        return '<a class="wopt" target="_blank" rel="noopener" href="' + esc(l[1]) + '"><span class="ti">' + esc(l[0].charAt(0)) + '</span><span>Get ' + esc(l[0]) + '</span><small>↗</small></a>';
+      }).join('');
+    }
+    $('sheet').hidden = false;
+  }
+  function closeSheet() { $('sheet').hidden = true; }
+
+  /* --------------------------------------------------------- the trade */
+  function sign(ord) {
+    var bytes = b64ToBytes(ord.transaction);
+    var f = W.features['solana:signTransaction'];
+    if (f && f.signTransaction) {
+      return Promise.resolve(f.signTransaction({ account: ACCT, transaction: bytes, chain: CHAIN })).then(function (out) {
+        var first = Array.isArray(out) ? out[0] : out;
+        var st = first && first.signedTransaction;
+        if (!st) throw new Error('The wallet returned no signature.');
+        S.busy = 'Sending…'; renderGo();
+        return fetch(ord._base + '/ultra/v1/execute', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ signedTransaction: bytesToB64(st instanceof Uint8Array ? st : new Uint8Array(st)), requestId: ord.requestId }),
+        }).then(function (r) { return r.json(); });
+      });
+    }
+    /* a wallet that only signs-and-sends: it lands the transaction itself */
+    var g = W.features['solana:signAndSendTransaction'];
+    return Promise.resolve(g.signAndSendTransaction({ account: ACCT, transaction: bytes, chain: CHAIN })).then(function (out) {
+      var first = Array.isArray(out) ? out[0] : out;
+      var sig = first && first.signature;
+      return { status: 'Sent', signature: sig ? b58(sig instanceof Uint8Array ? sig : new Uint8Array(sig)) : '' };
+    });
+  }
+
+  function trade() {
+    if (!ACCT || !W) { openSheet(); return; }
+    var w = want(), o = S.order;
+    if (S.busy || !w || !o || S.orderKey !== keyOf(w) || !o.transaction || S.err || insufficient(w)) return;
+    S.note = '';
+    S.busy = 'Confirm in your wallet…';
+    renderGo();
+    var stale = Date.now() - S.orderAt > FRESH_MS;
+    var side = S.side;
+    (stale ? quote() : Promise.resolve(o)).then(function (ord) {
+      S.busy = 'Confirm in your wallet…'; renderGo();
+      if (!orderOk(ord, w) || (ord.error && !ord.transaction)) throw new Error('The price moved — check the new quote and press again.');
+      clearTimeout(rTimer);
+      return sign(ord).then(function (res) { return { ord: ord, res: res || {} }; });
+    }).then(function (x) {
+      S.busy = '';
+      var r = x.res;
+      if (r.status === 'Success' || r.status === 'Sent') {
+        showDone(x.ord, r, side);
+        loadBalances(2500);
+        setTimeout(function () { loadBalances(); }, 8000);
+        return;
+      }
+      var why = r.error ? String(r.error).slice(0, 140).replace(/[.\s]*$/, '') : '';
+      S.note = 'The trade did not go through' + (why ? ': ' + why : '') + '. A fresh quote is loading.';
+      S.noteBad = true;
+      S.order = null; S.orderKey = '';
+      render(); quote();
+    }).catch(function (e) {
+      S.busy = '';
+      var m = String((e && e.message) || e || '');
+      var cancelled = /reject|denied|cancel|declin/i.test(m) || (e && e.code === 4001);
+      S.note = cancelled ? 'Cancelled in your wallet — nothing was sent.' : (m.slice(0, 160) || 'Something went wrong.');
+      S.noteBad = !cancelled;
+      render(); quote();
+    });
+  }
+
+  function showDone(ord, r, side) {
+    var sell = side === 'sell', dec = S.dec == null ? 0 : S.dec;
+    var inAmt = fromUnits(r.inputAmountResult || ord.inAmount, sell ? dec : SOL_DEC);
+    var outAmt = fromUnits(r.outputAmountResult || ord.outAmount, sell ? SOL_DEC : dec);
+    if (r.status === 'Sent') {
+      $('dTitle').textContent = 'Sent to the network';
+      $('dSub').textContent = 'Your wallet sent it; it confirms in a few seconds.';
+    } else {
+      $('dTitle').textContent = sell ? 'Sold ' + fmtAmt(inAmt) + ' $' + sym() : 'Bought ' + fmtAmt(outAmt) + ' $' + sym();
+      $('dSub').textContent = 'for ' + fmtAmt(sell ? outAmt : inAmt) + ' SOL';
+    }
+    var tx = $('dTx');
+    tx.hidden = !r.signature;
+    if (r.signature) tx.href = 'https://solscan.io/tx/' + encodeURIComponent(r.signature);
+    /* the people who just bought a token are the people who boost it */
+    var bo = $('dBoost');
+    bo.hidden = sell;
+    bo.href = '/?boost=' + encodeURIComponent(S.mint);
+    bo.textContent = '⚡ Make $' + sym() + ' gold on the map';
+    view('done');
+  }
+
+  /* ------------------------------------------------------------ inputs */
+  function cleanAmount(v, dec) {
+    v = String(v || '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+    var i = v.indexOf('.');
+    if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, dec);
+    return v;
+  }
+  $('amt').addEventListener('input', function () {
+    var dec = S.side === 'buy' ? SOL_DEC : (S.dec == null ? 9 : S.dec);
+    var v = cleanAmount(this.value, dec);
+    if (v !== this.value) this.value = v;
+    S.note = '';
+    renderGo();
+    scheduleQuote();
+  });
+  $('amt').addEventListener('keydown', function (e) { if (e.key === 'Enter') trade(); });
+  $('presets').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (!b || b.disabled) return;
+    var v = b.getAttribute('data-v');
+    if (S.side === 'sell') {
+      if (S.tokBal == null || S.dec == null) return;
+      $('amt').value = fromUnits(S.tokBal * BigInt(v) / 100n, S.dec);
+    } else $('amt').value = v;
+    S.note = '';
+    quote();
+  });
+  $('bal').addEventListener('click', function () {
+    if (S.side === 'sell') { if (S.tokBal != null && S.dec != null) $('amt').value = fromUnits(S.tokBal, S.dec); }
+    else if (S.solBal != null) $('amt').value = fromUnits(maxSpend(S.solBal, RESERVE), SOL_DEC);
+    S.note = '';
+    quote();
+  });
+  function setSide(side) {
+    if (S.side === side || S.busy) return;
+    S.side = side;
+    $('amt').value = '';
+    S.order = null; S.orderKey = ''; S.err = ''; S.note = '';
+    render();
+    if (S.tok || S.jt) renderHero();
+    $('amt').focus();
+  }
+  $('tBuy').onclick = function () { setSide('buy'); };
+  $('tSell').onclick = function () { setSide('sell'); };
+  $('flip').onclick = function () { setSide(S.side === 'buy' ? 'sell' : 'buy'); };
+  $('go').onclick = trade;
+  $('wBtn').onclick = openSheet;
+  $('sBg').onclick = closeSheet;
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet(); });
+  $('dAgain').onclick = function () { $('amt').value = ''; S.order = null; S.orderKey = ''; S.note = ''; view('swap'); render(); };
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.view === 'swap') { loadBalances(); if (want()) quote(); } });
+
+  $('pickIn').addEventListener('input', function () {
+    var v = this.value.trim(), m = $('pickMsg');
+    m.hidden = true;
+    if (!v) return;
+    if (/^0x[0-9a-fA-F]{40}$/.test(v)) { m.textContent = 'This swap is for Solana tokens. That address is on an EVM chain.'; m.hidden = false; return; }
+    if (!isMint(v)) { if (v.length >= 32) { m.textContent = 'That is not a Solana token address.'; m.hidden = false; } return; }
+    history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(v));
+    start(v);
+  });
+
+  /* -------------------------------------------------------------- boot */
+  function start(mint) {
+    S.mint = mint;
+    S.dec = mint === SOL ? SOL_DEC : null;
+    view('swap');
+    render();
+    renderHero();
+    fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
+      if (j && j.ok && j.token) { S.tok = j.token; renderHero(); render(); }
+    }).catch(function () { /* Jupiter's record covers the header */ });
+    jup('/ultra/v1/search?query=' + encodeURIComponent(mint)).then(function (list) {
+      var j = Array.isArray(list) ? list.filter(function (x) { return x && x.id === mint; })[0] : null;
+      if (!j) return;
+      S.jt = j;
+      if (j.decimals != null) S.dec = Number(j.decimals);
+      renderHero(); render();
+      if (want()) quote();
+    }).catch(function () { /* holdings can still supply decimals */ });
+    if (want()) quote();
+  }
+
+  fetch('/api/swap-config').then(function (r) { return r.json(); }).then(function (c) {
+    S.cfg = c || {};
+    if (S.cfg.fee && S.cfg.feeBps) {
+      $('fine').textContent = 'Routed by Jupiter. Your wallet signs every trade; pumpbubble never holds your funds or keys. '
+        + 'Quotes include a ' + trimFix(S.cfg.feeBps / 100, 2) + '% pumpbubble fee, which keeps the map free.';
+    }
+    if (want()) quote();
+  }).catch(function () { /* no fee, still a swap */ });
+
+  var q = new URLSearchParams(location.search);
+  var mint = (q.get('mint') || '').trim();
+  if (q.get('side') === 'sell') S.side = 'sell';
+  var pre = q.get('amount');
+  if (pre && /^\d{0,6}(\.\d{1,9})?$/.test(pre) && Number(pre) > 0) $('amt').value = pre;
+  if (isMint(mint)) start(mint);
+  else {
+    view('pick');
+    if (mint) { $('pickMsg').textContent = /^0x/i.test(mint) ? 'This swap is for Solana tokens. That address is on an EVM chain.' : 'That link does not carry a valid token address.'; $('pickMsg').hidden = false; }
+    render();
+  }
 })();
 </script>
 </body>

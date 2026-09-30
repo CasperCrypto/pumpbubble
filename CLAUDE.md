@@ -945,30 +945,61 @@ there.
 
 ## The swap page
 
-`public/swap.html` at `/swap?mint=<mint>`, `swapConfig()` / `buyOrSwap()` / `SWAP_CSP` in
-`src/refs.mjs`, `/api/swap-config`. Jupiter's own swap widget (the Plugin, `plugin-v1.js`,
-integrated mode) on our domain, with our token header above it and a way back to the token's page.
+`public/swap.html` at `/swap?mint=<mint>` (`&side=sell`, `&amount=0.5` optional),
+`swapConfig()` / `buyOrSwap()` / `SWAP_CSP` in `src/refs.mjs`, `/api/swap-config`,
+`scripts/swap-page.test.mjs`. **Our own swap, drawn like the map**: the token as a lit bubble
+with price, 24h move, market cap, liquidity, holders and traders, measured chips (mint and freeze
+authority, top-holder share, dev share, "53 traders made 29.3K trades", organic activity — never a
+verdict), Buy/Sell tabs, presets (0.1–1 SOL, 25–100%), the quote's rate, impact, minimum,
+fee, network cost and route, and the map's green button. After a buy: Solscan, and a gold
+**"Make $X gold on the map"** — the people who just bought a token are the people who boost it.
 
-**It is where Buy goes when no trading bot is configured** — the map card's Buy (now shown on every
+**It is where Buy goes when no trading bot is configured** — the map card's Buy (shown on every
 Solana token), the bot's Buy and ⚡ Copy buy. The old rule was "no code, no button", because a link
-out to someone else's terminal with no referral spends the click and earns nothing. This link
-keeps the visitor on pumpbubble, and it starts earning the day the fee account exists, without a
-deploy: set `JUP_REFERRAL` (the public key of a referral account made at referral.jup.ag, with a
-wrapped-SOL fee account so SOL-in buys pay in SOL) and optionally `JUP_FEE_BPS` (50–255, default
-50 — the plugin's floor; Jupiter keeps a fifth). Without it the widget quotes with Jupiter's own
-0.1% and says nothing about our fee; with it the page says the quote includes one. A referral
-trading bot still wins when both are set — that is the operator's explicit choice.
+out to someone else's terminal with no referral spends the click and earns nothing. This keeps the
+visitor on pumpbubble, and it starts earning the day the fee account exists, without a deploy: set
+`JUP_REFERRAL` (the public key of a referral account under **Jupiter Ultra**'s referral project,
+with a wrapped-SOL fee account so SOL-in trades pay in SOL) and optionally `JUP_FEE_BPS` (50–255,
+default 50; Jupiter keeps a fifth). A trading-bot referral still wins when both are set.
 
-**The page has its own Content-Security-Policy, set by the Worker** (`run_worker_first` includes
-`/swap`, served like `/embed`), so it never depends on how `_headers` rules merge and the map's
-strict policy is untouched. Details and the reason it is acceptable are in `docs/security.md`.
-Nothing on the page moves money of ours: no treasury address, no boost box, the visitor's wallet
-signs every swap in Jupiter's widget.
+**Why our own and not Jupiter's widget.** The first version embedded Jupiter's Plugin; it worked,
+and it looked like Jupiter — a fixed 360×550 black box, their lime button — which is what was asked
+to change. Jupiter's Ultra API does the part that is hard (routing, slippage, priority fees,
+landing the transaction) and answers the browser directly: keyless on `lite-api.jup.ag`, with
+CORS for our origin on `/order`, `/execute`, `/holdings` and `/search` (checked before building).
+So the page is ours and the plumbing is theirs:
 
-Two things learned building it: **Jupiter fixes the widget at 360×550** (the empty lower half fills
-with rate and fee once an amount is typed), so the header matches 360px rather than fighting it;
-and `.tok{display:flex}` beat the `hidden` attribute exactly as `#card .join` did on the map — an
-empty header bar showed for tokens that failed to resolve until `.tok[hidden]{display:none}`.
+- **Wallets are the Wallet Standard, not a library** — `wallet-standard:app-ready` announced,
+  `wallet-standard:register-wallet` listened for; Phantom, Solflare and Backpack answer both. Only
+  a wallet with `standard:connect` and a Solana signing feature on a `solana:` chain is listed;
+  icons only as `data:image`. The last wallet reconnects silently. A phone with no wallet gets
+  "Open in Phantom / Solflare" (their browse links, this same URL inside the wallet's browser) —
+  that is the path from a Telegram Buy button.
+- **Amounts are integers in base units end to end** (`toUnits`/`fromUnits`, BigInt); a float only
+  reaches the screen.
+- **A transaction from Jupiter is checked before any wallet sees it** (`orderOk`): same mints,
+  same amount in, built for this wallet, with a request id. The wallet's preview is the last check,
+  this is the one before it. A quote older than 20s is re-asked before signing; quotes refresh
+  every 12s while on screen.
+- **A fee account Jupiter refuses fails the whole quote** ("referralAccount is initialized under
+  REFER4Zgmy… for project DkiqsTrw…" for a bad one), so the page drops the fee, keeps quoting, and
+  warns in the console — the trade matters more than our cut of it.
+- **The price and its 24h move come from one source.** Jupiter's price is the one traded against,
+  so its change leads; ours is the fallback. Mixing them printed our +1,060,591% (a token hours
+  old, measured from launch) beside Jupiter's $0.53.
+- Sign-and-send-only wallets are handled (the wallet lands it; base58 of the signature for Solscan).
+
+**No third-party code runs on the page**, so its policy is the map's plus `connect-src` to
+Jupiter's two API hosts (`SWAP_CSP`, served by the Worker like `/embed`'s so `_headers` merge order
+never matters). `docs/security.md` has the reasoning. The page has a global `[hidden]` rule — a
+display rule beat the attribute twice on the map and once on the first version of this page.
+
+Verified in a browser with a mock Wallet Standard wallet (the real handshake, a live Jupiter
+transaction for a funded public address, execute intercepted so nothing was sent): connect,
+balance, quote, sign (624-byte v0 transaction, right account, `solana:mainnet`), success screen,
+Jupiter's failure, the wallet's refusal, sell with percentage presets, silent reconnect, and the
+phone's no-wallet sheet. **The first real trade has not been made** — a live swap needs a real
+wallet and real SOL, which is the operator's to do (0.01 SOL is enough).
 
 ## Where the Chart button goes
 

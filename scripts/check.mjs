@@ -115,13 +115,15 @@ try {
 }
 
 /* ------------------------------------------------------------- swap */
-/* /swap carries Jupiter's policy; the map must not. */
+/* /swap is the map's policy plus Jupiter's API in connect-src — no
+   third-party script — and the map's own policy must not have moved. */
 try {
   const res = await get('/swap?mint=So11111111111111111111111111111111111111112', 20000);
   const csp = res.headers.get('content-security-policy') || '';
-  res.status === 200 && csp.includes('https://plugin.jup.ag') && /frame-ancestors 'none'/.test(csp)
-    ? pass('/swap', 'Jupiter policy, never framed')
-    : fail('/swap', `HTTP ${res.status}, csp: ${csp.slice(0, 80)}`);
+  res.status === 200 && /script-src 'self' 'unsafe-inline';/.test(csp) && csp.includes('https://lite-api.jup.ag')
+    && /frame-ancestors 'none'/.test(csp) && (csp.match(/default-src/g) || []).length === 1
+    ? pass('/swap', 'own scripts only, Jupiter API, never framed')
+    : fail('/swap', `HTTP ${res.status}, csp: ${csp.slice(0, 120)}`);
   const home = (await get('/', 20000)).headers.get('content-security-policy') || '';
   /connect-src 'self';/.test(home) && !home.includes('jup.ag')
     ? pass('map CSP still strict')
