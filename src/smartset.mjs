@@ -44,12 +44,15 @@ export async function smartWallets(now = Date.now()) {
    hundred. These wallets trade all day and every transaction is a billed
    webhook delivery on the same webhook as every group's buy alerts — running
    the plan out of credits would silence the buybot everywhere. */
-/* Twenty-five, not a hundred. Every transaction of every watched wallet is a
-   Helius delivery, and every delivery is a Worker request: on the free plan's
-   100,000 a day, the site went dark (Cloudflare 1027) on 2026-09-30 with the
-   top hundred on the webhook. The best twenty-five by profit banked carry
-   most of the signal for a quarter of the requests. */
-export const SMART_WATCH = 25;
+/* Ten, not a hundred. Every transaction of every watched wallet is a Helius
+   delivery, and every delivery is a Worker request. Measured from the
+   account's analytics: the site ran ~7,700 requests a day before the bot,
+   56,000–80,000 a day once the top hundred were on the webhook, and 356,000
+   on 2026-09-30 — a memecoin frenzy, 371,067 of them to /tg/trade in six
+   hours — which put every route behind Cloudflare 1027 on the free plan's
+   100,000 a day. Ten of the best by profit banked keep the feature and fit
+   a frenzy day; more can come back with Workers Paid. */
+export const SMART_WATCH = 10;
 export function topSmart(map, n = SMART_WATCH) {
   return new Map([...(map || new Map()).entries()].sort((a, b) => a[1].rank - b[1].rank).slice(0, n));
 }

@@ -2071,8 +2071,14 @@ export async function onTrade(ctx, payload, solUsd) {
   const { env, store } = ctx;
   const w = await onWalletTrades(ctx, payload, solUsd).catch(() => ({ swaps: 0, dms: 0 }));
   const { set } = await tracked(store);
+  const buys = set.size ? buysFromPayload(payload, set) : [];
+  /* Every Helius delivery is a Worker request — 371,067 of them in six hours
+     on 2026-09-30, which is what took the site past the free plan's 100,000 a
+     day. One line per delivery says what it was for (a group's buy, a watched
+     wallet's swap, or nothing we use), sampled into the dashboard's Logs by
+     [observability]. */
+  console.log(JSON.stringify({ ev: 'tg-trade', txs: Array.isArray(payload) ? payload.length : 1, buys: buys.length, swaps: w.swaps || 0 }));
   if (!set.size) return { buys: 0, sent: 0, wallets: w };
-  const buys = buysFromPayload(payload, set);
   let sent = 0, skipped = 0;
   const bot = await me(env, store).catch(() => ({ username: '' }));
   for (const buy of buys) {

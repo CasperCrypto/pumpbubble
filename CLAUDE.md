@@ -205,8 +205,19 @@ call, every `/api/img`, every Telegram and Helius webhook delivery, every cron t
 every route answered Cloudflare **error 1027** on 2026-09-30, and "Smart money could not refresh"
 was the first symptom anyone saw. The count resets at 00:00 UTC.
 
+**Measured from the account's analytics** (GraphQL `workersInvocationsAdaptive` and the zone's
+`httpRequestsAdaptiveGroups`): ~7,700 requests a day before the bot; 187,000 on its launch day;
+56,000–80,000 a day after, with pump.fun's top hundred traders on the Helius webhook; 356,000 on
+2026-09-30, a frenzy day, when **`/tg/trade` took 371,067 requests in six hours** against 763 for
+`/api/img` and 257 for `/api/tokens`. Durable Objects have their own allowance and were far inside
+it (AudienceDO ~8,000–20,000 a day, the rest in the hundreds). The same flood also spent the free
+KV reads, so the KV API answered 429 for the rest of the day.
+
 What spends it, in the order to suspect: Helius deliveries (every transaction of every watched
-wallet is one request, so `SMART_WATCH` is 25, down from the 100 that were on the webhook that day);
+address is one request, so `SMART_WATCH` is now 10, down from 100; every buy of every token a
+group tracks is one too, which is the part that grows with the bot and the reason a busy bot needs
+Workers Paid — one hot token can trade 20,000–30,000 times a day); each delivery logs one
+`{ev:'tg-trade'}` line so the Logs split group buys from wallet swaps;
 a map open in a tab (a refresh every 15 s — now paused while the tab is hidden); the image proxy
 (one request per bubble's art on a first visit; the browser caches it after). `[observability]` is
 on at a tenth of requests, so the dashboard's Logs name the route that is spending it.
