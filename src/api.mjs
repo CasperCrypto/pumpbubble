@@ -2245,7 +2245,8 @@ export async function handle(req, ctx) {
             polls: s.polls, buys: s.buys, sent: s.sent, error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
         }
       }
-      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm } };
+      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm,
+        profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null } };
       return json(tgStatusMem.v);
     }
 

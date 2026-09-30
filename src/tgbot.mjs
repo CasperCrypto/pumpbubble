@@ -64,6 +64,7 @@ const K = {
   users: 'tg:users',                    // [userId] — everyone opted in
   me: 'tg:me',                          // cached getMe
   channel: 'tg:channel',                // the public smart-money channel, set in the console
+  profile: 'tg:profile',                // which version of BOT_PROFILE Telegram has, and the photo
 };
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
@@ -148,6 +149,8 @@ export async function ensureWebhook(env, store, audience = null) {
     });
     out = { enabled: true, ok: true, url: want, set: true };
   }
+  try { out.profile = await ensureProfile(env, store); }
+  catch (e) { out.profile = { ok: false, error: String(e && e.message || e) }; }
   /* A group whose /setup could not register the buy feed (the first real one
      hit a wrong Helius host) has its mint tracked and no webhook. Heal it here,
      on the cron, instead of asking the group to run /setup again. */
@@ -162,6 +165,134 @@ export async function ensureWebhook(env, store, audience = null) {
     if (addrs.length && (!(saved && saved.id) || smartOn)) out.helius = await syncWebhook(env, store, site(env), addrs);
   } catch (e) { out.helius = { ok: false, error: String(e && e.message || e) }; }
   return out;
+}
+
+/* ====================================================== the bot's profile */
+/* Everything Telegram shows about the bot before and around a conversation,
+   set by the bot itself so nothing depends on somebody remembering BotFather:
+   the "/" command lists (one for private chats, one for group members, one
+   for group admins — Telegram shows the most specific), the text in an empty
+   chat ("What can this bot do?"), the line on its profile and on shared
+   links, the Menu button, the admin rights it asks for when added to a group
+   or a channel, and — only when it has none — its profile photo.
+
+   Applied once per version of this object: the hash of it is kept in KV
+   (`tg:profile`), so the cron's hourly look costs one read, and editing any
+   text below re-applies everything on the next tick. */
+const RIGHTS = {
+  is_anonymous: false, can_manage_chat: true, can_delete_messages: false, can_manage_video_chats: false,
+  can_restrict_members: false, can_promote_members: false, can_change_info: false, can_invite_users: false,
+  can_post_stories: false, can_edit_stories: false, can_delete_stories: false,
+};
+export const BOT_PROFILE = {
+  description: [
+    '🫧 pumpbubble — the live pump.fun bubble map, in Telegram.',
+    '',
+    '➕ Free buy bot for your token’s group: every buy with your picture, a join captcha, a welcome message.',
+    '👛 Track any wallet — every buy and sell, copy it in one tap.',
+    '🧠 Follow pump.fun’s top traders by profit actually banked.',
+    '⚡ Make a token gold on the map, or advertise it.',
+    '',
+    'Tap Start below.',
+  ].join('\n'),
+  short: 'Free buy bot + captcha for your group. Track wallets and pump.fun’s top traders. The live bubble map.',
+  commands: {
+    private: [
+      { command: 'start', description: '🏠 Main menu' },
+      { command: 'buybot', description: '➕ Free buy bot for your group' },
+      { command: 'track', description: '👛 Track a wallet: /track WALLET name' },
+      { command: 'wallets', description: '📋 Your tracked wallets' },
+      { command: 'toptraders', description: '🧠 Follow pump.fun’s top traders' },
+      { command: 'boost', description: '⚡ Make a token gold on the map' },
+      { command: 'ads', description: '📣 Advertise a token' },
+      { command: 'help', description: '❓ How everything works' },
+      { command: 'stop', description: '🔕 Stop all messages from me' },
+    ],
+    group: [
+      { command: 'status', description: '📊 What this group is tracking' },
+      { command: 'boost', description: '⚡ Make this token gold on the map' },
+      { command: 'ads', description: '📣 Advertise this token' },
+      { command: 'help', description: '❓ How the buy bot works' },
+    ],
+    admins: [
+      { command: 'setup', description: '🚀 Start buy alerts: /setup CONTRACT_ADDRESS' },
+      { command: 'settings', description: '⚙️ Picture, emoji, minimum buy, 🛡 guard' },
+      { command: 'test', description: '🧪 Post a sample buy alert' },
+      { command: 'welcome', description: '👋 Welcome message: /welcome Hi {name}!' },
+      { command: 'status', description: '📊 What this group is tracking' },
+      { command: 'boost', description: '⚡ Make this token gold on the map' },
+      { command: 'ads', description: '📣 Advertise this token' },
+      { command: 'stop', description: '⏹ Stop buy alerts here' },
+      { command: 'help', description: '❓ All commands' },
+    ],
+  },
+  /* what the guard needs, and nothing it does not */
+  groupRights: { ...RIGHTS, can_delete_messages: true, can_restrict_members: true, can_invite_users: true, can_pin_messages: true, can_manage_topics: false },
+  /* the Smart money channel: post, and edit its own posts */
+  channelRights: { ...RIGHTS, can_post_messages: true, can_edit_messages: true },
+};
+
+export function profileHash(p = BOT_PROFILE) {
+  const str = JSON.stringify(p);
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+export async function ensureProfile(env, store) {
+  if (!enabled(env)) return { enabled: false };
+  const v = profileHash();
+  let saved = null;
+  try { saved = await store.get(K.profile); } catch {}
+  if (saved && saved.v === v && saved.ok) return { ok: true, v, applied: false, photo: saved.photo || '' };
+  const P = BOT_PROFILE, errors = [];
+  const run = async (method, body) => {
+    try { await tg(env, method, body); } catch (e) { errors.push(method + ': ' + (e.description || e.message)); }
+  };
+  await run('setMyCommands', { commands: P.commands.private, scope: { type: 'default' } });
+  await run('setMyCommands', { commands: P.commands.private, scope: { type: 'all_private_chats' } });
+  await run('setMyCommands', { commands: P.commands.group, scope: { type: 'all_group_chats' } });
+  await run('setMyCommands', { commands: P.commands.admins, scope: { type: 'all_chat_administrators' } });
+  await run('setMyDescription', { description: P.description });
+  await run('setMyShortDescription', { short_description: P.short });
+  await run('setChatMenuButton', { menu_button: { type: 'commands' } });
+  await run('setMyDefaultAdministratorRights', { rights: P.groupRights });
+  await run('setMyDefaultAdministratorRights', { rights: P.channelRights, for_channels: true });
+  /* A picture already on the bot is the operator's (set in BotFather) and
+     stays; ours goes up only on a bot with none. */
+  let photo = (saved && saved.photo) || '';
+  if (photo !== 'ours' && photo !== 'theirs') {
+    try { photo = await ensurePhoto(env, store); }
+    catch (e) { errors.push('photo: ' + (e.description || e.message)); photo = ''; }
+  }
+  const rec = { v, ok: !errors.length, at: Date.now(), photo, errors: errors.slice(0, 5) };
+  try { await store.put(K.profile, rec); } catch {}
+  return { ok: rec.ok, v, applied: true, photo, errors: rec.errors };
+}
+
+/* setMyProfilePhoto takes a new upload only (a JPG, as multipart), so the
+   picture is fetched from the site — public/bot-avatar.jpg, the map's P
+   bubble — and sent on as a file. */
+async function ensurePhoto(env, store) {
+  const bot = await me(env, store);
+  const have = await tg(env, 'getUserProfilePhotos', { user_id: bot.id, limit: 1 });
+  if (have && have.total_count > 0) return 'theirs';
+  const r = await fetch(site(env) + '/bot-avatar.jpg', { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('avatar ' + r.status);
+  const form = new FormData();
+  form.append('photo', JSON.stringify({ type: 'static', photo: 'attach://avatar' }));
+  form.append('avatar', new Blob([await r.arrayBuffer()], { type: 'image/jpeg' }), 'avatar.jpg');
+  const res = await fetch('https://api.telegram.org/bot' + env.TG_BOT_TOKEN + '/setMyProfilePhoto', {
+    method: 'POST', body: form, signal: AbortSignal.timeout(20000),
+  });
+  let j = null;
+  try { j = await res.json(); } catch { /* below */ }
+  if (!j || !j.ok) {
+    const e = new Error('setMyProfilePhoto: ' + ((j && j.description) || res.status));
+    e.description = (j && j.description) || '';
+    throw e;
+  }
+  return 'ours';
 }
 
 /* ============================================================ formatting */
@@ -436,22 +567,21 @@ async function dexPoolAndSocials(mint) {
 /* ================================================================ updates */
 
 const HELP = [
-  '<b>pumpbubble buybot</b>',
+  '🫧 <b>pumpbubble buy bot</b>',
   '',
-  '/setup <code>&lt;contract address&gt;</code> — start posting buys for a token on Solana, Base, Ethereum or Robinhood Chain',
-  '/media — send a photo, GIF or video with this as its caption to use it on buys',
-  '/emoji 🟢 — the emoji that fills the buy bar',
-  '/step 20 — dollars per emoji',
-  '/minbuy 0 — hide buys under this many dollars',
-  '/web, /x, /tg <code>&lt;url&gt;</code> — links under each buy',
-  '/settings — buttons for all of the above, and 🛡 Guard: join captcha, welcome, clean joins',
-  '/welcome <code>text</code> — the welcome message; {name}, {group}, {sym} fill in',
+  '<b>Admins</b>',
+  '/setup <code>&lt;contract address&gt;</code> — post every buy of a token: Solana, Base, Ethereum or Robinhood Chain',
+  '/settings — buttons for the picture or GIF on buys, emoji, minimum buy, links, and 🛡 Guard: join captcha, welcome, clean joins',
   '/test — post a sample alert',
-  '/status — what this group is tracking',
-  '/boost, /ads — buy a golden bubble or an ad for this token (opens a private chat with me)',
+  '/welcome <code>text</code> — the welcome message; {name}, {group}, {sym} fill in',
   '/stop — stop posting here',
   '',
-  'Admins only. The chain is found from the address; if a 0x address trades on more than one, add it: <code>/setup 0x… base</code>.',
+  '<b>Everyone</b>',
+  '/status — what this group is tracking',
+  '/boost, /ads — make the token gold on the map, or advertise it (in a private chat with me)',
+  '',
+  'Also for admins: /emoji 🟢 · /step 20 (dollars per emoji) · /minbuy 50 · /web, /x, /tg <code>&lt;url&gt;</code> · a photo, GIF or video with /media as its caption.',
+  'A 0x address that trades on more than one chain: <code>/setup 0x… base</code>.',
 ].join('\n');
 
 const adminMem = new Map();       // chat:user -> {at, ok}
@@ -528,8 +658,10 @@ async function onMembership(ctx, m) {
     const old = m.old_chat_member && m.old_chat_member.status;
     if (old === 'left' || old === 'kicked' || !old) {
       await say(env, chat.id,
-        '🫧 Hi! I post buys for your token, with your picture on each one.\n\n'
-        + 'An admin can start with:\n<code>/setup &lt;contract address&gt;</code>\n\n/help for the rest.');
+        '🫧 <b>Thanks for adding me!</b>\n\n'
+        + 'Admins: send <code>/setup &lt;contract address&gt;</code> and I will post every buy here.\n'
+        + 'Then /settings for the picture on buys, emoji, minimum buy and the 🛡 join captcha.\n\n'
+        + 'Type / to see all my commands.');
     }
   }
 }
@@ -867,14 +999,22 @@ async function shopFor(ctx, chatId, ca, what = '') {
     return say(env, chatId, 'No token found at that address. Check it and send it again.');
   }
   const chain = (CHAINS[t.chain] && CHAINS[t.chain].name) || (t.chain === 'solana' || !t.chain ? 'Solana' : t.chain);
+  const key = isEvmAddr(ca) ? ca.toLowerCase() : ca;
+  /* Somebody pasting a token may want to buy it, not promote it: the swap
+     and the chart come first, the shop below them. */
+  const top = isMint(key)
+    ? [[{ text: '🛒 Buy $' + clean(t.sym, 12), url: buyOrSwap(env, site(env), key) },
+        { text: '📊 Chart', url: (t.grad === false ? 'https://pump.fun/coin/' : 'https://dexscreener.com/solana/') + encodeURIComponent(key) }]]
+    : [[{ text: '📊 Chart', url: 'https://dexscreener.com/' + encodeURIComponent((CHAINS[t.chain] && CHAINS[t.chain].dex) || t.chain || 'ethereum') + '/' + encodeURIComponent(key) }]];
   return say(env, chatId,
     `<b>$${tgEsc(t.sym)}</b> — ${tgEsc(t.name)} · ${tgEsc(chain)}${t.mcap ? ' · MCap ' + fmtUsd(t.mcap) : ''}\n\n`
+    + (isMint(key) ? '🛒 Buy it from your own wallet, or promote it:\n\n' : 'Promote it:\n\n')
     + '⚡ <b>Boost</b>: a golden bubble on the map, sized by what was paid, fading over its hours.\n'
     + '📣 <b>Map ad</b>: a slot on the moving rail above the map.\n'
     + '📣 <b>Buy-alert ad</b>: your token on a line under every buy alert, in every group I post in.\n'
     + '📨 <b>DM blast</b>: your token in a sponsored DM to everyone on my list' + (await audienceLine(ctx)) + ', sent after review.\n\n'
-    + 'Paid in SOL. Pick one:',
-    { reply_markup: { inline_keyboard: shopKeyboard(isEvmAddr(ca) ? ca.toLowerCase() : ca, what) } });
+    + 'Promotions are paid in SOL.',
+    { reply_markup: { inline_keyboard: [...top, ...shopKeyboard(key, what), [MENU_BTN]] } });
 }
 
 async function onShop(ctx, q, data) {
@@ -1559,7 +1699,17 @@ async function onPrivate(ctx, msg) {
   /* a pasted contract address is the start of a purchase */
   const pasted = String(msg.text || '').trim();
   if (!c && isCA(pasted)) return shopFor(ctx, msg.chat.id, pasted);
-  if (!c) return;
+  /* Nothing typed here goes unanswered: a half-pasted address says so, and
+     anything else points at what the bot can do. A photo or a sticker (no
+     text) gets nothing — there is nothing to say about it. */
+  if (!c) {
+    if (!pasted) return;
+    const partial = /^(0x[0-9a-fA-F]{6,}|[1-9A-HJ-NP-Za-km-z]{20,})$/.test(pasted);
+    return say(env, msg.chat.id, partial
+      ? 'That looks like part of an address — paste the whole thing, from a token\u2019s page or a wallet.'
+      : 'Paste a token address to buy or boost it, or a wallet address to track it. Everything else is in the menu:',
+      { reply_markup: { inline_keyboard: [[MENU_BTN, { text: '❓ How it works', callback_data: 'help:menu' }]] } });
+  }
   if (c.cmd === 'start' && c.arg) {
     const [what, ca] = [c.arg.split('_')[0], c.arg.slice(c.arg.indexOf('_') + 1)];
     if ((what === 'boost' || what === 'ad') && isCA(ca)) return shopFor(ctx, msg.chat.id, ca, what);
@@ -1579,29 +1729,117 @@ async function onPrivate(ctx, msg) {
     return say(env, msg.chat.id, 'Stopped tracking <code>' + tgEsc(wallet) + '</code>.');
   }
   if (c.cmd === 'wallets' || c.cmd === 'tracker') return trackerMenu(ctx, msg.chat.id, uid);
-  if (c.cmd === 'start' || c.cmd === 'help') {
-    /* Add-to-group asks for the admin rights the guard needs up front —
-       Telegram's startgroup link can request them — so an owner is not sent
-       back to promote the bot by hand before the captcha works. */
-    const bot = await me(env, store).catch(() => null);
-    const add = bot && /^\w+$/.test(bot.username || '')
-      ? [[{ text: '➕ Add me to your group', url: 'https://t.me/' + bot.username + '?startgroup=setup&admin=delete_messages+restrict_members+pin_messages+invite_users' }]]
-      : [];
-    return say(env, msg.chat.id,
-      '🫧 <b>pumpbubble</b> — the live bubble map for pump.fun, Base, Robinhood Chain and the market.\n\n'
-      + 'To add buy alerts to your group: add me there and run <code>/setup &lt;contract address&gt;</code>.\n\n'
-      + '👛 <b>Track any wallet</b> — or follow pump.fun\u2019s top 300 traders by realized profit — and get every buy and sell here, with one tap to copy it.\n\n'
-      + 'Promote a token right here: a golden bubble, an ad on the map or under every buy alert, or a DM to everyone on my list.\n\n'
-      + '<i>' + DISCLOSURE + '</i>',
-      { reply_markup: { inline_keyboard: [
-        ...add,
-        [{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }],
-        [{ text: '💬 Join the pumpbubble community', url: community(env) }],
-        ...(pumpJoin(env) ? [[{ text: '🟢 New to pump.fun? Create an account', url: pumpJoin(env) }]] : []),
-        [{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Buy an ad', callback_data: 'shop:ads' }],
-        [UNSUB],
-      ] } });
+  if (c.cmd === 'start' || c.cmd === 'menu') return sendMenu(ctx, msg.chat.id);
+  if (c.cmd === 'help') return sendHelp(ctx, msg.chat.id, 'menu');
+  if (c.cmd === 'buybot' || c.cmd === 'setup') return sendHelp(ctx, msg.chat.id, 'group');
+  if (c.cmd === 'toptraders' || c.cmd === 'smart') return sendHelp(ctx, msg.chat.id, 'traders');
+  return say(env, msg.chat.id, 'I don\u2019t know that command. Type / to see mine, or:',
+    { reply_markup: { inline_keyboard: [[MENU_BTN, { text: '❓ How it works', callback_data: 'help:menu' }]] } });
+}
+
+/* ============================================================== menus */
+/* What somebody sees in a private chat. The first screen says what the bot
+   is for in four lines and puts each behind a button; the detail is one tap
+   down, in Help, edited in place so the chat does not fill with menus. The
+   disclosure stays on the first screen: it is the condition the mass DM
+   was built on (see CLAUDE.md). */
+export const MENU_BTN = { text: '🏠 Menu', callback_data: 'menu' };
+const addToGroupUrl = bot => 'https://t.me/' + bot.username + '?startgroup=setup&admin=delete_messages+restrict_members+pin_messages+invite_users';
+
+export function mainMenu(env, bot) {
+  const text = '🫧 <b>pumpbubble</b> — the live pump.fun bubble map, in Telegram.\n\n'
+    + '➕ <b>Buy bot</b> — free buy alerts, a join captcha and a welcome for your token\u2019s group\n'
+    + '👛 <b>Wallet tracker</b> — every buy and sell of any wallet, copied in one tap\n'
+    + '🧠 <b>Top traders</b> — follow pump.fun\u2019s best, by profit actually banked\n'
+    + '⚡ <b>Promote</b> — make a token gold on the map, or advertise it\n\n'
+    + 'Or just paste a token or wallet address here.\n\n'
+    + '<i>' + DISCLOSURE + '</i>';
+  const kb = [];
+  /* Add-to-group asks for the admin rights the guard needs up front —
+     Telegram's startgroup link can request them — so an owner is not sent
+     back to promote the bot by hand before the captcha works. */
+  if (bot && /^\w+$/.test(bot.username || '')) kb.push([{ text: '➕ Add the buy bot to my group', url: addToGroupUrl(bot) }]);
+  kb.push([{ text: '👛 Wallet tracker', callback_data: 'trk:menu' }, { text: '🧠 Follow top traders', callback_data: 'trk:smart' }]);
+  kb.push([{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Advertise', callback_data: 'shop:ads' }]);
+  kb.push([{ text: '🫧 Open the map', url: site(env) }, { text: '💬 Community', url: community(env) }]);
+  kb.push([{ text: '❓ How it works', callback_data: 'help:menu' }, UNSUB]);
+  if (pumpJoin(env)) kb.push([{ text: '🟢 New to pump.fun? Create an account', url: pumpJoin(env) }]);
+  return { text, keyboard: kb };
+}
+
+export function helpScreen(env, bot, topic) {
+  const back = [{ text: '⬅️ Back', callback_data: 'help:menu' }, MENU_BTN];
+  const add = bot && /^\w+$/.test(bot.username || '') ? [{ text: '➕ Add the buy bot to my group', url: addToGroupUrl(bot) }] : null;
+  const T = {
+    menu: {
+      text: '❓ <b>How it works</b> — pick a topic:',
+      keyboard: [
+        [{ text: '➕ Buy bot for my group', callback_data: 'help:group' }],
+        [{ text: '👛 Wallet tracker', callback_data: 'help:wallets' }, { text: '🧠 Top traders', callback_data: 'help:traders' }],
+        [{ text: '⚡ Boosts and ads', callback_data: 'help:promote' }, { text: '🔕 Messages and safety', callback_data: 'help:privacy' }],
+        [MENU_BTN],
+      ],
+    },
+    group: {
+      text: '➕ <b>Buy bot for your group</b> — free\n\n'
+        + '1. Tap <b>Add the buy bot to my group</b>, pick the group, and keep the admin rights it asks for — the captcha needs them.\n'
+        + '2. In the group, send <code>/setup &lt;contract address&gt;</code>. Solana, Base, Ethereum and Robinhood Chain all work.\n'
+        + '3. Send /settings for buttons: a picture or GIF on every buy, the emoji, a minimum buy, and 🛡 Guard — join captcha, welcome message, clean joins.\n\n'
+        + 'A token’s first setup also gets 500 Tap wars taps, and an hour as a golden bubble on the map when a slot is free.',
+      keyboard: [...(add ? [add] : []), back],
+    },
+    wallets: {
+      text: '👛 <b>Wallet tracker</b>\n\n'
+        + '• Paste a wallet address here, or send <code>/track WALLET name</code>.\n'
+        + '• Every buy and sell arrives here within seconds, with <b>⚡ Copy buy</b> — it opens the same trade in your own wallet.\n'
+        + '• Up to ' + MAX_FOLLOWS + ' wallets. /wallets lists them; tap ✖ to drop one.',
+      keyboard: [[{ text: '👛 My wallets', callback_data: 'trk:menu' }], back],
+    },
+    traders: {
+      text: '🧠 <b>Top traders</b>\n\n'
+        + 'pump.fun\u2019s top traders by profit actually banked — not paper gains. Follow them with one tap and their bigger buys and exits (1 SOL or more) arrive here, with ⚡ Copy buy.\n\n'
+        + 'Their buys are also marked 🧠 SMART BUY in every group running the bot.',
+      keyboard: [[{ text: '🧠 Follow top traders', callback_data: 'trk:smart' }, { text: '🫧 See them', url: site(env) + '/?source=traders' }], back],
+    },
+    promote: {
+      text: '⚡ <b>Boosts and ads</b>\n\n'
+        + '• <b>Boost</b>: the token\u2019s bubble turns gold and grows past everyone on the map, fading over its hours.\n'
+        + '• <b>Map ad</b>: a slot on the moving rail above the map.\n'
+        + '• <b>Buy-alert ad</b>: a line under every buy alert, in every group I post in.\n\n'
+        + 'Send me the token\u2019s address, pick one and pay in SOL. I message you here the moment it is live.',
+      keyboard: [[{ text: '⚡ Boost a token', callback_data: 'shop:boost' }, { text: '📣 Advertise', callback_data: 'shop:ads' }], back],
+    },
+    privacy: {
+      text: '🔕 <b>Messages and safety</b>\n\n'
+        + DISCLOSURE + '\n\n'
+        + '• /stop — stop everything and forget you.\n'
+        + '• 🔕 on any update — stop the updates only; wallet alerts you asked for keep coming.\n'
+        + '• I never ask for a private key, a seed phrase or a payment to \u201cverify\u201d. Anyone who does is not me.',
+      keyboard: [[UNSUB], back],
+    },
+  };
+  return T[topic] || T.menu;
+}
+
+/* Show a screen: edit the message a button sits on when there is one, send a
+   new one otherwise (or when the edit is refused). */
+async function showScreen(env, chatId, messageId, text, keyboard) {
+  const payload = { chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup: { inline_keyboard: keyboard } };
+  if (messageId) {
+    try { return await tg(env, 'editMessageText', { ...payload, message_id: messageId }); }
+    catch (e) { if (/not modified/i.test(e.description || '')) return null; }
   }
+  return tg(env, 'sendMessage', payload).catch(() => null);
+}
+async function sendMenu(ctx, chatId, messageId = 0) {
+  const bot = await me(ctx.env, ctx.store).catch(() => null);
+  const m = mainMenu(ctx.env, bot);
+  return showScreen(ctx.env, chatId, messageId, m.text, m.keyboard);
+}
+async function sendHelp(ctx, chatId, topic, messageId = 0) {
+  const bot = await me(ctx.env, ctx.store).catch(() => null);
+  const h = helpScreen(ctx.env, bot, topic);
+  return showScreen(ctx.env, chatId, messageId, h.text, h.keyboard);
 }
 
 async function onCallback(ctx, q) {
@@ -1615,6 +1853,12 @@ async function onCallback(ctx, q) {
     await tg(env, 'answerCallbackQuery', { callback_query_id: q.id, text: 'Unsubscribed — nothing more from me. /start to come back.', show_alert: true }).catch(() => {});
     if (chatId) await tg(env, 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
     return;
+  }
+  if (uid && (data === 'menu' || data.startsWith('help:'))) {
+    await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {});
+    if (!chatId) return;
+    const mid = q.message && q.message.message_id;
+    return data === 'menu' ? sendMenu(ctx, chatId, mid) : sendHelp(ctx, chatId, data.slice(5), mid);
   }
   if (uid && data.startsWith('vcap:')) return onVerifyAnswer(ctx, q, data.slice(5));
   if (uid && data.startsWith('cfg:')) return onSettings(ctx, q, data.slice(4));
@@ -1779,6 +2023,7 @@ export async function status(env, store) {
   try { const info = await tg(env, 'getWebhookInfo'); out.telegram = { url: info.url || '', pending: info.pending_update_count || 0, lastError: info.last_error_message || '' }; }
   catch (e) { out.telegram = { error: String(e.message) }; }
   out.helius = await webhookInfo(env, store);
+  try { const pr = await store.get(K.profile); if (pr) out.profile = { ok: !!pr.ok, photo: pr.photo || '', at: pr.at, errors: pr.errors || [] }; } catch {}
   if (LAT.length) {
     const s = LAT.slice().sort((a, b) => a - b);
     out.latency = { alerts: s.length, medianS: +s[s.length >> 1].toFixed(1), p90S: +s[Math.floor(s.length * 0.9)].toFixed(1) };

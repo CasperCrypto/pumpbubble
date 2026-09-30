@@ -1344,6 +1344,20 @@ bonding curve ⚠️ helius 530 error code: 1016"*, and was wrong in two of thre
   pools before trusting it: reserves, DexScreener and pump.fun agree within ~4% on neet, TripleT,
   JEANPHIL and PAID. pump.fun's `usd_market_cap` stays the bot's figure.
 
+**The bot sets up its own Telegram profile** (`BOT_PROFILE`, `ensureProfile`, run from the cron's
+`ensureWebhook`): the "/" command lists for private chats, group members and group admins (Telegram
+shows only the most specific scope, so every member command is repeated in the admins' list), the
+text of an empty chat ("What can this bot do?", ≤512), the profile line (≤120), the Menu button,
+and the admin rights it asks for in groups (what the guard needs) and channels (posting). Applied
+once per hash of that object, kept in KV `tg:profile`; edit any text and the next tick re-applies.
+Its profile photo (`public/bot-avatar.jpg`, the P bubble) goes up **only on a bot with none** —
+Bot API 10.3's `setMyProfilePhoto`, a multipart upload — so a picture set in BotFather is never
+overwritten. Nothing has to be done in BotFather. Asked for as "when I enter the bot everything
+must be clear": the private chat is now a four-line menu with buttons, Help is one tap down and
+edits in place, a pasted token offers Buy and Chart before the shop, and anything typed that is not
+a command or an address gets a pointer back instead of silence. `scripts/botux.test.mjs` drives
+all of it against a fake Telegram, including that every command in the menu gets an answer.
+
 **Settings are buttons.** `/settings`, the `/setup` reply and `/status` carry a ⚙️ panel —
 media, emoji, minimum buy, dollars per emoji, test alert, links, stop — one message edited in place
 (`settingsView`, `onSettings`), admins only, callback data `cfg:<what>[:<index>]` with choices as
