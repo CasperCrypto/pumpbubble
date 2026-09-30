@@ -594,11 +594,11 @@ input[type=range]{width:100%;accent-color:var(--mint);height:26px}
 .pay .unit{font-size:12px;font-weight:900;color:var(--gold);opacity:.8}
 .pay .addr{font:800 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
   color:#9fe0ff;word-break:break-all;flex:1}
-.pay .ic{margin-left:auto;flex:0 0 auto;font-size:10px;font-weight:900;
+.pay .cplx{margin-left:auto;flex:0 0 auto;font-size:10px;font-weight:900;
   letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
   border:1px solid var(--line);border-radius:7px;padding:4px 7px}
 .pay button.cp.done{border-color:var(--mint);background:rgba(40,224,140,.10)}
-.pay button.cp.done .ic{color:var(--mint2);border-color:rgba(40,224,140,.45)}
+.pay button.cp.done .cplx{color:var(--mint2);border-color:rgba(40,224,140,.45)}
 .paystat{display:flex;align-items:center;gap:7px;margin-top:13px;
   font-size:12.5px;font-weight:800;color:var(--ink)}
 .payfine{margin-top:8px;font-size:11px;line-height:1.5;color:var(--dim);font-weight:600}
@@ -652,7 +652,73 @@ body.embed #brandbadge.on{display:flex}
   background:var(--glass2);color:var(--ink);font-weight:900;font-size:14px;cursor:pointer}
 .mbtns button.go{border:0;background:linear-gradient(180deg,#ffe07a,var(--gold) 60%,#e6a400);
   color:#2b1c00;box-shadow:0 8px 26px rgba(255,201,60,.35)}
-.mnote{text-align:center;font-size:10px;color:#5d6577;margin-top:11px;font-weight:600}
+.mnote{text-align:center;font-size:10.5px;color:#5d6577;margin-top:11px;font-weight:600;line-height:1.5}
+
+/* ---- the boost sheet: token, size, payment ---- */
+.bx{max-width:480px}
+.bx-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.bx-bolt{flex:0 0 auto;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#2b1c00;
+  background:linear-gradient(180deg,#ffe9a3,var(--gold) 55%,#e6a400);box-shadow:0 6px 22px -4px rgba(255,201,60,.55)}
+.bx-bolt .ic{width:22px;height:22px}
+.bx-title{min-width:0;flex:1}
+.bx-title .sub{margin:3px 0 0}
+.bx-x{flex:0 0 auto;width:32px;height:32px;border-radius:10px;border:1px solid var(--line);background:var(--glass);
+  color:var(--dim);font-size:20px;line-height:1;cursor:pointer}
+.bx-x:hover{color:var(--ink);background:var(--glass2)}
+.bx-step{margin-top:14px}
+.bx-lab{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;font-weight:900;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink)}
+.bx-lab span{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;letter-spacing:0;
+  background:rgba(255,201,60,.15);color:var(--gold);border:1px solid rgba(255,201,60,.35)}
+.bx-lab small{font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--dim);font-weight:700}
+.bx-tok{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:13px;
+  border:1px solid rgba(255,201,60,.35);background:rgba(255,201,60,.06)}
+.bx-tok img,.bx-tok .av{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:0 0 auto;display:grid;place-items:center;
+  font-weight:900;color:#08110c;background:#2a3140}
+.bx-tok .who{min-width:0;flex:1}
+.bx-tok .who b{display:block;font-size:14.5px;font-weight:900}
+.bx-tok .who span{display:block;font-size:11px;color:var(--dim);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bx-tok+.ca{margin-top:8px}
+.bx-tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.bt{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 11px 11px;border-radius:14px;
+  border:1px solid var(--line);background:var(--glass);color:var(--ink);cursor:pointer;text-align:left;transition:.15s;min-width:0}
+.bt:hover{background:var(--glass2);border-color:rgba(255,255,255,.18)}
+.bt.on{border-color:rgba(255,201,60,.6);background:linear-gradient(180deg,rgba(255,201,60,.18),rgba(255,201,60,.04));
+  box-shadow:0 0 24px rgba(255,201,60,.16)}
+.bt-n{font-size:12px;font-weight:900;color:var(--dim)}
+.bt.on .bt-n{color:var(--gold)}
+.bt-m{font:900 22px/1.05 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bt-h{font-size:11px;color:var(--dim);font-weight:700}
+.bt-p{margin-top:5px;font-size:15px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.bt .pop{position:absolute;top:-8px;right:8px;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:900;letter-spacing:.04em;
+  text-transform:uppercase;color:#2b1c00;background:var(--gold)}
+.bx-prev{margin-top:10px;padding:10px 12px;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.02);
+  display:flex;align-items:center;gap:14px}
+.bp-row{display:flex;align-items:center;gap:10px;flex:0 0 auto;height:78px}
+.bp-a,.bp-b{display:grid;place-items:center;border-radius:50%;flex:0 0 auto;transition:width .3s,height .3s}
+.bp-a{width:30px;height:30px;background:radial-gradient(circle at 35% 30%,#5ff7b4,#1a8f58 60%,#0d4a2e)}
+.bp-b{width:var(--r,56px);height:var(--r,56px);font-size:12px;font-weight:900;color:#2b1c00;
+  background:radial-gradient(circle at 35% 30%,#fff3c2,var(--gold) 45%,#b27d00);box-shadow:0 0 22px rgba(255,201,60,.45)}
+.bp-arrow{color:var(--dim);font-weight:900}
+#bxPrevTxt{margin:0;font-size:12px;line-height:1.5;color:var(--dim);font-weight:700}
+#bxPrevTxt b{color:var(--ink)}
+.bx .pay{margin-top:0}
+.bx-sum{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.bx-sum b{font-size:22px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+.bx-sum span{font-size:12px;color:var(--dim);font-weight:700}
+.bx-alt{display:flex;gap:8px;margin:0 0 10px}
+.bx-alt a,.bx-alt button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;border-radius:11px;
+  border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);font:inherit;font-size:12.5px;font-weight:800;
+  text-decoration:none;cursor:pointer}
+.bx-alt a:hover,.bx-alt button:hover{background:rgba(255,255,255,.09)}
+.pay .cpl{margin-left:auto;flex:0 0 auto;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--line);border-radius:7px;padding:4px 7px}
+.pay button.cp.done .cpl{color:var(--mint2);border-color:rgba(40,224,140,.45)}
+.pay .paystat a{color:#7fd7ff;text-decoration:none;margin-left:6px}
+.mbtns button.go{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.mbtns button.go .ic{width:16px;height:16px}
+.mbtns button.go img{width:18px;height:18px;border-radius:5px}
+@media (max-width:400px){.bt-m{font-size:19px}.bx-prev{flex-direction:column;align-items:flex-start;gap:4px}}
 
 /* ============ desktop ============ */
 @media (min-width:820px){
@@ -956,35 +1022,51 @@ body.embed #brandbadge.on{display:flex}
 <!-- ================= boost modal ================= -->
 <div id="veil">
   <div class="bg"></div>
-  <div class="modal">
+  <div class="modal bx">
     <div class="grab"></div>
-    <h3><svg class="ic f gold" aria-hidden="true"><use href="#i-bolt"/></svg> Pump <em id="mtk">your bubble</em></h3>
-    <p class="sub">Boosted bubbles turn gold and grow past everyone. Size comes from what the community pays — not market cap. Boosts decay, so the biggest bubble is whoever keeps pumping.</p>
+    <div class="bx-head">
+      <span class="bx-bolt"><svg class="ic f" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+      <div class="bx-title">
+        <h3>Boost <em id="mtk">your bubble</em></h3>
+        <p class="sub">A gold bubble, bigger than everyone on the map. Its size is what was paid, not market cap &mdash; and it fades, so the biggest is whoever keeps boosting.</p>
+      </div>
+      <button class="bx-x" id="mclose" type="button" aria-label="Close">&times;</button>
+    </div>
 
-    <!-- Any pump.fun token can be boosted, not just the 300 on screen. The
-         ranked feed misses small and brand-new coins, which is exactly who
-         arrives holding a contract address. -->
-    <input id="mca" class="ca" spellcheck="false" autocomplete="off"
-           placeholder="or paste any pump.fun contract address">
-    <div id="mcaPre" class="capre"></div>
-    <div id="mcaMsg" class="camsg"></div>
+    <!-- 1. the token: the one tapped on the map, or any contract pasted here -->
+    <div class="bx-step">
+      <div class="bx-lab"><span>1</span>Token</div>
+      <div id="bxTok" class="bx-tok" hidden></div>
+      <!-- Any token can be boosted, not just the ones on screen: the ranked feed
+           misses small and brand-new coins, which is exactly who arrives holding
+           a contract address. -->
+      <input id="mca" class="ca" spellcheck="false" autocomplete="off"
+             placeholder="Paste a contract address &mdash; Solana, Base, Ethereum or Robinhood">
+      <div id="mcaPre" class="capre"></div>
+      <div id="mcaMsg" class="camsg"></div>
+    </div>
 
-    <div class="tier" data-tier="spark" data-mult="1.5" data-price="9"><div><div class="b">Spark ×1.5</div><div class="d">6h · gold shell</div></div><div class="p">$9</div></div>
-    <div class="tier on" data-tier="pump" data-mult="2.4" data-price="49"><div><div class="b">Pump ×2.4</div><div class="d">24h · gold + glow + pinned on screen</div></div><div class="p">$49</div></div>
-    <div class="tier" data-tier="whale" data-mult="4.0" data-price="149"><div><div class="b">Whale ×4.0</div><div class="d">72h · everything + top ad rail</div></div><div class="p">$149</div></div>
+    <!-- 2. the size -->
+    <div class="bx-step">
+      <div class="bx-lab"><span>2</span>Size</div>
+      <div class="bx-tiers" id="bxTiers"></div>
+      <div class="bx-prev">
+        <div class="bp-row"><span class="bp-a" id="bpA"></span><span class="bp-arrow">&rarr;</span><span class="bp-b" id="bpB"></span></div>
+        <p id="bxPrevTxt"></p>
+      </div>
+    </div>
 
-    <div class="pay" id="mpay">
-      <b>Solana Pay · settles itself</b><br>
-      Pick a tier, then send <b style="color:var(--gold)" id="mamt">$49</b> in SOL.
-      We watch the chain and light the bubble up in the next block.
-      No processor, no KYC, no chargebacks.
+    <!-- 3. the payment -->
+    <div class="bx-step">
+      <div class="bx-lab"><span>3</span>Pay <small>in SOL, settled on-chain &middot; no processor, no KYC</small></div>
+      <div class="pay" id="mpay"></div>
     </div>
 
     <div class="mbtns">
-      <button id="mcancel">Cancel</button>
-      <button class="go" id="mgo">Get pay link →</button>
+      <button id="mcancel" type="button">Cancel</button>
+      <button class="go" id="mgo" type="button">Boost</button>
     </div>
-    <div class="mnote" id="mnote">Payment is on-chain — only send from a wallet you control.</div>
+    <div class="mnote" id="mnote">Payment is on-chain &mdash; only send from a wallet you control.</div>
   </div>
 </div>
 
@@ -2707,21 +2789,73 @@ document.getElementById('q').addEventListener('input',e=>{
 });
 
 /* ------------------------------------------------------------ boost flow */
-/* Real money: an order is quoted server-side, paid on-chain with Solana Pay,
-   and only the chain decides whether it happened. Nothing here can grant a
-   boost by itself — the client just shows what the backend confirmed. */
+/* Real money: an order is quoted server-side, paid on-chain, and only the
+   chain decides whether it happened. Nothing here can grant a boost by
+   itself — the page shows what the backend confirmed.
+
+   One sheet, three steps: the token, the size, the payment. The payment is
+   one click from a connected Solana wallet: the page builds a plain SOL
+   transfer of the order's exact amount — the unique lamports are how the
+   payment is matched — with the order's Solana Pay reference on it, and the
+   wallet signs and sends it. Without a wallet, the Solana Pay link or the
+   amount and address to copy, as before. */
 const veil=document.getElementById('veil');
 const payBox=document.getElementById('mpay');
 const goBtn=document.getElementById('mgo');
 const noteEl=document.getElementById('mnote');
-let tier={id:'pump',mult:2.4,price:49};
+/* the tiers are the server's (GET /api/boosts), so a price is never quoted
+   here that the order route would not charge; these are only until it answers */
+let TIERS=[{id:'spark',label:'Spark',mult:1.5,usd:9,hours:6},{id:'pump',label:'Pump',mult:2.4,usd:49,hours:24},{id:'whale',label:'Whale',mult:4,usd:149,hours:72}];
+const PERKS={spark:'a gold shell',pump:'gold, a glow, and pinned on screen',whale:'everything, plus the top of the ad rail'};
+let tier=TIERS[1];
 let order=null,orderToken='',poll=null;
+jget('/api/boosts',8000).then(j=>{
+  if(j&&Array.isArray(j.tiers)&&j.tiers.length){
+    TIERS=j.tiers.filter(t=>t&&t.id&&+t.usd>0).map(t=>({id:String(t.id),label:String(t.label||t.id),mult:+t.mult,usd:+t.usd,hours:+t.hours}));
+    tier=TIERS.find(t=>t.id===tier.id)||TIERS[Math.min(1,TIERS.length-1)];
+    if(veil.classList.contains('on')&&!order)renderTiers();
+  }
+}).catch(()=>{});
 
-/* `keepCA` matters more than it looks. Picking a tier calls this to refresh the
-   price line, and clearing the contract field there meant: paste an address,
-   tap a tier, and the address silently vanished — so the quote fell back to
-   whichever bubble happened to be selected and bought the wrong token. Tier
-   changes keep what was typed; only opening the modal afresh clears it. */
+function renderTiers(){
+  document.getElementById('bxTiers').innerHTML=TIERS.map(t=>`<button type="button" class="bt${t.id===tier.id?' on':''}" data-tier="${esc(t.id)}">`
+    +(t.id==='pump'?'<span class="pop">most picked</span>':'')
+    +`<span class="bt-n">${esc(t.label)}</span><span class="bt-m">×${esc(String(t.mult))}</span>`
+    +`<span class="bt-h">${esc(String(t.hours))} hours</span><span class="bt-p">$${esc(String(t.usd))}</span></button>`).join('');
+  /* The preview is the map's own rule: a boost multiplies the radius by
+     1 + 0.6 × (multiplier − 1), after log compression (see sizes()). */
+  const grow=1+.6*(tier.mult-1);
+  const b=document.getElementById('bpB');
+  b.style.setProperty('--r',Math.round(Math.min(78,30*grow))+'px');
+  b.textContent='×'+tier.mult;
+  document.getElementById('bxPrevTxt').innerHTML='<b>'+esc(tier.label)+'</b> — '+esc(PERKS[tier.id]||'a gold shell')
+    +' for <b>'+esc(String(tier.hours))+' hours</b>, then it fades. Boosts on one token add up.';
+  if(!order)renderSummary();
+}
+document.getElementById('bxTiers').addEventListener('click',e=>{
+  const b=e.target.closest('.bt');if(!b||order)return;
+  tier=TIERS.find(t=>t.id===b.dataset.tier)||tier;
+  renderTiers();
+});
+/* what the button will do, before there is an order */
+function renderSummary(){
+  const sol=S.sol>0?tier.usd/S.sol:0;
+  payBox.innerHTML='<div class="bx-sum"><b>$'+esc(String(tier.usd))+'</b><span>'+(sol?'≈ '+sol.toFixed(sol<1?3:2)+' SOL at today’s price':'paid in SOL')+'</span></div>'
+    +'<div class="payfine">You get the exact amount next. It is unique to your order: that is how the payment is found, with no account and no card.</div>';
+  /* the token the button names: a pasted contract once it has resolved, else
+     the bubble that was tapped — never the words "pasted contract" */
+  const typed=typeof caInput!=='undefined'&&caInput?caInput.value.trim():'';
+  const sym=typed?(caToken&&caToken.sym)||'':(S.target&&S.target.sym)||'';
+  goBtn.disabled=false;
+  goBtn.innerHTML=ic('bolt','f')+' Boost '+(sym?'$'+esc(sym)+' ':'')+'· $'+esc(String(tier.usd));
+}
+function tokChip(t){
+  const box=document.getElementById('bxTok');
+  if(!t){box.hidden=true;box.innerHTML='';return}
+  const av=t.img?`<img src="${esc(t.img)}" alt="">`:`<span class="av" style="background:hsl(${hue(t.sym||'?')},45%,55%)">${esc((t.sym||'?')[0])}</span>`;
+  box.innerHTML=`${av}<div class="who"><b>$${esc(t.sym||'')}</b><span>${esc(t.name||'')}${t.mcap?' · '+esc(fmtUsd(t.mcap)):''}</span></div>`;
+  box.hidden=false;
+}
 function resetPay(keepCA){
   clearInterval(poll);poll=null;order=null;orderToken='';
   if(typeof caInput!=='undefined'&&caInput){
@@ -2729,40 +2863,139 @@ function resetPay(keepCA){
     if(!keepCA){caInput.value='';caMsg.textContent='';caMsg.className='camsg';
       if(typeof clearPreview==='function')clearPreview()}
   }
-  goBtn.disabled=false;goBtn.textContent='Get pay link →';
   noteEl.textContent='Payment is on-chain — only send from a wallet you control.';
-  payBox.innerHTML=`<b>Solana Pay · settles itself</b><br>
-    Pick a tier, then send <b style="color:var(--gold)">$${tier.price}</b> worth of SOL.
-    We watch the chain and light the bubble up in the next block.
-    No processor, no KYC, no chargebacks.`;
+  renderTiers();
 }
 function openBoost(t){
   S.target=t||null;
   document.getElementById('mtk').textContent=t?t.sym:'your bubble';
+  tokChip(t&&(t.mint||t.addr)?t:null);
+  caInput.placeholder=t&&(t.mint||t.addr)?'or paste another contract address':'Paste a contract address — Solana, Base, Ethereum or Robinhood';
   resetPay();
   veil.classList.add('on');
 }
+
+/* ---- Solana wallets, through the Wallet Standard's two events (as on /swap):
+   here only to pay a boost in one click ---- */
+const WALLETS=[];
+const wsApi={register(...ws){
+  for(const w of ws){
+    const f=w&&w.features;
+    if(f&&f['standard:connect']&&f['solana:signAndSendTransaction']&&Array.isArray(w.chains)
+      &&w.chains.some(c=>/^solana:/.test(String(c)))&&!WALLETS.some(x=>x.name===w.name))WALLETS.push(w);
+  }
+  return ()=>{};
+}};
+window.addEventListener('wallet-standard:register-wallet',e=>{try{e.detail(wsApi)}catch(x){}});
+try{window.dispatchEvent(new CustomEvent('wallet-standard:app-ready',{detail:wsApi}))}catch(x){}
+const walletPick=()=>{let last='';try{last=localStorage.getItem('pb.swap.wallet')||''}catch(e){}
+  return WALLETS.find(w=>w.name===last)||WALLETS[0]||null};
+const walletImg=w=>typeof w.icon==='string'&&/^data:image\/(png|svg\+xml|webp|jpeg|gif);/i.test(w.icon)?`<img src="${esc(w.icon)}" alt="">`:'';
+async function walletAccount(w){
+  const r=await w.features['standard:connect'].connect();
+  const a=((r&&r.accounts&&r.accounts.length?r.accounts:w.accounts)||[])[0];
+  if(!a||!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a.address))throw new Error('the wallet did not share an account');
+  try{localStorage.setItem('pb.swap.wallet',w.name)}catch(e){}
+  return a;
+}
+
+/* ---- a SOL transfer, built by hand: one instruction, System Program
+   transfer (index 2, then the amount as a little-endian u64), with the
+   order's reference as a read-only account the way Solana Pay wallets add
+   it. Legacy message; one empty signature for the wallet to fill. ---- */
+const B58A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function b58dec(str){
+  let n=0n;
+  for(const ch of str){const v=B58A.indexOf(ch);if(v<0)throw new Error('bad address');n=n*58n+BigInt(v)}
+  const out=[];
+  while(n>0n){out.unshift(Number(n%256n));n/=256n}
+  for(const ch of str){if(ch==='1')out.unshift(0);else break}
+  return new Uint8Array(out);
+}
+function b58enc(bytes){
+  let n=0n,s='';
+  for(const b of bytes)n=n*256n+BigInt(b);
+  while(n>0n){s=B58A[Number(n%58n)]+s;n/=58n}
+  for(const b of bytes){if(b===0)s='1'+s;else break}
+  return s;
+}
+function key32(str){const b=b58dec(String(str||''));if(b.length!==32)throw new Error('bad address');return b}
+function buildTransfer(from,to,ref,lamports,blockhash){
+  if(from===to)throw new Error('that wallet is the one being paid');
+  const keys=[key32(from),key32(to)];
+  if(ref)keys.push(key32(ref));
+  keys.push(new Uint8Array(32));                   // the System Program, 1111…1111
+  const sys=keys.length-1;
+  const data=new Uint8Array(12);
+  const dv=new DataView(data.buffer);
+  dv.setUint32(0,2,true);                          // Transfer
+  dv.setBigUint64(4,BigInt(lamports),true);
+  const accts=ref?[0,1,2]:[0,1];
+  const parts=[[1,0,ref?2:1],[keys.length],...keys,key32(blockhash),[1],[sys,accts.length,...accts,data.length],data];
+  const msgLen=parts.reduce((a,p)=>a+p.length,0);
+  const tx=new Uint8Array(1+64+msgLen);
+  tx[0]=1;                                         // one signature, filled by the wallet
+  let o=65;
+  for(const p of parts){tx.set(p,o);o+=p.length}
+  return tx;
+}
+
+async function payWithWallet(){
+  const w=walletPick();
+  if(!order||!w)return;
+  goBtn.disabled=true;
+  goBtn.innerHTML='<span class="spin"></span> Confirm in '+esc(w.name)+'…';
+  noteEl.textContent='Your wallet shows the transfer: '+order.amountSol+' SOL to '+order.treasury.slice(0,4)+'…'+order.treasury.slice(-4)+'.';
+  try{
+    const acct=await walletAccount(w);
+    const bh=await jget('/api/boost/blockhash',8000);
+    if(!bh||!bh.ok||!bh.blockhash)throw new Error('could not reach Solana — try again in a moment');
+    const tx=buildTransfer(acct.address,order.treasury,order.reference,order.lamports,bh.blockhash);
+    const out=await w.features['solana:signAndSendTransaction'].signAndSendTransaction({account:acct,transaction:tx,chain:'solana:mainnet'});
+    const first=Array.isArray(out)?out[0]:out;
+    const sig=first&&first.signature?b58enc(first.signature instanceof Uint8Array?first.signature:new Uint8Array(first.signature)):'';
+    saveOrder();
+    const st=document.getElementById('mstat');
+    if(st)st.innerHTML='<span class="spin"></span>sent — confirming on-chain…'+(sig?'<a href="https://solscan.io/tx/'+esc(sig)+'" target="_blank" rel="noopener">view ↗</a>':'');
+    goBtn.innerHTML=ic('check')+' Sent — confirming…';
+    noteEl.textContent='The bubble turns gold as soon as the payment confirms — usually within a minute.';
+    fetch('/api/boost/sweep').catch(()=>{});
+  }catch(e){
+    const m=String((e&&e.message)||e||'');
+    const cancelled=/reject|denied|cancel|declin/i.test(m)||(e&&e.code===4001);
+    goBtn.disabled=false;
+    goBtn.innerHTML=walletImg(w)+' Pay '+esc(order.amountSol)+' SOL with '+esc(w.name);
+    noteEl.textContent=cancelled
+      ?'Cancelled in your wallet — nothing was sent. Try again, or use one of the other ways above.'
+      :'The wallet did not send it ('+m.slice(0,100)+'). Try again, or use one of the other ways above.';
+  }
+}
+
 function renderPay(o){
+  const w=walletPick();
   /* The exact amount is what identifies this payment, so it has to be trivial
      to copy without transcription errors. */
   payBox.innerHTML=`
+    <div class="bx-sum"><b>${esc(o.amountSol)} SOL</b><span>$${esc(String(o.usd))} · ${esc(o.tier||'')} ×${esc(String(o.mult||''))} · ${esc(String(o.hours||''))}h</span></div>
+    <div class="bx-alt" style="margin-top:10px">
+      <a href="${esc(o.payUrl)}" id="bxApp">${ic('share')} Open in a wallet app</a>
+    </div>
     <div class="payrow">
-      <span class="paylab">Amount — exact</span>
+      <span class="paylab">Or send exactly this</span>
       <button class="cp" type="button" data-copy="${esc(o.amountSol)}">
-        <span class="amt">${esc(o.amountSol)}</span><span class="unit">SOL</span><span class="ic">copy</span>
+        <span class="amt">${esc(o.amountSol)}</span><span class="unit">SOL</span><span class="cpl">copy</span>
       </button>
     </div>
     <div class="payrow">
       <span class="paylab">To this wallet</span>
       <button class="cp" type="button" data-copy="${esc(o.treasury)}">
-        <span class="addr">${esc(o.treasury)}</span><span class="ic">copy</span>
+        <span class="addr">${esc(o.treasury)}</span><span class="cpl">copy</span>
       </button>
     </div>
     <div class="paystat" id="mstat"><span class="spin"></span>waiting for payment…</div>
-    <div class="payfine">The amount is unique to your order — that is how we know the payment is
-      yours. Send it exactly, from any wallet.</div>`;
+    <div class="payfine">The amount is unique to your order — that is how we know the payment is yours. Send it exactly, from any wallet.</div>`;
   payBox.querySelectorAll('.cp').forEach(el=>el.onclick=async()=>{
-    const txt=el.dataset.copy,ic=el.querySelector('.ic');
+    const txt=el.dataset.copy,lab=el.querySelector('.cpl');
     let done=false;
     try{await navigator.clipboard.writeText(txt);done=true}
     catch(e){
@@ -2775,17 +3008,19 @@ function renderPay(o){
         done=document.execCommand('copy');ta.remove();
       }catch(e2){}
     }
-    ic.textContent=done?'copied':'select it';
+    lab.textContent=done?'copied':'select it';
     el.classList.toggle('done',done);
-    setTimeout(()=>{ic.textContent='copy';el.classList.remove('done')},1600);
+    setTimeout(()=>{lab.textContent='copy';el.classList.remove('done')},1600);
   });
-  goBtn.textContent='Open wallet →';goBtn.disabled=false;
+  document.getElementById('bxApp').addEventListener('click',()=>saveOrder());
+  goBtn.disabled=false;
+  goBtn.innerHTML=w?walletImg(w)+' Pay '+esc(o.amountSol)+' SOL with '+esc(w.name):'Open wallet →';
   const p=o.projection;
   noteEl.innerHTML=p
     ? `takes <b>${esc(o.sym||'this bubble')}</b> from ×${p.from} to <b style="color:var(--gold)">×${p.to}</b>`
       +(p.stackedOn?` · stacking on ${p.stackedOn} live boost${p.stackedOn>1?'s':''}`:'')
       +` · ${o.hours}h, then it decays`
-    : `${esc(o.tier)} ×${o.mult} · ${o.hours}h · $${o.usd} at $${o.solPrice.toFixed(2)}/SOL`;
+    : `${esc(o.tier)} ×${o.mult} · ${o.hours}h · $${o.usd} at $${(+o.solPrice||0).toFixed(2)}/SOL`;
 }
 /* Opening a wallet takes the page away — on mobile the browser may discard it
    entirely. The order lived only in a variable, so a correct payment came back
@@ -2828,14 +3063,9 @@ function startPoll(){
     }catch(e){/* keep waiting; the chain is the source of truth */}
   },6000);
 }
-document.querySelectorAll('.tier').forEach(el=>el.addEventListener('click',()=>{
-  document.querySelectorAll('.tier').forEach(x=>x.classList.remove('on'));
-  el.classList.add('on');
-  tier={id:el.dataset.tier,mult:+el.dataset.mult,price:+el.dataset.price};
-  if(!order)resetPay(true);        // keep a pasted contract address
-}));
 const closeVeil=()=>{veil.classList.remove('on');clearInterval(poll);poll=null};
 document.getElementById('mcancel').onclick=closeVeil;
+document.getElementById('mclose').onclick=closeVeil;
 veil.querySelector('.bg').onclick=closeVeil;
 document.getElementById('boostTop').onclick=()=>openBoost(S.target||null);
 /* Solana mint or an EVM contract. The boost box takes either, because the
@@ -2884,6 +3114,7 @@ function lookupCA(mint){
       caPre.innerHTML=`${av}<div class="who"><b>${esc(t.sym)}</b>
         <span>${esc(t.name)} · ${fmtUsd(t.mcap)} · ${t.grad?'graduated':'bonding'}</span></div>`;
       document.getElementById('mtk').textContent=t.sym;
+      if(!order)renderSummary();
     }catch(e){
       if(seq!==caSeq)return;
       clearPreview();
@@ -2906,28 +3137,32 @@ caInput.addEventListener('input',()=>{
   /* say out loud that the pasted address now wins over the selected bubble,
      so nobody pays expecting the token whose name is still in the header */
   document.getElementById('mtk').textContent='pasted contract';
+  caToken=null;if(!order)renderSummary();
   lookupCA(v);
 });
 
 goBtn.onclick=async()=>{
-  if(order&&order.payUrl){
-    /* save before leaving: this navigation may never return to this page */
-    saveOrder();location.href=order.payUrl;return;
+  if(order){
+    /* the order exists: pay it — in one click with a wallet on this page,
+       else through the wallet app the Solana Pay link opens */
+    if(walletPick())return payWithWallet();
+    if(order.payUrl){saveOrder();location.href=order.payUrl}
+    return;
   }
   /* A pasted contract wins over the selected bubble: if someone typed an
      address, that is the token they mean. */
   const typed=caInput.value.trim();
   const t=S.target;
-  const mint=typed||(t&&t.mint);
+  const mint=typed||(t&&(t.mint||t.addr));
   if(!mint){
-    caMsg.textContent='pick a bubble or paste a contract address';
-    caMsg.className='camsg bad';return;
+    caMsg.textContent='tap a bubble on the map, or paste a contract address';
+    caMsg.className='camsg bad';caInput.focus();return;
   }
   if(typed&&!CA_RE.test(typed)){
-    caMsg.textContent='that does not look like a Solana address';
+    caMsg.textContent='that does not look like a contract address';
     caMsg.className='camsg bad';return;
   }
-  goBtn.disabled=true;goBtn.textContent='quoting…';
+  goBtn.disabled=true;goBtn.innerHTML='<span class="spin"></span> Getting your amount…';
   try{
     const r=await fetch('/api/boost/order',{method:'POST',
       headers:{'content-type':'application/json'},
@@ -2940,9 +3175,11 @@ goBtn.onclick=async()=>{
     if(order.sym)document.getElementById('mtk').textContent=order.sym;
     caMsg.textContent='';caInput.style.display='none';
     renderPay(order);startPoll();
+    /* one click: with a wallet on the page, ask it straight away */
+    if(walletPick())payWithWallet();
   }catch(e){
     caMsg.textContent=e.message;caMsg.className='camsg bad';
-    goBtn.disabled=false;goBtn.textContent='Get pay link →';
+    renderSummary();
   }
 };
 

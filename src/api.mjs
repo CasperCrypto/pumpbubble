@@ -373,6 +373,7 @@ async function tapsSnapshot(ctx) {
    every visitor's poll would otherwise be a request to it. Cached per isolate
    for twenty seconds, its own tick, and signed here, because the image
    secret lives with the API rather than with the watcher. */
+let bhMem = { at: 0, v: null };
 const callCache = new Map();
 async function callersRead(ctx, op, body = {}) {
   if (!ctx.callers) return null;
@@ -1765,6 +1766,30 @@ export async function handle(req, ctx) {
     }
 
     /* ------------------------------------------------- /api/boost/status */
+    /* ------------------------------------------------ /api/boost/blockhash */
+    /* The one thing the page cannot get for itself to pay from a connected
+       wallet: a recent blockhash for the transfer it builds. The map's CSP
+       keeps connect-src at 'self', so the RPC is asked here. Ten seconds per
+       isolate — a blockhash stays usable for about a minute. */
+    if (path === '/api/boost/blockhash') {
+      const limited = rateLimit(req, 'blockhash', 20, 60_000);
+      if (limited) return limited;
+      if (!ctx.env.SOLANA_RPC) return json({ ok: false, error: 'no Solana RPC configured' }, 503);
+      if (bhMem.v && Date.now() - bhMem.at < 10_000) return json({ ok: true, ...bhMem.v }, 200, { 'cache-control': 'no-store' });
+      try {
+        const r = await fetch(ctx.env.SOLANA_RPC, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [{ commitment: 'confirmed' }] }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const j = await r.json();
+        const v = j && j.result && j.result.value;
+        if (!v || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(v.blockhash || ''))) throw new Error('no blockhash');
+        bhMem = { at: Date.now(), v: { blockhash: v.blockhash, lastValidBlockHeight: v.lastValidBlockHeight } };
+        return json({ ok: true, ...bhMem.v }, 200, { 'cache-control': 'no-store' });
+      } catch { return json({ ok: false, error: 'could not reach Solana' }, 502); }
+    }
+
     if (path === '/api/boost/status') {
       /* Polling is cheap now that the treasury scan is shared and cached, so
          this only exists to stop a runaway client. */
