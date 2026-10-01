@@ -73,7 +73,9 @@ X_PROFILE = "https://x.com/pumpbubblefun"
 # exists — until then swaps carry no fee. The account needs referral token
 # accounts for the mints fees are taken in (SOL first, then USDC/USDT), or
 # Jupiter executes the trade without the fee.
-# JUP_REFERRAL = ""
+# Made 2026-10-01 at referral.jup.ag under Jupiter Ultra, with SOL, USDC and PUMP
+# token accounts; checked live: every order carries feeBps 100, fee taken in SOL.
+JUP_REFERRAL = "CHub77QZBcBrfRdBppkHpan2utxUn9T7qTNXUnzPbjBq"
 # 1% (2026-10-01, the operator's call): Jupiter keeps a fifth, so 0.8% lands.
 # Jupiter allows 50-255; swapConfig clamps to that.
 JUP_FEE_BPS = "100"

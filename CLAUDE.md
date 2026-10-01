@@ -1062,6 +1062,10 @@ picks the mint each order's fee is taken in (`feeMint`: SOL first, then stableco
 referral token account for that mint does not exist, the trade executes without the fee** — so the
 account needs SOL and USDC token accounts at least. Integrator fees also route through Metis only
 (JupiterZ's RFQ quotes do not take them). A trading-bot referral still wins when both are set.
+**Live since 2026-10-01**: the operator's account `CHub77…PbjBq` (SOL, USDC and PUMP token
+accounts), checked against live orders — a buy, a sell, a pump.fun coin and a USDC trade all came
+back `feeBps: 100` with the fee in SOL (USDC for the USDC trade); Jupiter's own rate without it is
+10 bps. The quote's Fee line says "pumpbubble" only when Jupiter applied exactly our bps.
 
 **Why our own and not Jupiter's widget.** The first version embedded Jupiter's Plugin; it worked,
 and it looked like Jupiter — a fixed 360×550 black box, their lime button — which is what was asked

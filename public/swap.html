@@ -936,8 +936,11 @@ a{color:inherit}
       $('kMin').textContent = o.otherAmountThreshold
         ? fmtAmt(fromUnits(o.otherAmountThreshold, outDec)) + ' ' + (sell ? 'SOL' : sym()) + (o.slippageBps ? ' · ' + trimFix(o.slippageBps / 100, 2) + '% slippage' : '')
         : '—';
+      /* ours only when Jupiter applied exactly what was asked: an order whose fee
+         mint has no referral token account runs at Jupiter's own rate instead */
+      var oursFee = S.orderFee && String(o.feeBps) === String(S.cfg.feeBps);
       $('kFee').textContent = o.feeBps != null
-        ? trimFix(o.feeBps / 100, 2) + '%' + (S.orderFee ? ' · pumpbubble' : ' · Jupiter') : '—';
+        ? trimFix(o.feeBps / 100, 2) + '%' + (oursFee ? ' · pumpbubble' : ' · Jupiter') : '—';
       var net = netLamports(o), kn = $('kNet');
       kn.className = '';
       if (o.gasless) { kn.textContent = 'Covered by Jupiter'; kn.className = 'ok'; }
