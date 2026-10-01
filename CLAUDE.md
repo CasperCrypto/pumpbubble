@@ -1116,8 +1116,61 @@ answered 429 like ipfs.io (one operator, one limiter), while filebase and pinata
 or limited gateways are read from filebase, a failed IPFS picture is asked of the next gateway
 (`nextSrc`, the server's `altGateways` order), and only then becomes a letter.
 
+**Base, Ethereum and Robinhood Chain go through Relay** (2026-10-01, asked as "it's possible to add
+other chains?" and "we need a good tool"). Chosen on measurement: the same trades quoted on all three
+candidates — Jupiter best on 3 of 3 Solana trades (a pump.fun AMM coin included, which LI.FI could
+not route at all), **Relay best on 4 of 4 EVM trades**, LI.FI 0.07–0.10% behind, which was mostly its
+fixed 0.25% fee. Relay is keyless with CORS `*`, and keeps none of the integrator's fee: an
+`appFees` entry on each quote (1%, `RELAY_FEE_RECIPIENT`, the operator's own address, never a
+request parameter), accruing in USDC, claimed at relay.link/claim-app-fees. A chain row sits at the
+top of the panel; links are `/swap?chain=base&token=0x…`.
+
+- **The check before the wallet is stricter on EVM** (`relayOk`), because an EVM transaction can do
+  more than a Solana swap: quote for this wallet, these two tokens, this amount, this chain; every
+  transaction from this wallet on this chain; an approval only of the token being sold, to Relay's
+  own spender, for **no more than this trade** (Relay approves the exact amount; an unlimited one is
+  refused); the swap only to **Relay's router, pinned** — `0xb92f…ff4f` for ETH in, `0xccc8…15be`
+  for an approved token, read off live quotes and the same on all three chains — carrying exactly
+  the ETH being sold. 16 refusal cases in `scripts/swap-page.test.mjs`. If Relay ever moves
+  contracts, swaps fail closed with "the price moved", which is the right way to fail.
+- **A price before a wallet is quoted for the burn address** (`NOBODY`): Relay simulates the trade
+  against its sender, and an empty placeholder fails that simulation; the burn address holds enough
+  on Base and Robinhood. Every trade is re-quoted for the signing wallet.
+- **On Ethereum, a small trade with our fee attached fails Relay's simulation** (0.01 ETH → PEPE:
+  "Final transaction simulation failed" with the fee, fine without; 0.1 ETH fine with it) — the
+  fee's own extra step costs more gas than it is worth. So a quote that fails with the fee is asked
+  again without it, as the Solana side does when Jupiter refuses the referral account.
+- **Wallets are EIP-6963** (MetaMask, Rabby, Coinbase Wallet, Phantom's EVM side announce
+  themselves; a lone `window.ethereum` is the fallback), silently reconnected by `eth_accounts`.
+  Connecting on another network asks to switch; a wallet that does not know Robinhood Chain is
+  offered it through `wallet_addEthereumChain` (its public RPC and Blockscout). Balances and
+  decimals come through the wallet's own provider, so the page needs no RPC of ours; decimals for a
+  token nobody named come from Relay's index, else from a tiny priced buy whose quote names them.
+- **The picker ranks the map's own tokens first on these chains** (`/api/swap/tokens?chain=`, the
+  warm Base or Robinhood snapshot, never a build, most traded first, the chain's own money left out):
+  Relay's search for PONS on Robinhood Chain listed five clones before the real one, and its index
+  does not carry the real one at all — the map's one-survivor-per-ticker rule is exactly the part a
+  token search cannot do.
+- Verified in a browser with a mock EIP-6963 wallet on a funded public Robinhood address (quotes
+  only; the mock recorded transactions instead of sending them): reconnect, switch from Base, add
+  Robinhood Chain, quote with the 1% fee, one transaction to the router for exactly 0.005 ETH on
+  chain 4663, the Blockscout link; and a sale as approve-exactly-100 then swap, with the button
+  walking "Approve (1 of 2) → waiting → Confirm the swap (2 of 2) → Swapping".
+
+**The map and the bot send EVM tokens here too.** The map card's Buy now shows on a contract on
+Base, Ethereum or Robinhood Chain (`evmSwap()`), and the bot's EVM buy alerts and pasted-token
+replies say Buy to `swapPath()` instead of Uniswap — which earned nothing and had no Robinhood
+Chain at all, so a Robinhood group's Buy button used to open a chart.
+
+**Trust and safety on the page itself**: three plain statements under the swap (your keys stay
+yours, every transaction checked before you sign, fees up front); the token's address on the
+header with one-tap copy, for checking against the project's own; measured chips (Solana's
+authorities and holder concentration, a thin pool, a ticker other tokens share, under a day old);
+and a **price-impact guard** — at 5% the button turns gold and takes a second, deliberate press,
+at 25% it refuses.
+
 **No third-party code runs on the page**, so its policy is the map's plus `connect-src` to
-Jupiter's two API hosts and `https:` images (`SWAP_CSP`, served by the Worker like `/embed`'s so
+Jupiter's two API hosts and Relay's, and `https:` images (`SWAP_CSP`, served by the Worker like `/embed`'s so
 `_headers` merge order never matters). `docs/security.md` has the reasoning. The page has a global
 `[hidden]` rule — a display rule beat the attribute twice on the map and once on the first version
 of this page.

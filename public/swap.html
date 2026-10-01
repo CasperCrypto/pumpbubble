@@ -4,31 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Swap · pumpbubble.fun</title>
-<meta name="description" content="Buy or sell any Solana token from your own wallet, routed by Jupiter.">
+<meta name="description" content="Buy or sell any token on Solana, Base, Ethereum or Robinhood Chain from your own wallet — routed by Jupiter and Relay, every transaction checked before you sign.">
 <meta name="theme-color" content="#040508">
 <link rel="icon" href="/favicon.png">
 <!--
-  Our own swap. The map's look, Jupiter's routing, the visitor's wallet.
+  Our own swap. The map's look, the best router per chain, the visitor's wallet.
 
-  Nothing third-party runs here: the page talks to Jupiter's Ultra API for
-  quotes, execution and token search (lite-api.jup.ag, api.jup.ag as the
-  spare) and finds wallets through the Wallet Standard — the events Phantom,
-  Solflare and Backpack already answer — so there is no wallet library and
-  no widget script. The wallet signs the transaction Jupiter built; we never
-  see a key and never hold funds. Before a transaction goes to the wallet it
-  is checked against what was asked for (mints, amount, taker), because it
-  came from somebody else's server.
+  Solana goes through Jupiter's Ultra API (lite-api.jup.ag, api.jup.ag as the
+  spare); Base, Ethereum and Robinhood Chain through Relay (api.relay.link) —
+  each measured best on its own chains (src/refs.mjs). Nothing third-party
+  runs on the page: Solana wallets are found through the Wallet Standard's
+  events, EVM wallets through EIP-6963's, so there is no wallet library and no
+  widget script. The wallet signs what the router built; we never see a key
+  and never hold funds. Before any transaction reaches the wallet it is
+  checked against what was asked for — mints, amount, wallet, and on EVM the
+  router contract and the approval — because it came from somebody else's
+  server.
 
-  The page opens on the swap itself. Without a token in the link, the token
-  side says "Select token" and opens the picker: search by name, paste an
-  address, one tap on a popular token, the map's own Trending list, and the
-  visitor's own tokens once a wallet is connected.
+  The page opens on the swap. The token side says "Select token" and opens
+  the picker: search by name, paste an address, a popular row, the map's own
+  lists, and on Solana the visitor's tokens once a wallet is connected.
 
   Token strings reach the page only through esc() or textContent. Token art
-  is our signed /api/img where we have it, otherwise the https URL Jupiter
-  lists for the token (this page's policy allows https: images and nothing
-  else from outside); wallet icons only as data:image URIs. worker/index.js
-  serves the page with its own CSP (SWAP_CSP in src/refs.mjs).
+  is our signed /api/img where we have it, otherwise the https URL the
+  router lists (this page's policy allows https: images and nothing else
+  from outside); wallet icons only as data:image URIs. worker/index.js serves
+  the page with its own CSP (SWAP_CSP in src/refs.mjs).
 -->
 <style>
 :root{
@@ -89,8 +90,10 @@ a{color:inherit}
   font-weight:800;font-size:12.5px;white-space:nowrap}
 #wBtn:hover{background:rgba(40,224,140,.16)}
 #wBtn.on{border-color:var(--line);background:var(--glass);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+#wBtn.on.off{border-color:rgba(255,201,60,.45)}
 #wBtn img{width:16px;height:16px;border-radius:4px}
 #wBtn .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint)}
+#wBtn.off .dot{background:var(--gold);box-shadow:0 0 8px var(--gold)}
 
 .wrap{position:relative;z-index:2;max-width:440px;margin:0 auto;
   padding:16px 16px calc(30px + var(--safe));display:flex;flex-direction:column;gap:12px}
@@ -119,21 +122,40 @@ a{color:inherit}
 .stats div{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:8px 9px;min-width:0}
 .stats u{display:block;text-decoration:none;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--dim);font-weight:800;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stats b{font-size:13.5px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats b{font-size:13.5px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap;
+  display:block;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:359px){.stats{grid-template-columns:repeat(2,1fr)}}
 .chips{position:relative;display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips:empty{display:none}
 .chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;
   font-size:11px;font-weight:800;background:var(--glass);border:1px solid var(--line);color:var(--dim)}
 .chip.ok{color:var(--mint2);border-color:rgba(40,224,140,.3);background:rgba(40,224,140,.07)}
 .chip.warn{color:var(--gold);border-color:rgba(255,201,60,.35);background:rgba(255,201,60,.07)}
 .hlinks{position:relative;display:flex;gap:6px;margin-top:12px}
-.hlinks a{flex:1;justify-content:center}
+.hlinks a{flex:1;justify-content:center;min-width:0}
+#hCa{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
 
 /* ---- the swap ---- */
 .panel{position:relative;padding:14px;border-radius:22px;
   background:linear-gradient(180deg,rgba(19,23,32,.97),rgba(8,10,15,.97));
   border:1px solid var(--line);border-top-color:rgba(40,224,140,.3);box-shadow:0 26px 70px rgba(0,0,0,.55)}
 .panel.sell{border-top-color:rgba(255,77,106,.32)}
+/* which chain: four quiet tabs above everything else */
+.chains{display:flex;gap:3px;padding:3px;margin-bottom:10px;border-radius:13px;
+  background:rgba(255,255,255,.025);border:1px solid var(--line)}
+/* each tab as wide as its name, the spare room shared: "Robinhood" needs more than "Base" */
+.chains button{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;height:30px;padding:0 4px;
+  border:0;border-radius:10px;background:transparent;color:var(--dim);font-weight:800;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.chains button span{overflow:hidden;text-overflow:ellipsis}
+.chains button:hover{color:var(--ink)}
+.chains button.on{background:rgba(255,255,255,.08);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.cd{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.cd.solana{background:linear-gradient(135deg,#9945ff,#14f195)}
+.cd.base{background:#2f6bff}
+.cd.ethereum{background:#8a9cf0}
+.cd.robinhood{background:#c8ff00}
+@media (max-width:370px){.chains button{gap:4px;font-size:10.5px}}
+@media (max-width:340px){.chains .cd{display:none}}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-bottom:12px;border-radius:14px;
   background:rgba(255,255,255,.035);border:1px solid var(--line)}
 .seg button{height:36px;border:0;border-radius:10px;background:transparent;color:var(--dim);
@@ -179,11 +201,12 @@ a{color:inherit}
   font-size:12px;font-weight:900;color:#cfd6e4;background:linear-gradient(135deg,#2a3242,#171c27)}
 .ti img{width:100%;height:100%;object-fit:cover;display:block}
 .ti.sol{background:linear-gradient(135deg,#9945ff,#14f195);color:#fff;font-size:15px}
+.ti.eth{background:linear-gradient(135deg,#8a9cf0,#3c4a8f);color:#fff;font-size:14px}
 .ti.lg{width:38px;height:38px;font-size:15px}
 .ti .ic{width:18px;height:18px}
 .presets{display:flex;gap:6px;margin-top:10px}
 .presets button{flex:1;height:30px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);
-  font-weight:800;font-size:12px;cursor:pointer;font-variant-numeric:tabular-nums}
+  font-weight:800;font-size:12px;cursor:pointer;font-variant-numeric:tabular-nums;white-space:nowrap}
 .presets button:hover:not(:disabled){background:var(--glass2);border-color:rgba(255,255,255,.18)}
 .presets button:disabled{opacity:.35;cursor:default}
 #flip{position:relative;z-index:2;display:grid;place-items:center;width:38px;height:38px;margin:-9px auto;
@@ -203,6 +226,8 @@ a{color:inherit}
   background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;box-shadow:0 8px 26px -6px rgba(40,224,140,.55);
   transition:transform .1s}
 .panel.sell #go{background:linear-gradient(180deg,#ff8398,#e0304f);color:#2a0009;box-shadow:0 8px 26px -6px rgba(255,77,106,.5)}
+/* a trade that loses a lot to the pool asks twice, in gold, on either side */
+#go.warn,.panel.sell #go.warn{background:linear-gradient(180deg,#ffe28a,#f0a400);color:#2b1c00;box-shadow:0 8px 26px -6px rgba(255,201,60,.5)}
 #go:active:not(:disabled){transform:scale(.985)}
 #go:disabled{cursor:default;background:rgba(255,255,255,.06);color:var(--dim);box-shadow:none}
 .spin{width:13px;height:13px;flex:0 0 auto;border-radius:50%;border:2px solid rgba(255,255,255,.2);
@@ -210,7 +235,16 @@ a{color:inherit}
 @keyframes sp{to{transform:rotate(360deg)}}
 .sub{margin:0 0 14px;color:var(--dim);font-size:12.5px;line-height:1.5;font-weight:600}
 
-/* ---- token lists: the picker, and the map's trending under the swap ---- */
+/* ---- what keeps the visitor safe, said once, plainly ---- */
+.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.trust div{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:10px 6px;
+  border-radius:14px;background:rgba(255,255,255,.022);border:1px solid var(--line)}
+.trust .ic{width:18px;height:18px;color:var(--mint2)}
+.trust b{display:block;font-size:11.5px;font-weight:900;line-height:1.25}
+.trust small{display:block;font-size:10.5px;color:var(--dim);font-weight:700;line-height:1.3}
+@media (max-width:380px){.trust small{display:none}}
+
+/* ---- token lists: the picker, and the map's own under the swap ---- */
 .plab{display:flex;align-items:center;gap:6px;margin:14px 8px 4px;font-size:10.5px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--dim);font-weight:800}
 .plab .ic{width:14px;height:14px}
@@ -327,6 +361,10 @@ a{color:inherit}
 <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3.5a7 7 0 1 1 0 14 7 7 0 0 1 0-14zM15.6 15.6l4.9 4.9"/></symbol>
 <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><path d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5M6 10.5h12A1.5 1.5 0 0 1 19.5 12v7a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19v-7A1.5 1.5 0 0 1 6 10.5zM12 14.5v2.5"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8.3-7.5 9.5-4.3-1.2-7.5-5-7.5-9.5V6zM8.8 12.2l2.2 2.2 4.3-4.6"/></symbol>
+<symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21zM9 8h6M9 11.5h6M9 15h4"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10.5v10.5H9zM5 15V4.5h10.5"/></symbol>
 </defs></svg>
 <div id="aura"><b></b><b></b><b></b></div>
 <div id="grain"></div>
@@ -347,14 +385,24 @@ a{color:inherit}
     <div class="stats">
       <div title="Market cap"><u>Mcap</u><b id="sMcap">—</b></div>
       <div><u>Liquidity</u><b id="sLiq">—</b></div>
-      <div><u>Holders</u><b id="sHold">—</b></div>
-      <div title="Distinct wallets that traded it in the last 24 hours"><u>Traders</u><b id="sTrad">—</b></div>
+      <div><u id="sHoldL">Holders</u><b id="sHold">—</b></div>
+      <div><u id="sTradL">Traders</u><b id="sTrad">—</b></div>
     </div>
     <div class="chips" id="chips"></div>
-    <div class="hlinks"><a class="pill" id="hChart" target="_blank" rel="noopener">Chart ↗</a><a class="pill" id="hBubble"><svg class="ic" aria-hidden="true"><use href="#i-bubbles"/></svg>Bubble</a></div>
+    <div class="hlinks">
+      <a class="pill" id="hCa" role="button" tabindex="0" title="Copy the token's address — check it against the project's own"></a>
+      <a class="pill" id="hChart" target="_blank" rel="noopener">Chart ↗</a>
+      <a class="pill" id="hBubble"><svg class="ic" aria-hidden="true"><use href="#i-bubbles"/></svg>Bubble</a>
+    </div>
   </section>
 
   <section class="panel" id="swap" hidden>
+    <div class="chains" id="chains" role="tablist" aria-label="Chain">
+      <button type="button" role="tab" data-c="solana" class="on"><i class="cd solana"></i><span>Solana</span></button>
+      <button type="button" role="tab" data-c="base"><i class="cd base"></i><span>Base</span></button>
+      <button type="button" role="tab" data-c="ethereum"><i class="cd ethereum"></i><span>Ethereum</span></button>
+      <button type="button" role="tab" data-c="robinhood"><i class="cd robinhood"></i><span>Robinhood</span></button>
+    </div>
     <div class="seg" role="tablist" aria-label="Buy or sell">
       <button id="tBuy" type="button" role="tab" class="on">Buy</button>
       <button id="tSell" type="button" role="tab">Sell</button>
@@ -384,9 +432,15 @@ a{color:inherit}
     <button id="go" type="button">Connect wallet</button>
   </section>
 
-  <!-- the map's trending, one tap from the swap while nothing is picked -->
+  <section class="trust" id="trust" aria-label="How your money stays safe">
+    <div><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span><b>Your keys stay yours</b><small>We never hold funds</small></span></div>
+    <div><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span><b>Checked before you sign</b><small>Every transaction matches your quote</small></span></div>
+    <div><svg class="ic" aria-hidden="true"><use href="#i-receipt"/></svg><span><b>Fees up front</b><small>Shown on every quote</small></span></div>
+  </section>
+
+  <!-- the map's own tokens, one tap from the swap while nothing is picked -->
   <section class="panel lite" id="trend" hidden>
-    <div class="plab"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span id="trLab">Trending on the map</span><a href="/?source=trending">Open the map →</a></div>
+    <div class="plab"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span id="trLab">Trending on the map</span><a id="trMap" href="/?source=trending">Open the map →</a></div>
     <div id="trList"></div>
   </section>
 
@@ -438,13 +492,32 @@ a{color:inherit}
   var CHAIN = 'solana:mainnet';
   /* lite-api is keyless; api.jup.ag answers keyless too, at a lower rate */
   var JUP = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
+  /* Relay routes Base, Ethereum and Robinhood Chain (why: src/refs.mjs) */
+  var RELAY = 'https://api.relay.link';
+  var ETH0 = '0x0000000000000000000000000000000000000000';
+  /* A price shown before any wallet is connected is quoted for the burn address: Relay simulates a trade against its sender, and this one holds enough to pass. A trade itself is always re-quoted for the wallet that signs it. */
+  var NOBODY = '0x000000000000000000000000000000000000dead';
+  /* Relay's two contracts, read off live quotes on Base, Ethereum and Robinhood Chain (the same addresses on all three): the router a swap paid in ETH goes to, and the one an approved token is spent by. A transaction to anything else never reaches the wallet. */
+  var RELAY_TO = ['0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be'];
+  var CHAINS = {
+    solana: { id: 'solana', name: 'Solana', kind: 'sol', native: 'SOL', dec: 9, presets: ['0.1', '0.25', '0.5', '1'] },
+    base: { id: 'base', name: 'Base', kind: 'evm', cid: 8453, native: 'ETH', dec: 18, reserve: 300000000000000n,
+      presets: ['0.005', '0.01', '0.05', '0.1'], explorer: 'https://basescan.org', scan: 'Basescan', rpc: 'https://mainnet.base.org', dex: 'base' },
+    ethereum: { id: 'ethereum', name: 'Ethereum', kind: 'evm', cid: 1, native: 'ETH', dec: 18, reserve: 3000000000000000n,
+      presets: ['0.01', '0.05', '0.1', '0.5'], explorer: 'https://etherscan.io', scan: 'Etherscan', rpc: 'https://ethereum-rpc.publicnode.com', dex: 'ethereum' },
+    robinhood: { id: 'robinhood', name: 'Robinhood', full: 'Robinhood Chain', kind: 'evm', cid: 4663, native: 'ETH', dec: 18, reserve: 300000000000000n,
+      presets: ['0.005', '0.01', '0.05', '0.1'], explorer: 'https://robinhoodchain.blockscout.com', scan: 'Blockscout', rpc: 'https://rpc.mainnet.chain.robinhood.com', dex: 'robinhood' },
+  };
   /* MAX keeps this much SOL back: network fees plus one new token account */
   var RESERVE = 12000000n;
   var REFRESH_MS = 12000;   // a quote this old is refreshed while it sits on screen
   var FRESH_MS = 20000;     // and one this old is never signed without re-asking
   var LAST = 'pb.swap.wallet';
-  /* The picker's one-tap row: what most people come to trade. Under it sit
-     the map's own Trending list and, once connected, the visitor's wallet. */
+  var LAST_EVM = 'pb.swap.evm';
+  /* a trade losing this much to the pool asks for a second press; past the second figure it is refused */
+  var IMPACT_WARN = 5, IMPACT_MAX = 25;
+  /* The picker's one-tap row on Solana: what most people come to trade. Under
+     it sit the map's own Trending list and, once connected, the wallet. */
   var POPULAR = [
     'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
     'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', // JUP
@@ -494,6 +567,8 @@ a{color:inherit}
     (Array.isArray(accts) ? accts : []).forEach(function (a) { try { sum += BigInt((a && a.amount) || 0); } catch (e) { /* not a number */ } });
     return sum;
   }
+  /* a JSON-RPC quantity: what eth_sendTransaction takes for value and gas */
+  function hexQ(v) { return '0x' + BigInt(v).toString(16); }
 
   function trimFix(n, d) { return n.toFixed(d).replace(/\.?0+$/, ''); }
   function fmtAmt(v) {
@@ -585,16 +660,99 @@ a{color:inherit}
     });
     return seen.join(' + ');
   }
-  function humanErr(msg, side, sym) {
-    var m = String(msg || '');
+  function humanErr(msg, side, sym, nat) {
+    var m = String(msg || ''), n = nat || 'SOL';
     if (/minimum \$?5 for gasless/i.test(m)) return 'Your wallet needs a little SOL for the network fee — or trade $5 or more and Jupiter covers it.';
-    if (/insufficient/i.test(m)) return side === 'sell' ? 'You do not hold that much $' + sym + '.' : 'Not enough SOL for this amount plus network fees.';
+    if (/insufficient/i.test(m)) return side === 'sell' ? 'You do not hold that much $' + sym + '.' : 'Not enough ' + n + ' for this amount plus network fees.';
     if (/route|failed to get quotes/i.test(m)) return 'No route can fill this trade right now — try a smaller amount; the pool may be too thin.';
+    if (/simulation failed/i.test(m)) return 'This trade would fail as it stands — usually not enough ' + n + ' for it plus gas, or a token that cannot be sold. Try a smaller amount.';
+    if (/too small/i.test(m)) return 'That amount is too small to trade here — try a little more.';
     return m.slice(0, 160);
   }
 
+  /* ----------------------------------------------- what Relay gave us */
+  /* The same rule on EVM, with more to check, because an EVM transaction can
+     do more than a Solana swap can: the quote must be for this wallet, these
+     two tokens and this amount on this chain; every transaction must come
+     from this wallet on this chain; an approval may only be the token being
+     sold, approved to Relay's own spender for no more than this trade; and
+     the swap must go to Relay's router carrying exactly the ETH being sold
+     (none when selling a token). Anything else is refused before the wallet
+     ever sees it. */
+  function relayOk(q, w, me, cid) {
+    var low = function (s) { return String(s == null ? '' : s).toLowerCase(); };
+    if (!q || !w || !evmAddr(me) || !Array.isArray(q.steps) || !q.steps.length || !q.details) return false;
+    me = low(me);
+    var d = q.details, ci = d.currencyIn || {}, co = d.currencyOut || {};
+    var cin = ci.currency || {}, cout = co.currency || {};
+    if (low(d.sender) !== me || low(d.recipient) !== me) return false;
+    if (low(cin.address) !== low(w.inputMint) || low(cout.address) !== low(w.outputMint)) return false;
+    if (+cin.chainId !== cid || +cout.chainId !== cid || String(ci.amount) !== String(w.amount)) return false;
+    var native = low(w.inputMint) === ETH0, amt, swaps = 0;
+    try { amt = BigInt(w.amount); } catch (e) { return false; }
+    var ok = q.steps.every(function (s) {
+      if (!s || s.kind !== 'transaction' || !Array.isArray(s.items) || s.items.length !== 1) return false;
+      var x = (s.items[0] && s.items[0].data) || {}, val;
+      if (low(x.from) !== me || +x.chainId !== cid || !evmAddr(x.to) || !/^0x[0-9a-f]*$/i.test(String(x.data || ''))) return false;
+      try { val = BigInt(x.value || 0); } catch (e) { return false; }
+      if (s.id === 'approve') {
+        var dd = low(x.data);
+        if (native || low(x.to) !== low(w.inputMint) || val !== 0n || dd.length !== 138 || dd.slice(0, 10) !== '0x095ea7b3') return false;
+        var allow = BigInt('0x' + dd.slice(74, 138));
+        return dd.slice(10, 34) === '000000000000000000000000' && RELAY_TO.indexOf('0x' + dd.slice(34, 74)) >= 0 && allow <= amt;
+      }
+      swaps++;
+      return RELAY_TO.indexOf(low(x.to)) >= 0 && val === (native ? amt : 0n);
+    });
+    return ok && swaps === 1;
+  }
+  /* a Relay quote in the shape the page draws (the same names Jupiter's order uses) */
+  function fromRelay(q, w, me, feeBps) {
+    var d = q.details || {}, ci = d.currencyIn || {}, co = d.currencyOut || {}, f = q.fees || {};
+    var num = function (v) { return v != null && v !== '' && isFinite(+v) ? +v : null; };
+    var usd = function (k) { return f[k] ? num(f[k].amountUsd) : null; };
+    var imp = d.swapImpact ? num(d.swapImpact.percent) : null;
+    var signer = me && String(me).toLowerCase() !== NOBODY ? String(me).toLowerCase() : '';
+    return {
+      evm: true, raw: q,
+      inputMint: w.inputMint, outputMint: w.outputMint,
+      inAmount: ci.amount != null ? String(ci.amount) : '', outAmount: co.amount != null ? String(co.amount) : '',
+      outUsdValue: num(co.amountUsd), priceImpactPct: imp != null ? imp / 100 : null,
+      otherAmountThreshold: co.minimumAmount != null ? String(co.minimumAmount) : '',
+      slippageBps: d.slippageTolerance ? num(d.slippageTolerance.total) : null,
+      feeBps: feeBps || 0, feeUsd: usd('app'), relayUsd: usd('relayerService') != null ? usd('relayerService') : usd('relayer'), gasUsd: usd('gas'),
+      inDec: ci.currency && ci.currency.decimals != null ? +ci.currency.decimals : null,
+      outDec: co.currency && co.currency.decimals != null ? +co.currency.decimals : null,
+      taker: signer, transaction: signer ? 'relay' : null, _fee: (feeBps || 0) > 0,
+    };
+  }
+  function impactOf(o) {
+    if (!o || o.priceImpactPct == null || o.priceImpactPct === '') return null;
+    var v = Math.abs(Number(o.priceImpactPct) * 100);
+    return isFinite(v) ? v : null;
+  }
+  /* what a link asks for: /swap?mint=<solana>, /swap?chain=base&token=0x…, &side=sell, &amount=0.5 */
+  function parseLink(search, chains) {
+    var q = new URLSearchParams(search || ''), out = { chain: '', token: '', side: 'buy', amount: '', bad: '' };
+    var c = String(q.get('chain') || '').toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(chains, c)) out.chain = c;
+    if (q.get('side') === 'sell') out.side = 'sell';
+    var a = q.get('amount');
+    if (a && /^\d{0,9}(\.\d{1,18})?$/.test(a) && Number(a) > 0) out.amount = a;
+    var t = String(q.get('token') || q.get('mint') || '').trim();
+    if (!t) return out;
+    if (/^0x[0-9a-fA-F]{40}$/.test(t)) {
+      if (out.chain && chains[out.chain].kind !== 'evm') out.bad = 'chain';
+      else out.token = t.toLowerCase();
+    } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t)) {
+      if (out.chain && chains[out.chain].kind !== 'sol') out.bad = 'chain';
+      else { out.chain = 'solana'; out.token = t; }
+    } else out.bad = 'junk';
+    return out;
+  }
+
   /* ------------------------------------------------------- token art */
-  /* Art Jupiter lists lives wherever the token's creator put it. Only https
+  /* Art the routers list lives wherever the token's creator put it. Only https
      is drawn, and our own signed /api/img passes as it is.
 
      A third of it is IPFS, and an IPFS picture is the same picture on every
@@ -673,6 +831,25 @@ a{color:inherit}
       rank: +f.rank > 0 ? Math.round(+f.rank) : null, verified: false, jt: null,
     };
   }
+  /* a token from Relay's index (search, the default list) */
+  function fromRelayCur(c) {
+    if (!c || !evmAddr(c.address)) return null;
+    var m = c.metadata || {};
+    return {
+      mint: c.address.toLowerCase(), sym: tsym(c.symbol), name: String(c.name || '').slice(0, 60), icon: m.logoURI || '',
+      dec: c.decimals != null && isFinite(+c.decimals) ? +c.decimals : null, mcap: 0, price: 0, chg: null,
+      verified: m.verified === true, jt: null,
+    };
+  }
+  /* a token from the map's own list for an EVM chain (/api/swap/tokens) */
+  function fromMapRow(t) {
+    var pc = t.pc != null && isFinite(+t.pc) ? +t.pc : null;
+    return {
+      mint: String(t.addr).toLowerCase(), sym: tsym(t.sym), name: String(t.name || '').slice(0, 60), icon: t.img || '',
+      dec: null, mcap: +t.mcap || 0, price: +t.price || 0, chg: pc, verified: false, jt: null,
+      tok: { sym: t.sym, name: t.name, img: t.img, mcap: t.mcap, liq: t.liq, vol: t.vol, price: t.price, pc: { h24: pc }, chain: t.chain },
+    };
+  }
   function rowHtml(r, i) {
     if (r.raw) {
       return '<button type="button" class="trow" data-i="' + i + '">' + avatar('', '?', 'lg')
@@ -695,9 +872,9 @@ a{color:inherit}
   }
 
   /* --------------------------------------------------------- wallets */
-  /* The Wallet Standard, both halves of its handshake: announce that the
-     app is ready (wallets already loaded register in reply), and listen for
-     wallets that load later. No library — it is two events. */
+  /* Solana: the Wallet Standard, both halves of its handshake — announce that
+     the app is ready (wallets already loaded register in reply), and listen
+     for wallets that load later. No library — it is two events. */
   function isSolanaWallet(w) {
     var f = w && w.features;
     return !!(f && f['standard:connect'] && (f['solana:signTransaction'] || f['solana:signAndSendTransaction']) &&
@@ -718,6 +895,15 @@ a{color:inherit}
       { name: 'Solflare', href: 'https://solflare.com/ul/v1/browse/' + u + '?ref=' + r },
     ];
   }
+  /* the same for EVM wallets on a phone */
+  function evmWalletLinks(href, origin) {
+    var bare = String(href).replace(/^https?:\/\//, '');
+    return [
+      { name: 'MetaMask', href: 'https://metamask.app.link/dapp/' + bare },
+      { name: 'Coinbase Wallet', href: 'https://go.cb-w.com/dapp?cb_url=' + encodeURIComponent(href) },
+      { name: 'Phantom', href: 'https://phantom.app/ul/browse/' + encodeURIComponent(href) + '?ref=' + encodeURIComponent(origin) },
+    ];
+  }
 
   var wallets = [], W = null, ACCT = null, offEvents = null;
   var wsApi = { register: function () {
@@ -731,15 +917,40 @@ a{color:inherit}
   window.addEventListener('wallet-standard:register-wallet', function (e) { try { e.detail(wsApi); } catch (x) { /* a broken wallet */ } });
   try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: wsApi })); } catch (x) { /* old browser */ }
 
+  /* EVM: EIP-6963 — MetaMask, Rabby, Coinbase Wallet and Phantom's EVM side
+     announce themselves; a browser with one injected provider that never
+     announces still has window.ethereum. (Asked for at boot, below.) */
+  var EVMW = [];
+  window.addEventListener('eip6963:announceProvider', function (e) {
+    var d = e && e.detail;
+    if (!d || !d.info || !d.provider || typeof d.provider.request !== 'function') return;
+    if (EVMW.some(function (x) { return x.info.uuid === d.info.uuid || x.provider === d.provider; })) return;
+    EVMW.push({ info: d.info, provider: d.provider });
+    onEvmWallets();
+  });
+  function evmWallets() {
+    if (EVMW.length) return EVMW;
+    var p = window.ethereum;
+    return p && typeof p.request === 'function'
+      ? [{ info: { uuid: 'injected', name: p.isMetaMask ? 'MetaMask' : p.isCoinbaseWallet ? 'Coinbase Wallet' : 'Browser wallet', icon: '', rdns: 'injected' }, provider: p }]
+      : [];
+  }
+
   /* ------------------------------------------------------------ state */
   var S = {
-    mint: '', side: 'buy', dec: null, tok: null, jt: null, pre: null,
+    chain: 'solana', mint: '', side: 'buy', dec: null, tok: null, jt: null, pre: null,
     cfg: {}, feeOff: false,
-    solBal: null, tokBal: null, hold: null, holdAt: 0,
+    natBal: null, tokBal: null, hold: null, holdAt: 0,
     order: null, orderKey: '', orderAt: 0, orderFee: false,
-    quoting: false, busy: '', err: '', errKey: '', note: '', noteBad: false, view: '',
+    quoting: false, busy: '', err: '', errKey: '', note: '', noteBad: false, view: '', armed: '',
+    ev: null,
   };
+  var CH = function () { return CHAINS[S.chain] || CHAINS.solana; };
+  var isEvm = function () { return CH().kind === 'evm'; };
   var sym = function () { return tsym((S.tok && S.tok.sym) || (S.jt && S.jt.symbol) || (S.pre && S.pre.sym)) || 'token'; };
+  /* the connected address on the chain on screen, and whether the wallet is on it */
+  function acct() { return isEvm() ? (S.ev ? S.ev.acct : '') : (ACCT ? ACCT.address : ''); }
+  function onChain() { return !isEvm() || (!!S.ev && S.ev.cid === CH().cid); }
   function holdOf(mint) { return S.hold ? sumAmounts(S.hold[mint]) : null; }
 
   /* one Jupiter call, falling over to the spare host on a network error or a 5xx */
@@ -771,6 +982,16 @@ a{color:inherit}
       return by;
     });
   }
+  function relayPost(path, body, ctl) {
+    return fetch(RELAY + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: null }; }); });
+  }
+  function evmReq(method, params) { return Promise.resolve(S.ev.w.provider.request({ method: method, params: params })); }
+  function copy(text, el) {
+    var sp = el.querySelector('span') || el, old = sp.textContent;
+    var done = function (t) { sp.textContent = t; setTimeout(function () { sp.textContent = old; }, 1400); };
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { done('Copied'); }, function () { done('Copy it from the page'); });
+  }
 
   /* ------------------------------------------------------------- views */
   function view(v) {
@@ -778,37 +999,44 @@ a{color:inherit}
     $('hero').hidden = !S.mint;
     $('swap').hidden = v !== 'swap';
     $('done').hidden = v !== 'done';
+    $('trust').hidden = v === 'done';
     renderTrend();
   }
+  function fine() {
+    var e = isEvm(), f = e ? (S.cfg.evm || {}) : S.cfg;
+    $('fine').textContent = 'Routed by ' + (e ? 'Relay' : 'Jupiter') + '. Your wallet signs every trade; pumpbubble never holds your funds or keys.'
+      + (f.fee && f.feeBps ? ' Quotes include a ' + trimFix(f.feeBps / 100, 2) + '% pumpbubble fee, which keeps the map free.' : '');
+  }
 
-  /* the token's picture: ours first (signed, cached at our edge), then Jupiter's */
+  /* the token's picture: ours first (signed, cached at our edge), then the router's */
   function tokImg() {
     var t = S.tok || {}, c = [t.img, S.jt && S.jt.icon, S.pre && S.pre.icon];
     for (var i = 0; i < c.length; i++) { var u = live(iconSrc(c[i])); if (u) return u; }
     return '';
   }
   var CHEV = ic('chev', 'chev');
-  function tokPill(isSol) {
-    if (isSol) return '<span class="ti sol">◎</span><span class="sy">SOL</span>';
+  function tokPill(isNat) {
+    if (isNat) return isEvm() ? '<span class="ti eth">Ξ</span><span class="sy">ETH</span>' : '<span class="ti sol">◎</span><span class="sy">SOL</span>';
     if (!S.mint) return '<span class="sy">Select token</span>' + CHEV;
     var src = tokImg(), l = esc(initial(sym()));
     return '<span class="ti" data-l="' + l + '">' + (src ? '<img alt="" decoding="async" referrerpolicy="no-referrer" src="' + esc(src) + '">' : l) + '</span>'
       + '<span class="sy">' + esc(sym()) + '</span>' + CHEV;
   }
-  /* SOL is fixed; the token side opens the picker */
-  function pill(el, isSol) {
-    setHtml(el, tokPill(isSol));
-    el.disabled = isSol;
-    el.classList.toggle('pick', !isSol && !S.mint);
-    el.setAttribute('aria-label', isSol ? 'SOL' : S.mint ? 'Change token — now $' + sym() : 'Select a token');
+  /* the chain's own coin is fixed; the token side opens the picker */
+  function pill(el, isNat) {
+    setHtml(el, tokPill(isNat));
+    el.disabled = isNat;
+    el.classList.toggle('pick', !isNat && !S.mint);
+    el.setAttribute('aria-label', isNat ? CH().native : S.mint ? 'Change token — now $' + sym() : 'Select a token');
   }
 
   function renderHero() {
-    var t = S.tok || {}, j = S.jt || {}, p = S.pre || {}, s24 = j.stats24h || {};
+    var C = CH(), evm = C.kind === 'evm', t = S.tok || {}, j = S.jt || {}, p = S.pre || {}, s24 = j.stats24h || {};
     /* The price and its move come from one source. Jupiter's price is the
-       one being traded against, so its 24h change leads; ours is the
-       fallback. Mixing them printed our +1,060,591% (a token hours old,
-       measured from its launch price) beside Jupiter's $0.53. */
+       one being traded against on Solana, so its 24h change leads there; ours
+       is the fallback, and the only source on EVM. Mixing them printed our
+       +1,060,591% (a token hours old, measured from its launch price) beside
+       Jupiter's $0.53. */
     var chg = s24.priceChange != null ? s24.priceChange : (t.pc && t.pc.h24 != null ? t.pc.h24 : null);
     var hero = $('hero');
     hero.classList.toggle('up', chg != null && chg >= 0);
@@ -819,16 +1047,21 @@ a{color:inherit}
     im.setAttribute('data-l', l);
     if (src) { if (!cur || cur.getAttribute('src') !== src) im.innerHTML = '<img alt="" decoding="async" referrerpolicy="no-referrer" src="' + esc(src) + '">'; }
     else if (cur || im.textContent !== l) im.textContent = l;
-    $('hPx').textContent = fmtPrice(j.usdPrice || t.price);
+    $('hPx').textContent = fmtPrice(j.usdPrice || t.price || p.price);
     $('hChg').textContent = chg != null ? fmtPct(chg) + ' 24h' : '';
-    $('sMcap').textContent = fmtUsd(t.mcap || j.mcap);
+    $('sMcap').textContent = fmtUsd(t.mcap || j.mcap || p.mcap);
     $('sLiq').textContent = fmtUsd(j.liquidity || t.liq);
-    $('sHold').textContent = j.holderCount != null ? fmtCount(j.holderCount) : '—';
-    $('sTrad').textContent = s24.numTraders != null ? fmtCount(s24.numTraders) : '—';
+    if (evm) {
+      $('sHoldL').textContent = 'Volume 24h'; $('sHold').textContent = fmtUsd(t.vol);
+      $('sTradL').textContent = 'Chain'; $('sTrad').textContent = C.full || C.name;
+    } else {
+      $('sHoldL').textContent = 'Holders'; $('sHold').textContent = j.holderCount != null ? fmtCount(j.holderCount) : '—';
+      $('sTradL').textContent = 'Traders'; $('sTrad').textContent = s24.numTraders != null ? fmtCount(s24.numTraders) : '—';
+    }
 
-    /* What the chain says about the token, measured and neutral. Never a
-       verdict: intent is unknowable, authorities and concentration are not. */
-    var a = j.audit || {}, chips = [];
+    /* What is measured about the token, said neutrally. Never a verdict:
+       intent is unknowable, authorities, concentration and pools are not. */
+    var a = j.audit || {}, chips = [], flags = Array.isArray(t.flags) ? t.flags : [];
     if (a.mintAuthorityDisabled === true) chips.push(['ok', 'Mint authority off']);
     else if (a.mintAuthorityDisabled === false) chips.push(['warn', 'Mint authority on']);
     if (a.freezeAuthorityDisabled === true) chips.push(['ok', 'Freeze authority off']);
@@ -840,36 +1073,62 @@ a{color:inherit}
       chips.push(['warn', fmtCount(s24.numTraders) + ' traders made ' + fmtCount(trades) + ' trades (24h)']);
     }
     if (j.organicScoreLabel) chips.push([j.organicScoreLabel === 'high' ? 'ok' : j.organicScoreLabel === 'low' ? 'warn' : '', 'Organic activity: ' + j.organicScoreLabel]);
+    if (evm) {
+      if (p.verified) chips.push(['ok', 'On Relay’s verified list']);
+      if (+t.liq > 0 && +t.liq < 10000) chips.push(['warn', 'Thin pool — big trades move the price']);
+    }
+    if (flags.indexOf('copycat') >= 0) chips.push(['warn', 'Other tokens use this ticker — check the address']);
+    if (flags.indexOf('new') >= 0) chips.push(['warn', 'Less than a day old']);
     $('chips').innerHTML = chips.map(function (c) { return '<span class="chip ' + c[0] + '">' + (c[0] === 'ok' ? ic('check') : '') + esc(c[1]) + '</span>'; }).join('');
 
-    var pumpish = j.launchpad === 'pump.fun' || /pump$/.test(S.mint);
-    $('hChart').href = pumpish ? 'https://pump.fun/coin/' + encodeURIComponent(S.mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(S.mint);
-    $('hBubble').href = '/s/' + encodeURIComponent(S.mint);
+    var ca = $('hCa');
+    setHtml(ca, ic('copy') + '<span>' + esc(short(S.mint)) + '</span>');
+    if (evm) {
+      $('hChart').href = 'https://dexscreener.com/' + C.dex + '/' + encodeURIComponent(S.mint);
+      $('hBubble').href = t.sym && C.id !== 'ethereum' ? '/s/' + encodeURIComponent(tsym(t.sym)) + '?source=' + C.id : '/?source=' + (C.id === 'ethereum' ? 'trending' : C.id);
+    } else {
+      var pumpish = j.launchpad === 'pump.fun' || /pump$/.test(S.mint);
+      $('hChart').href = pumpish ? 'https://pump.fun/coin/' + encodeURIComponent(S.mint) : 'https://dexscreener.com/solana/' + encodeURIComponent(S.mint);
+      $('hBubble').href = '/s/' + encodeURIComponent(S.mint);
+    }
     document.title = (S.side === 'buy' ? 'Buy' : 'Sell') + ' $' + sym() + ' · pumpbubble.fun';
   }
 
   function want() {
-    var dec = S.side === 'buy' ? SOL_DEC : S.dec;
+    var C = CH(), sell = S.side === 'sell';
+    var dec = sell ? S.dec : C.dec;
     if (dec == null || !S.mint) return null;
     var amount = toUnits($('amt').value, dec);
     if (amount <= 0n) return null;
+    var nat = C.kind === 'sol' ? SOL : ETH0;
     return {
-      inputMint: S.side === 'buy' ? SOL : S.mint,
-      outputMint: S.side === 'buy' ? S.mint : SOL,
+      chain: C.id,
+      inputMint: sell ? S.mint : nat,
+      outputMint: sell ? nat : S.mint,
       amount: amount.toString(),
-      taker: ACCT ? ACCT.address : '',
+      taker: acct(),
     };
   }
-  function keyOf(w) { return w ? [w.inputMint, w.outputMint, w.amount, w.taker].join('|') : ''; }
+  function keyOf(w) { return w ? [w.chain, w.inputMint, w.outputMint, w.amount, w.taker].join('|') : ''; }
   function insufficient(w) {
-    if (!w || !ACCT) return false;
+    if (!w || !acct()) return false;
     var amt = BigInt(w.amount);
-    if (S.side === 'buy') return S.solBal != null && amt > S.solBal;
+    if (S.side === 'buy') return S.natBal != null && amt > S.natBal;
     return S.tokBal != null && amt > S.tokBal;
   }
 
+  function renderChains() {
+    var bs = $('chains').querySelectorAll('button[data-c]');
+    for (var i = 0; i < bs.length; i++) {
+      var on = bs[i].getAttribute('data-c') === S.chain;
+      bs[i].classList.toggle('on', on);
+      bs[i].setAttribute('aria-selected', String(on));
+    }
+  }
+
   function render() {
-    var sell = S.side === 'sell';
+    var C = CH(), sell = S.side === 'sell';
+    renderChains();
     $('swap').classList.toggle('sell', sell);
     $('tBuy').classList.toggle('on', !sell);
     $('tSell').classList.toggle('on', sell);
@@ -878,12 +1137,12 @@ a{color:inherit}
     pill($('inTok'), !sell);
     pill($('outTok'), sell);
 
-    /* the wallet button */
-    var wb = $('wBtn');
-    if (ACCT) {
-      var wi = W && walletIcon(W);
-      wb.className = 'on';
-      setHtml(wb, (wi ? '<img alt="" src="' + esc(wi) + '">' : '<span class="dot"></span>') + esc(short(ACCT.address)));
+    /* the wallet button: the address on the chain on screen, gold while the wallet is on another */
+    var wb = $('wBtn'), a = acct();
+    if (a) {
+      var wi = isEvm() ? walletIcon({ icon: S.ev.w.info.icon }) : (W && walletIcon(W));
+      wb.className = 'on' + (onChain() ? '' : ' off');
+      setHtml(wb, (wi ? '<img alt="" src="' + esc(wi) + '">' : '<span class="dot"></span>') + esc(short(a)));
     } else {
       wb.className = '';
       setHtml(wb, 'Connect');
@@ -891,17 +1150,14 @@ a{color:inherit}
 
     /* balance and presets */
     var bal = $('bal');
-    if (ACCT && S.mint && (sell ? S.tokBal != null && S.dec != null : S.solBal != null)) {
+    if (a && onChain() && (sell ? S.mint && S.tokBal != null && S.dec != null : S.natBal != null)) {
       bal.hidden = false;
-      setHtml(bal, 'Balance <b>' + esc(fmtAmt(sell ? fromUnits(S.tokBal, S.dec) : fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>');
-    } else if (ACCT && !sell && S.solBal != null) {
-      bal.hidden = false;
-      setHtml(bal, 'Balance <b>' + esc(fmtAmt(fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>');
+      setHtml(bal, 'Balance <b>' + esc(fmtAmt(sell ? fromUnits(S.tokBal, S.dec) : fromUnits(S.natBal, C.dec))) + '</b><em>MAX</em>');
     } else bal.hidden = true;
     var pre = sell
       ? [['25%', 25], ['50%', 50], ['100%', 100]]
-      : [['0.1', '0.1'], ['0.25', '0.25'], ['0.5', '0.5'], ['1 SOL', '1']];
-    var canPct = ACCT && S.tokBal != null && S.tokBal > 0n && S.dec != null;
+      : C.presets.map(function (v, i, all) { return [i === all.length - 1 ? v + ' ' + C.native : v, v]; });
+    var canPct = a && S.tokBal != null && S.tokBal > 0n && S.dec != null;
     setHtml($('presets'), pre.map(function (p) {
       return '<button type="button" data-v="' + esc(p[1]) + '"' + (sell && !canPct ? ' disabled' : '') + '>' + esc(p[0]) + '</button>';
     }).join(''));
@@ -912,8 +1168,9 @@ a{color:inherit}
 
   function renderQuote() {
     var o = S.order, w = want(), fresh = !!o && !!w && S.orderKey === keyOf(w);
-    var sell = S.side === 'sell';
-    var inDec = sell ? S.dec : SOL_DEC, outDec = sell ? SOL_DEC : S.dec;
+    var C = CH(), sell = S.side === 'sell', nat = C.native;
+    var tokDec = S.dec != null ? S.dec : (o && o.evm ? (sell ? o.inDec : o.outDec) : null);
+    var inDec = sell ? tokDec : C.dec, outDec = sell ? C.dec : tokDec;
     var out = $('out');
     var ok = fresh && o.outAmount && outDec != null && inDec != null && !(o.error && !o.outAmount);
     if (!ok) {
@@ -928,25 +1185,32 @@ a{color:inherit}
       $('outUsd').textContent = o.outUsdValue ? '≈ ' + fmtUsd(o.outUsdValue) : '';
       var rate = Number(outAmt) / Number(inAmt);
       $('kRate').textContent = isFinite(rate) && rate > 0
-        ? '1 ' + (sell ? sym() : 'SOL') + ' ≈ ' + fmtAmt(rate) + ' ' + (sell ? 'SOL' : sym()) : '—';
-      var imp = Math.abs(Number(o.priceImpactPct) * 100);
-      var ki = $('kImpact');
-      ki.textContent = isFinite(imp) ? (imp < 0.01 ? '<0.01%' : imp.toFixed(2) + '%') : '—';
-      ki.className = !isFinite(imp) ? '' : imp >= 10 ? 'bad' : imp >= 2 ? 'warn' : '';
+        ? '1 ' + (sell ? sym() : nat) + ' ≈ ' + fmtAmt(rate) + ' ' + (sell ? nat : sym()) : '—';
+      var imp = impactOf(o), ki = $('kImpact');
+      ki.textContent = imp == null ? '—' : imp < 0.01 ? '<0.01%' : imp.toFixed(2) + '%';
+      ki.className = imp == null ? '' : imp >= 10 ? 'bad' : imp >= 2 ? 'warn' : '';
       $('kMin').textContent = o.otherAmountThreshold
-        ? fmtAmt(fromUnits(o.otherAmountThreshold, outDec)) + ' ' + (sell ? 'SOL' : sym()) + (o.slippageBps ? ' · ' + trimFix(o.slippageBps / 100, 2) + '% slippage' : '')
+        ? fmtAmt(fromUnits(o.otherAmountThreshold, outDec)) + ' ' + (sell ? nat : sym()) + (o.slippageBps ? ' · ' + trimFix(o.slippageBps / 100, 2) + '% slippage' : '')
         : '—';
-      /* ours only when Jupiter applied exactly what was asked: an order whose fee
-         mint has no referral token account runs at Jupiter's own rate instead */
-      var oursFee = S.orderFee && String(o.feeBps) === String(S.cfg.feeBps);
-      $('kFee').textContent = o.feeBps != null
-        ? trimFix(o.feeBps / 100, 2) + '%' + (oursFee ? ' · pumpbubble' : ' · Jupiter') : '—';
-      var net = netLamports(o), kn = $('kNet');
+      var kn = $('kNet');
       kn.className = '';
-      if (o.gasless) { kn.textContent = 'Covered by Jupiter'; kn.className = 'ok'; }
-      else if (!o.taker) kn.textContent = 'Shown once a wallet is connected';
-      else kn.textContent = '≈ ' + fmtAmt(fromUnits(net, SOL_DEC)) + ' SOL' + (BigInt(o.rentFeeLamports || 0) > 0n && o.rentFeePayer === o.taker ? ' incl. token account' : '');
-      $('kRoute').textContent = routeOf(o) || '—';
+      if (o.evm) {
+        $('kFee').textContent = (o.feeBps ? trimFix(o.feeBps / 100, 2) + '% · pumpbubble' : 'No pumpbubble fee')
+          + (o.relayUsd != null ? ' · Relay ' + fmtUsd(o.relayUsd) : '');
+        kn.textContent = o.gasUsd != null ? '≈ ' + fmtUsd(o.gasUsd) + ' gas' : '—';
+        $('kRoute').textContent = 'Relay';
+      } else {
+        /* ours only when Jupiter applied exactly what was asked: an order whose fee
+           mint has no referral token account runs at Jupiter's own rate instead */
+        var oursFee = S.orderFee && String(o.feeBps) === String(S.cfg.feeBps);
+        $('kFee').textContent = o.feeBps != null
+          ? trimFix(o.feeBps / 100, 2) + '%' + (oursFee ? ' · pumpbubble' : ' · Jupiter') : '—';
+        var net = netLamports(o);
+        if (o.gasless) { kn.textContent = 'Covered by Jupiter'; kn.className = 'ok'; }
+        else if (!o.taker) kn.textContent = 'Shown once a wallet is connected';
+        else kn.textContent = '≈ ' + fmtAmt(fromUnits(net, SOL_DEC)) + ' SOL' + (BigInt(o.rentFeeLamports || 0) > 0n && o.rentFeePayer === o.taker ? ' incl. token account' : '');
+        $('kRoute').textContent = routeOf(o) || '—';
+      }
       $('kvs').hidden = false;
     }
     /* an error is shown only while it still describes what is on screen */
@@ -957,18 +1221,25 @@ a{color:inherit}
   }
 
   function renderGo() {
-    var go = $('go'), w = want(), o = S.order, k = keyOf(w), fresh = !!o && !!w && S.orderKey === k;
+    var go = $('go'), w = want(), o = S.order, k = keyOf(w), fresh = !!o && !!w && S.orderKey === k, C = CH();
     var verb = (S.side === 'buy' ? 'Buy $' : 'Sell $') + sym();
-    var label = verb, dis = false, spin = false;
+    var label = verb, dis = false, spin = false, warn = false, imp = fresh ? impactOf(o) : null;
     if (S.busy) { label = S.busy; dis = true; spin = true; }
     else if (!S.mint) { label = S.side === 'sell' ? 'Choose a token to sell' : 'Choose a token to buy'; }
-    else if (!ACCT) { label = 'Connect wallet'; }
+    else if (!acct()) { label = 'Connect wallet'; }
+    else if (!onChain()) { label = 'Switch wallet to ' + C.name; }
     else if (!w) { label = S.side === 'sell' && S.dec == null ? 'Loading token…' : 'Enter an amount'; dis = true; }
-    else if (insufficient(w)) { label = S.side === 'buy' ? 'Not enough SOL' : 'Not enough $' + sym(); dis = true; }
+    else if (insufficient(w)) { label = S.side === 'buy' ? 'Not enough ' + C.native : 'Not enough $' + sym(); dis = true; }
     else if (S.err && S.errKey === k) { dis = true; spin = S.quoting; }
     else if (!fresh) { label = 'Finding the best price…'; dis = true; spin = true; }
     else if (!o.transaction) { dis = true; spin = S.quoting; }
+    else if (imp != null && imp >= IMPACT_MAX) { label = 'Price impact too high (' + imp.toFixed(1) + '%)'; dis = true; }
+    else if (imp != null && imp >= IMPACT_WARN) {
+      warn = true;
+      label = S.armed === k ? 'Press again to accept ' + imp.toFixed(1) + '% price impact' : verb + ' anyway — ' + imp.toFixed(1) + '% price impact';
+    }
     go.disabled = dis;
+    go.classList.toggle('warn', warn);
     $('amt').disabled = !!S.busy;
     setHtml(go, (spin ? '<span class="spin"></span>' : '') + '<span>' + esc(label) + '</span>');
   }
@@ -989,26 +1260,16 @@ a{color:inherit}
     if (!w) { qSeq++; S.order = null; S.orderKey = ''; S.quoting = false; S.err = ''; render(); return Promise.resolve(null); }
     var my = ++qSeq;
     var ctl = qCtl = window.AbortController ? new AbortController() : null;
-    var p = { inputMint: w.inputMint, outputMint: w.outputMint, amount: w.amount };
-    if (w.taker) p.taker = w.taker;
-    var fee = !!(S.cfg.fee && S.cfg.referralAccount && !S.feeOff);
-    if (fee) { p.referralAccount = S.cfg.referralAccount; p.referralFee = String(S.cfg.feeBps); }
     S.quoting = true;
     renderGo();
-    return jup('/ultra/v1/order?' + new URLSearchParams(p).toString(), ctl ? { signal: ctl.signal } : {}).then(function (o) {
+    return (isEvm() ? quoteRelay(w, ctl) : quoteJup(w, ctl)).then(function (o) {
       if (my !== qSeq) return null;
-      /* A fee account Jupiter does not recognise fails the whole quote. The
-         trade matters more than our cut of it: drop the fee, keep trading,
-         and say so in the console for whoever runs the site. */
-      if (o && o.error && fee && /referral/i.test(o.error)) {
-        S.feeOff = true;
-        console.warn('[swap] Jupiter refused the referral account, quoting without our fee:', o.error);
-        return quote();
-      }
+      if (o && o.retry) return quote();
       S.quoting = false;
-      S.order = o; S.orderKey = keyOf(w); S.orderAt = Date.now(); S.orderFee = fee;
+      S.order = o; S.orderKey = keyOf(w); S.orderAt = Date.now(); S.orderFee = !!(o && o._fee);
+      if (o && o.evm && S.dec == null) { var dd = S.side === 'sell' ? o.inDec : o.outDec; if (dd != null && isFinite(dd)) S.dec = dd; }
       var e = o && (o.errorMessage || o.error);
-      S.err = e ? humanErr(e, S.side, sym()) : '';
+      S.err = e ? humanErr(e, S.side, sym(), CH().native) : '';
       S.errKey = keyOf(w);
       render();
       armRefresh();
@@ -1017,11 +1278,50 @@ a{color:inherit}
       if (e && e.name === 'AbortError') return null;
       if (my !== qSeq) return null;
       S.quoting = false; S.order = null; S.orderKey = '';
-      S.err = 'Could not reach Jupiter for a price. Check your connection — it retries by itself.';
+      S.err = 'Could not reach ' + (isEvm() ? 'Relay' : 'Jupiter') + ' for a price. Check your connection — it retries by itself.';
       S.errKey = keyOf(w);
       render();
       armRefresh();
       return null;
+    });
+  }
+  function quoteJup(w, ctl) {
+    var p = { inputMint: w.inputMint, outputMint: w.outputMint, amount: w.amount };
+    if (w.taker) p.taker = w.taker;
+    var fee = !!(S.cfg.fee && S.cfg.referralAccount && !S.feeOff);
+    if (fee) { p.referralAccount = S.cfg.referralAccount; p.referralFee = String(S.cfg.feeBps); }
+    return jup('/ultra/v1/order?' + new URLSearchParams(p).toString(), ctl ? { signal: ctl.signal } : {}).then(function (o) {
+      /* A fee account Jupiter does not recognise fails the whole quote. The
+         trade matters more than our cut of it: drop the fee, keep trading,
+         and say so in the console for whoever runs the site. */
+      if (o && o.error && fee && /referral/i.test(o.error)) {
+        S.feeOff = true;
+        console.warn('[swap] Jupiter refused the referral account, quoting without our fee:', o.error);
+        return { retry: true };
+      }
+      if (o && typeof o === 'object') o._fee = fee;
+      return o;
+    });
+  }
+  function quoteRelay(w, ctl) {
+    var C = CH(), cfg = S.cfg.evm || {}, fee = !!(cfg.fee && evmAddr(cfg.recipient) && cfg.feeBps > 0), used = fee;
+    /* the wallet that will sign once it is connected on this chain and can pay; the burn address for a price before that */
+    var me = acct() && onChain() && !insufficient(w) ? acct() : NOBODY;
+    var ask = function (withFee) {
+      var body = { user: me, recipient: me, originChainId: C.cid, destinationChainId: C.cid,
+        originCurrency: w.inputMint, destinationCurrency: w.outputMint, amount: w.amount, tradeType: 'EXACT_INPUT' };
+      if (withFee) body.appFees = [{ recipient: cfg.recipient, fee: String(cfg.feeBps) }];
+      return relayPost('/quote', body, ctl);
+    };
+    return ask(fee).then(function (x) {
+      /* Relay simulates the whole trade, our fee's extra step included. Where
+         that step is what fails — small trades on Ethereum, where its gas
+         outweighs it — the trade goes without our cut rather than not at all. */
+      if ((!x.ok || !x.j || !Array.isArray(x.j.steps)) && fee) { used = false; return ask(false); }
+      return x;
+    }).then(function (x) {
+      if (!x.ok || !x.j || !Array.isArray(x.j.steps)) return { evm: true, error: (x.j && x.j.message) || 'No route for this trade right now.' };
+      return fromRelay(x.j, w, me, used ? cfg.feeBps : 0);
     });
   }
 
@@ -1029,12 +1329,13 @@ a{color:inherit}
   var balTimer = 0;
   function loadBalances(delay) {
     clearTimeout(balTimer);
+    if (isEvm()) { balTimer = setTimeout(loadEvmBalances, delay || 0); return; }
     if (!ACCT) return;
     var who = ACCT.address;
     balTimer = setTimeout(function () {
       jup('/ultra/v1/holdings/' + encodeURIComponent(who)).then(function (h) {
-        if (!ACCT || ACCT.address !== who || !h || h.error) return;
-        try { S.solBal = BigInt(h.amount || 0); } catch (e) { S.solBal = null; }
+        if (!ACCT || ACCT.address !== who || !h || h.error || isEvm()) return;
+        try { S.natBal = BigInt(h.amount || 0); } catch (e) { S.natBal = null; }
         S.hold = h.tokens && typeof h.tokens === 'object' ? h.tokens : {};
         S.holdAt = Date.now();
         var list = (S.mint && S.hold[S.mint]) || [];
@@ -1045,8 +1346,32 @@ a{color:inherit}
       }).catch(function () { /* the balance line just stays hidden */ });
     }, delay || 0);
   }
+  /* EVM balances through the wallet itself: no RPC of ours, and only while it is on the chain on screen */
+  function loadEvmBalances() {
+    if (!S.ev || !onChain()) return;
+    var who = S.ev.acct, cid = S.ev.cid, mint = S.mint;
+    var same = function () { return !!S.ev && S.ev.acct === who && S.ev.cid === cid && isEvm() && CH().cid === cid; };
+    evmReq('eth_getBalance', [who, 'latest']).then(function (h) {
+      if (!same()) return;
+      try { S.natBal = BigInt(h); } catch (e) { S.natBal = null; }
+      render();
+    }).catch(function () { /* the balance line just stays hidden */ });
+    if (!evmAddr(mint)) return;
+    evmReq('eth_call', [{ to: mint, data: '0x70a08231' + who.slice(2).padStart(64, '0') }, 'latest']).then(function (h) {
+      if (!same() || S.mint !== mint) return;
+      try { S.tokBal = BigInt(h && h !== '0x' ? h : 0); } catch (e) { S.tokBal = null; }
+      render();
+    }).catch(function () { /* no balance shown */ });
+    if (S.dec == null) {
+      evmReq('eth_call', [{ to: mint, data: '0x313ce567' }, 'latest']).then(function (h) {
+        if (S.mint !== mint || S.dec != null) return;
+        var d = parseInt(h, 16);
+        if (isFinite(d) && d >= 0 && d <= 36) { S.dec = d; render(); if (want()) quote(); }
+      }).catch(function () { /* decimals come another way */ });
+    }
+  }
 
-  /* ------------------------------------------------------------- wallet */
+  /* ------------------------------------------------------- Solana wallet */
   function connect(w, silent) {
     return Promise.resolve(w.features['standard:connect'].connect(silent ? { silent: true } : undefined)).then(function (r) {
       var accts = (r && r.accounts && r.accounts.length ? r.accounts : w.accounts) || [];
@@ -1072,12 +1397,12 @@ a{color:inherit}
     }
     afterAccount();
   }
-  function clearHoldings() { S.solBal = null; S.tokBal = null; S.hold = null; PK.mine = null; PK.mineKey = ''; }
-  function afterAccount() { S.order = null; S.orderKey = ''; S.note = ''; render(); loadBalances(); quote(); }
+  function clearHoldings() { if (!isEvm()) { S.natBal = null; S.tokBal = null; } S.hold = null; PK.mine = null; PK.mineKey = ''; }
+  function afterAccount() { if (isEvm()) { render(); return; } S.order = null; S.orderKey = ''; S.note = ''; render(); loadBalances(); quote(); }
   function forget() {
     if (offEvents) { try { offEvents(); } catch (e) { /* gone */ } offEvents = null; }
-    W = null; ACCT = null; clearHoldings(); S.order = null; S.orderKey = '';
-    render(); quote();
+    W = null; ACCT = null; clearHoldings();
+    if (!isEvm()) { S.order = null; S.orderKey = ''; render(); quote(); } else render();
   }
   function disconnect() {
     var d = W && W.features['standard:disconnect'];
@@ -1085,7 +1410,6 @@ a{color:inherit}
     if (d && d.disconnect) { try { Promise.resolve(d.disconnect()).catch(function () {}); } catch (e) { /* ignore */ } }
     forget();
   }
-
   /* reconnect quietly to the wallet used last time, once it has registered */
   var triedSilent = false;
   function onWallets() {
@@ -1094,23 +1418,102 @@ a{color:inherit}
       var w = last && wallets.filter(function (x) { return x.name === last; })[0];
       if (w) { triedSilent = true; connect(w, true).catch(function () { /* stays disconnected */ }); }
     }
-    if (!$('sheet').hidden && !ACCT) openSheet();
+    if (!$('sheet').hidden && !ACCT && !isEvm()) openSheet();
+  }
+
+  /* ---------------------------------------------------------- EVM wallet */
+  function evmConnect(w, silent) {
+    var p = w.provider;
+    return Promise.resolve(p.request({ method: silent ? 'eth_accounts' : 'eth_requestAccounts' })).then(function (accs) {
+      var a = Array.isArray(accs) ? accs[0] : null;
+      if (!evmAddr(a)) throw new Error(silent ? 'not connected yet' : 'The wallet did not share an account.');
+      return Promise.resolve(p.request({ method: 'eth_chainId' })).then(function (cid) {
+        setEvm(w, a, parseInt(cid, 16));
+        store.set(LAST_EVM, w.info.rdns || w.info.name);
+      });
+    });
+  }
+  function setEvm(w, a, cid) {
+    evmOff();
+    S.ev = { w: w, acct: String(a).toLowerCase(), cid: cid, off: null };
+    var p = w.provider;
+    if (typeof p.on === 'function') {
+      var onA = function (accs) {
+        var x = Array.isArray(accs) ? accs[0] : null;
+        if (!evmAddr(x)) evmForget(); else if (S.ev) { S.ev.acct = x.toLowerCase(); afterEvm(); }
+      };
+      var onC = function (c) { if (S.ev) { S.ev.cid = parseInt(c, 16); afterEvm(); } };
+      try {
+        p.on('accountsChanged', onA);
+        p.on('chainChanged', onC);
+        S.ev.off = function () {
+          var rm = p.removeListener || p.off;
+          if (typeof rm === 'function') { try { rm.call(p, 'accountsChanged', onA); rm.call(p, 'chainChanged', onC); } catch (e) { /* gone */ } }
+        };
+      } catch (e) { /* events are optional */ }
+    }
+    afterEvm();
+  }
+  function evmOff() { if (S.ev && S.ev.off) S.ev.off(); }
+  function evmForget() {
+    evmOff();
+    S.ev = null;
+    store.set(LAST_EVM, null);
+    if (isEvm()) { S.natBal = null; S.tokBal = null; S.order = null; S.orderKey = ''; render(); quote(); }
+  }
+  function afterEvm() {
+    if (!isEvm()) { render(); return; }
+    S.natBal = null; S.tokBal = null; S.order = null; S.orderKey = ''; S.note = '';
+    render(); loadBalances(); quote();
+  }
+  function evmSwitch() {
+    if (!S.ev || S.busy) return;
+    var C = CH(), p = S.ev.w.provider, hex = '0x' + C.cid.toString(16);
+    S.busy = 'Switch to ' + C.name + ' in your wallet…';
+    renderGo();
+    Promise.resolve(p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] })).catch(function (e) {
+      var code = e && (e.code || (e.data && e.data.originalError && e.data.originalError.code));
+      if (code !== 4902 && !/unrecognized|not been added|unknown chain|add it first/i.test(String((e && e.message) || ''))) throw e;
+      /* the wallet does not know this chain yet: offer it, with its public RPC and explorer */
+      return p.request({ method: 'wallet_addEthereumChain', params: [{ chainId: hex, chainName: C.full || C.name,
+        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: [C.rpc], blockExplorerUrls: [C.explorer] }] });
+    }).then(function () { return p.request({ method: 'eth_chainId' }); }).then(function (cid) {
+      S.busy = '';
+      if (S.ev) S.ev.cid = parseInt(cid, 16);
+      afterEvm();
+    }).catch(function (e) {
+      S.busy = '';
+      var m = String((e && e.message) || e || '');
+      S.note = /reject|denied|cancel|declin/i.test(m) || (e && e.code === 4001)
+        ? 'Switch cancelled — your wallet is still on another network.'
+        : 'Your wallet could not switch to ' + (C.full || C.name) + (C.id === 'robinhood' ? ' — MetaMask and Rabby can add it.' : '.');
+      S.noteBad = true;
+      render();
+    });
+  }
+  /* a lone injected provider never announces, so it is tried once after boot */
+  var triedEvm = false;
+  function onEvmWallets() {
+    if (!triedEvm && !S.ev) {
+      var last = store.get(LAST_EVM);
+      var w = last && evmWallets().filter(function (x) { return (x.info.rdns || x.info.name) === last; })[0];
+      if (w) { triedEvm = true; evmConnect(w, true).catch(function () { /* stays disconnected */ }); }
+    }
+    if (!$('sheet').hidden && isEvm() && !S.ev) openSheet();
   }
 
   /* ------------------------------------------------------------ the sheet */
-  function openSheet() {
+  function openSheet() { if (isEvm()) openEvmSheet(); else openSolSheet(); $('sheet').hidden = false; }
+  function openSolSheet() {
     var body = $('sBody'), msg = $('sMsg');
     msg.hidden = true;
     if (ACCT) {
       $('sTitle').textContent = W ? W.name : 'Wallet';
       $('sSub').textContent = 'Connected. Trades are signed here, in your wallet.';
       body.innerHTML = '<div class="addr">' + esc(ACCT.address) + '</div>'
-        + '<button class="wopt" type="button" id="sCopy">Copy address</button>'
+        + '<button class="wopt" type="button" id="sCopy"><span>Copy address</span></button>'
         + '<button class="wopt" type="button" id="sOff">Disconnect</button>';
-      $('sCopy').onclick = function () {
-        var b = this;
-        (navigator.clipboard ? navigator.clipboard.writeText(ACCT.address) : Promise.reject()).then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy it from above'; });
-      };
+      $('sCopy').onclick = function () { copy(ACCT.address, this); };
       $('sOff').onclick = function () { disconnect(); closeSheet(); };
     } else if (wallets.length) {
       $('sTitle').textContent = 'Connect a wallet';
@@ -1142,71 +1545,143 @@ a{color:inherit}
       }).join('');
     } else {
       $('sTitle').textContent = 'No Solana wallet found';
-      $('sSub').textContent = 'Install one, then come back to this page — it connects in one click.';
+      $('sSub').textContent = evmWallets().length
+        ? 'This browser has an EVM wallet. Pick Base, Ethereum or Robinhood at the top of the swap to use it — or install a Solana wallet:'
+        : 'Install one, then come back to this page — it connects in one click.';
       body.innerHTML = [['Phantom', 'https://phantom.com/download'], ['Solflare', 'https://solflare.com/download'], ['Backpack', 'https://backpack.app/downloads']].map(function (l) {
         return '<a class="wopt" target="_blank" rel="noopener" href="' + esc(l[1]) + '"><span class="ti">' + esc(l[0].charAt(0)) + '</span><span>Get ' + esc(l[0]) + '</span><small>↗</small></a>';
       }).join('');
     }
-    $('sheet').hidden = false;
+  }
+  function openEvmSheet() {
+    var body = $('sBody'), msg = $('sMsg'), C = CH(), where = C.full || C.name;
+    msg.hidden = true;
+    if (S.ev) {
+      $('sTitle').textContent = String(S.ev.w.info.name || 'Wallet').slice(0, 40);
+      $('sSub').textContent = onChain() ? 'Connected on ' + where + '. Trades are signed here, in your wallet.' : 'Connected — switch it to ' + where + ' to trade here.';
+      body.innerHTML = '<div class="addr">' + esc(S.ev.acct) + '</div>'
+        + (onChain() ? '' : '<button class="wopt" type="button" id="sSwitch">Switch to ' + esc(where) + '</button>')
+        + '<button class="wopt" type="button" id="sCopy"><span>Copy address</span></button>'
+        + '<button class="wopt" type="button" id="sOff">Disconnect</button>';
+      if ($('sSwitch')) $('sSwitch').onclick = function () { closeSheet(); evmSwitch(); };
+      $('sCopy').onclick = function () { copy(S.ev.acct, this); };
+      $('sOff').onclick = function () {
+        try { Promise.resolve(S.ev.w.provider.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] })).catch(function () {}); } catch (e) { /* optional */ }
+        evmForget(); closeSheet();
+      };
+      return;
+    }
+    var list = evmWallets();
+    if (list.length) {
+      $('sTitle').textContent = 'Connect a wallet';
+      $('sSub').textContent = 'For ' + where + '. Your wallet signs every trade; pumpbubble never sees your keys.';
+      var last = store.get(LAST_EVM);
+      body.innerHTML = '';
+      list.forEach(function (w) {
+        var b = document.createElement('button'), nm = String(w.info.name || 'Wallet').slice(0, 40), wi = walletIcon({ icon: w.info.icon });
+        b.type = 'button'; b.className = 'wopt';
+        b.innerHTML = (wi ? '<img alt="" src="' + esc(wi) + '">' : '<span class="ti">' + esc(nm.charAt(0)) + '</span>')
+          + '<span>' + esc(nm) + '</span>' + ((w.info.rdns || w.info.name) === last ? '<small>last used</small>' : '');
+        b.onclick = function () {
+          b.disabled = true; msg.hidden = true;
+          evmConnect(w).then(function () { closeSheet(); if (!onChain()) evmSwitch(); }).catch(function (e) {
+            b.disabled = false;
+            var m = String((e && e.message) || e || '');
+            msg.textContent = /reject|denied|cancel|declin/i.test(m) || (e && e.code === 4001) ? 'Cancelled in the wallet.' : (m.slice(0, 140) || 'The wallet did not connect.');
+            msg.hidden = false;
+          });
+        };
+        body.appendChild(b);
+      });
+    } else if (isPhone()) {
+      $('sTitle').textContent = 'Open in your wallet';
+      $('sSub').textContent = 'Phones keep wallets in their own app. This opens the same page inside it, ready to trade.'
+        + (C.id === 'robinhood' ? ' For Robinhood Chain, MetaMask works best.' : '');
+      body.innerHTML = evmWalletLinks(location.href, location.origin).map(function (l) {
+        return '<a class="wopt" href="' + esc(l.href) + '"><span class="ti">' + esc(l.name.charAt(0)) + '</span><span>Open in ' + esc(l.name) + '</span><small>↗</small></a>';
+      }).join('');
+    } else {
+      $('sTitle').textContent = 'No EVM wallet found';
+      $('sSub').textContent = 'Install one, then come back to this page — it connects in one click.';
+      body.innerHTML = [['MetaMask', 'https://metamask.io/download/'], ['Rabby', 'https://rabby.io/'], ['Coinbase Wallet', 'https://www.coinbase.com/wallet/downloads']].map(function (l) {
+        return '<a class="wopt" target="_blank" rel="noopener" href="' + esc(l[1]) + '"><span class="ti">' + esc(l[0].charAt(0)) + '</span><span>Get ' + esc(l[0]) + '</span><small>↗</small></a>';
+      }).join('');
+    }
   }
   function closeSheet() { $('sheet').hidden = true; }
 
   /* ---------------------------------------------------------- the picker */
-  /* Search goes straight to Jupiter from the browser (its CORS allows us),
-     so it costs the site no request. The default lists: popular tokens, the
-     map's Trending (the rail's own warm list from /api/ads, named and priced
-     by one Jupiter search), and the wallet's tokens priced the same way —
-     tokens Jupiter does not know and dust under a cent are left out, which
-     is where airdropped junk lands. */
-  var PK = { rows: [], q: '', seq: 0, t: 0, res: null, msg: '',
-    pop: null, popBusy: false, trend: null, trendAt: 0, trendBusy: false, trendSrc: 'map', mine: null, mineKey: '' };
+  /* Search goes straight to the router from the browser (both allow us), so
+     it costs the site no request. Default lists per chain: a popular row
+     (Jupiter's picks on Solana, Relay's verified list on EVM), the map's own
+     tokens (Solana's Trending through /api/ads; Base and Robinhood Chain
+     through /api/swap/tokens — the map knows which of forty clones is the
+     real one), and on Solana the wallet's tokens priced in one search, with
+     tokens Jupiter does not know and dust under a cent left out. */
+  var PK = { rows: [], q: '', seq: 0, t: 0, res: null, msg: '', mine: null, mineKey: '' };
+  var LS = {};
+  function L(c) { return LS[c] || (LS[c] = { pop: null, popBusy: false, trend: null, trendAt: 0, trendBusy: false, src: 'map' }); }
 
   function loadPopular() {
-    if (PK.pop || PK.popBusy) return;
-    PK.popBusy = true;
-    lookup(POPULAR).then(function (by) {
-      PK.pop = POPULAR.filter(function (m) { return by[m]; }).map(function (m) { return fromJup(by[m]); });
-    }, function () { /* the chips stay away; the next open asks again */ }).then(function () { PK.popBusy = false; renderPick(); });
+    var c = S.chain, l = L(c), C = CHAINS[c];
+    if (l.pop || l.popBusy) return;
+    l.popBusy = true;
+    var p = C.kind === 'sol'
+      ? lookup(POPULAR).then(function (by) { return POPULAR.filter(function (m) { return by[m]; }).map(function (m) { return fromJup(by[m]); }); })
+      : relayPost('/currencies/v2', { chainIds: [C.cid], defaultList: true, limit: 24 }).then(function (x) {
+          return ((x.ok && Array.isArray(x.j)) ? x.j : []).filter(function (cur) { return cur && cur.metadata && cur.metadata.verified === true; })
+            .map(fromRelayCur).filter(function (r) { return r && r.mint !== ETH0 && !/^W?ETH$/i.test(r.sym); }).slice(0, 6);
+        });
+    p.then(function (rows) { l.pop = rows; }, function () { /* the chips stay away; the next open asks again */ })
+      .then(function () { l.popBusy = false; renderPick(); });
   }
-
-  function loadTrend() {
-    if (PK.trendBusy || (PK.trend && Date.now() - PK.trendAt < 60000)) return;
-    PK.trendBusy = true;
-    fetch('/api/ads').then(function (r) { return r.json(); }).then(function (j) {
+  function enrichRows(rows) {
+    var need = rows.filter(function (r) { return !r.jt; });
+    if (!need.length) return;
+    lookup(need.map(function (r) { return r.mint; })).then(function (by) {
+      need.forEach(function (r) {
+        var j = by[r.mint];
+        if (!j) return;
+        var x = fromJup(j);
+        r.name = x.name; r.dec = x.dec; r.mcap = x.mcap; r.price = x.price; r.verified = x.verified; r.jt = j;
+        if (x.chg != null) r.chg = x.chg;   // the move from the same source as the price beside it
+        if (!r.icon) r.icon = x.icon;
+      });
+      renderLists();
+    }, function () { /* the rows keep what the map gave them */ });
+  }
+  function trendSol(l) {
+    return fetch('/api/ads').then(function (r) { return r.json(); }).then(function (j) {
       var rows = ((j && j.fill) || []).filter(function (f) {
         return f && (f.chain || 'solana') === 'solana' && isMint(f.mint) && f.mint !== SOL;
       }).slice(0, 14).map(fromFill);
       if (!rows.length) throw new Error('no trending rows');
-      PK.trendSrc = 'map';
+      l.src = 'map';
+      enrichRows(rows);
       return rows;
     }).catch(function () {
       /* the map's list did not come: Jupiter's own trending stands in, said so */
       return jup('/tokens/v2/toptrending/1h?limit=20').then(function (list) {
-        PK.trendSrc = 'jup';
+        l.src = 'jup';
         return (Array.isArray(list) ? list : []).filter(function (j) { return j && isMint(j.id) && j.id !== SOL; }).slice(0, 14).map(fromJup);
       });
-    }).then(function (rows) {
-      PK.trend = rows; PK.trendAt = Date.now();
-      renderLists();
-      var need = rows.filter(function (r) { return !r.jt; });
-      if (!need.length) return null;
-      return lookup(need.map(function (r) { return r.mint; })).then(function (by) {
-        need.forEach(function (r) {
-          var j = by[r.mint];
-          if (!j) return;
-          var x = fromJup(j);
-          r.name = x.name; r.dec = x.dec; r.mcap = x.mcap; r.price = x.price; r.verified = x.verified; r.jt = j;
-          if (x.chg != null) r.chg = x.chg;   // the move from the same source as the price beside it
-          if (!r.icon) r.icon = x.icon;
-        });
-        renderLists();
-      });
-    }).catch(function () { if (!PK.trend) PK.trend = []; renderLists(); })
-      .then(function () { PK.trendBusy = false; });
+    });
   }
-
+  function loadTrend() {
+    var c = S.chain, l = L(c);
+    if (l.trendBusy || (l.trend && Date.now() - l.trendAt < 60000)) return;
+    l.trendBusy = true;
+    var p = c === 'solana' ? trendSol(l)
+      : c === 'ethereum' ? Promise.resolve([])
+      : fetch('/api/swap/tokens?chain=' + c).then(function (r) { return r.json(); }).then(function (j) {
+          l.src = 'map';
+          return ((j && j.tokens) || []).filter(function (t) { return t && evmAddr(t.addr); }).map(fromMapRow);
+        });
+    p.then(function (rows) { l.trend = rows; l.trendAt = Date.now(); }, function () { if (!l.trend) l.trend = []; })
+      .then(function () { l.trendBusy = false; renderLists(); });
+  }
   function loadMine() {
-    if (!ACCT || !S.hold) return;
+    if (isEvm() || !ACCT || !S.hold) return;
     var key = ACCT.address + '|' + S.holdAt;
     if (PK.mineKey === key) return;
     PK.mineKey = key;
@@ -1246,14 +1721,17 @@ a{color:inherit}
     if (rows && rows.length) return h + rows.map(function (r) { return rowHtml(r, PK.rows.push(r) - 1); }).join('');
     return empty ? h + '<p class="pnote">' + empty + '</p>' : '';
   }
+  function mapLabel(C, l) {
+    return C.kind === 'sol' ? (l.src === 'jup' ? 'Trending on Jupiter' : 'Trending on the map') : 'On the map · ' + (C.full || C.name);
+  }
   function renderPick() {
     if ($('pk').hidden) return;
     PK.rows = [];
-    var sell = S.side === 'sell', q = PK.q, html = '';
+    var C = CH(), l = L(C.id), sell = S.side === 'sell', q = PK.q, html = '';
     var chips = $('pkChips');
-    chips.hidden = !!q || sell || !(PK.pop && PK.pop.length);
+    chips.hidden = !!q || (sell && C.kind === 'sol') || !(l.pop && l.pop.length);
     if (!chips.hidden) {
-      chips.innerHTML = PK.pop.map(function (r) {
+      chips.innerHTML = l.pop.map(function (r) {
         return '<button type="button" class="pchip" data-i="' + (PK.rows.push(r) - 1) + '">' + avatar(r.icon, initial(r.sym)) + '<span>' + esc(r.sym) + '</span></button>';
       }).join('');
     }
@@ -1262,33 +1740,40 @@ a{color:inherit}
       else if (!PK.res) html = '<p class="pnote"><span class="spin"></span>Searching…</p>';
       else html = PK.res.map(function (r) { return rowHtml(r, PK.rows.push(r) - 1); }).join('');
     } else {
-      var mine = ACCT
-        ? listHtml('In your wallet', 'wallet', PK.mine, PK.mine ? 'No tokens in this wallet yet.' : '<span class="spin"></span>Reading your wallet…')
-        : sell ? '<div class="plab">' + ic('wallet') + 'In your wallet</div><button type="button" class="trow cta" data-act="connect">'
-          + '<span class="ti lg">' + ic('wallet') + '</span><span class="tm"><b><span class="sy">Connect a wallet</span></b>'
-          + '<small>to pick from the tokens you hold</small></span></button>' : '';
-      var trend = listHtml(PK.trendSrc === 'jup' ? 'Trending on Jupiter' : 'Trending on the map', 'flame', PK.trend,
-        PK.trend ? 'Nothing trending right now.' : '<span class="spin"></span>Loading…');
+      var mine = '';
+      if (C.kind === 'sol') {
+        mine = ACCT
+          ? listHtml('In your wallet', 'wallet', PK.mine, PK.mine ? 'No tokens in this wallet yet.' : '<span class="spin"></span>Reading your wallet…')
+          : sell ? '<div class="plab">' + ic('wallet') + 'In your wallet</div><button type="button" class="trow cta" data-act="connect">'
+            + '<span class="ti lg">' + ic('wallet') + '</span><span class="tm"><b><span class="sy">Connect a wallet</span></b>'
+            + '<small>to pick from the tokens you hold</small></span></button>' : '';
+      }
+      var trend = C.id === 'ethereum' ? '' : listHtml(mapLabel(C, l), 'flame', l.trend,
+        l.trend ? 'Nothing on the map for this chain right now.' : '<span class="spin"></span>Loading…');
       html = sell ? mine + trend : trend + mine;
+      if (!html) html = '<p class="pnote">Search a token by name, or paste its address.</p>';
     }
     $('pkList').innerHTML = html;
   }
   /* the same list under the swap, while nothing is picked */
   function renderTrend() {
-    var on = S.view === 'swap' && !S.mint && !!(PK.trend && PK.trend.length);
+    var C = CH(), l = L(C.id);
+    var on = S.view === 'swap' && !S.mint && !!(l.trend && l.trend.length);
     $('trend').hidden = !on;
     if (!on) return;
-    $('trLab').textContent = PK.trendSrc === 'jup' ? 'Trending on Jupiter' : 'Trending on the map';
-    setHtml($('trList'), PK.trend.slice(0, 8).map(function (r, i) { return rowHtml(r, i); }).join(''));
+    $('trLab').textContent = mapLabel(C, l);
+    $('trMap').href = '/?source=' + (C.kind === 'sol' ? 'trending' : C.id);
+    setHtml($('trList'), l.trend.slice(0, 8).map(function (r, i) { return rowHtml(r, i); }).join(''));
   }
   function renderLists() { renderPick(); renderTrend(); }
 
   function openPicker() {
     if (S.busy) return;
+    var C = CH();
     clearTimeout(PK.t);
     PK.q = ''; PK.res = null; PK.msg = ''; PK.seq++;
     $('pkIn').value = '';
-    $('pkTitle').textContent = S.side === 'sell' ? 'Choose a token to sell' : 'Choose a token to buy';
+    $('pkTitle').textContent = (S.side === 'sell' ? 'Choose a token to sell' : 'Choose a token to buy') + (C.kind === 'evm' ? ' on ' + C.name : '');
     $('pk').hidden = false;
     document.documentElement.classList.add('lock');
     loadPopular(); loadTrend(); loadMine();
@@ -1322,13 +1807,56 @@ a{color:inherit}
       renderPick();
     });
   }
+  function searchEvm(q) {
+    var C = CH(), l = L(C.id), my = ++PK.seq, low = q.toLowerCase(), addr = evmAddr(q);
+    /* the map's own tokens that match come first: on these chains the map knows which clone is real */
+    var ours = (l.trend || []).filter(function (r) {
+      return addr ? r.mint === low : r.sym.toLowerCase().indexOf(low) === 0 || (!!r.name && r.name.toLowerCase().indexOf(low) >= 0);
+    });
+    var body = { chainIds: [C.cid], limit: 20 };
+    if (addr) body.address = low; else body.term = q;
+    relayPost('/currencies/v2', body).then(function (x) {
+      if (my !== PK.seq || PK.q !== q) return;
+      var seen = {}, rows = [];
+      ours.forEach(function (r) { seen[r.mint] = 1; rows.push(r); });
+      var theirs = ((x.ok && Array.isArray(x.j)) ? x.j : []).map(fromRelayCur).filter(function (r) { return r && r.mint !== ETH0 && !seen[r.mint]; });
+      theirs.sort(function (a, b) { return (b.verified ? 1 : 0) - (a.verified ? 1 : 0); });
+      theirs.forEach(function (r) { seen[r.mint] = 1; rows.push(r); });
+      if (addr && !seen[low]) rows.unshift({ mint: low, raw: true });
+      PK.res = rows.slice(0, 30);
+      PK.msg = rows.length ? '' : 'No token found for “' + q.slice(0, 44) + '” on ' + (C.full || C.name) + '.';
+      renderPick();
+    }).catch(function () {
+      if (my !== PK.seq || PK.q !== q) return;
+      PK.res = addr && !ours.length ? [{ mint: low, raw: true }] : ours.slice();
+      PK.msg = PK.res.length ? '' : 'Search is not answering right now. Paste the token’s address instead.';
+      renderPick();
+    });
+  }
 
+  function linkFor(mint, side) {
+    return (isEvm() ? '/swap?chain=' + S.chain + '&token=' + mint : '/swap?mint=' + encodeURIComponent(mint)) + (side === 'sell' ? '&side=sell' : '');
+  }
   function choose(r) {
-    if (!r || !isMint(r.mint) || r.mint === SOL) return;
+    var C = CH();
+    if (!r || !r.mint) return;
+    if (C.kind === 'sol' ? (!isMint(r.mint) || r.mint === SOL) : (!evmAddr(r.mint) || r.mint === ETH0)) return;
     closePicker();
     if (r.mint === S.mint) return;
-    try { history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(r.mint) + (S.side === 'sell' ? '&side=sell' : '')); } catch (e) { /* a sandboxed frame */ }
+    try { history.replaceState(null, '', linkFor(r.mint, S.side)); } catch (e) { /* a sandboxed frame */ }
     start(r.mint, r.jt || null, r.raw ? null : r);
+  }
+
+  function setChain(c) {
+    if (!CHAINS[c] || S.busy || S.chain === c) return;
+    S.chain = c;
+    ++tokSeq;
+    S.mint = ''; S.tok = null; S.jt = null; S.pre = null; S.dec = null;
+    $('amt').value = '';
+    S.natBal = null; S.tokBal = null; S.order = null; S.orderKey = ''; S.err = ''; S.errKey = ''; S.note = ''; S.armed = '';
+    try { history.replaceState(null, '', '/swap' + (c === 'solana' ? '' : '?chain=' + c)); } catch (e) { /* a sandboxed frame */ }
+    document.title = 'Swap on ' + (CHAINS[c].full || CHAINS[c].name) + ' · pumpbubble.fun';
+    view('swap'); fine(); render(); loadBalances(); loadTrend(); quote();
   }
 
   /* --------------------------------------------------------- the trade */
@@ -1359,9 +1887,20 @@ a{color:inherit}
 
   function trade() {
     if (!S.mint) { openPicker(); return; }
-    if (!ACCT || !W) { openSheet(); return; }
+    if (!acct()) { openSheet(); return; }
+    if (isEvm() && !onChain()) { evmSwitch(); return; }
     var w = want(), o = S.order;
     if (S.busy || !w || !o || S.orderKey !== keyOf(w) || !o.transaction || S.err || insufficient(w)) return;
+    var imp = impactOf(o);
+    if (imp != null && imp >= IMPACT_MAX) return;
+    /* losing this much to the pool takes a second, deliberate press */
+    if (imp != null && imp >= IMPACT_WARN && S.armed !== keyOf(w)) { S.armed = keyOf(w); renderGo(); return; }
+    S.armed = '';
+    if (isEvm()) tradeEvm(w, o); else tradeSol(w, o);
+  }
+
+  function tradeSol(w, o) {
+    if (!ACCT || !W) { openSheet(); return; }
     S.note = '';
     S.busy = 'Confirm in your wallet…';
     renderGo();
@@ -1396,6 +1935,76 @@ a{color:inherit}
     });
   }
 
+  /* An EVM trade is one or two transactions (approve the token, then swap),
+     each checked as a whole quote before the first goes out, sent through
+     the wallet on the right chain, and waited for on chain before the next. */
+  function txParams(x, cid) {
+    var t = { from: x.from, to: x.to, data: x.data || '0x', value: hexQ(x.value || '0'), chainId: '0x' + cid.toString(16) };
+    if (x.gas) t.gas = hexQ(x.gas);
+    return t;
+  }
+  function waitReceipt(hash, approve) {
+    var until = Date.now() + 180000;
+    return new Promise(function (res, rej) {
+      (function poll() {
+        evmReq('eth_getTransactionReceipt', [hash]).then(function (r) {
+          if (r && r.status != null) {
+            if (r.status === '0x1' || r.status === 1 || r.status === '1') res(r);
+            else rej(new Error(approve ? 'The approval failed on chain — nothing was swapped.' : 'The swap failed on chain. Your tokens did not move; only the gas was spent.'));
+            return;
+          }
+          if (Date.now() > until) rej(new Error('Still waiting for the network — check your wallet’s activity before pressing again.'));
+          else setTimeout(poll, 1500);
+        }, function () {
+          if (Date.now() > until) rej(new Error('Lost track of the transaction — check your wallet’s activity.'));
+          else setTimeout(poll, 3000);
+        });
+      })();
+    });
+  }
+  function tradeEvm(w, o) {
+    var C = CH(), side = S.side, me = S.ev.acct, cid = C.cid, hash = '';
+    S.note = '';
+    S.busy = 'Checking the trade…';
+    renderGo();
+    var stale = Date.now() - S.orderAt > FRESH_MS;
+    (stale || o.taker !== me ? quote() : Promise.resolve(o)).then(function (ord) {
+      if (ord && ord.error) throw new Error(humanErr(ord.error, side, sym(), C.native));
+      if (!ord || !ord.evm || !relayOk(ord.raw, w, me, cid)) throw new Error('The price moved — check the new quote and press again.');
+      clearTimeout(rTimer);
+      return evmReq('eth_chainId', []).then(function (h) {
+        if (parseInt(h, 16) !== cid) throw new Error('Your wallet left ' + C.name + ' — switch back and press again.');
+        var steps = ord.raw.steps, n = steps.length, i = 0;
+        var next = function () {
+          if (i >= n) return Promise.resolve(ord);
+          var s = steps[i++], approve = s.id === 'approve';
+          S.busy = (approve ? 'Approve $' + sym() + ' in your wallet' : 'Confirm the swap in your wallet') + (n > 1 ? ' (' + i + ' of ' + n + ')…' : '…');
+          renderGo();
+          return evmReq('eth_sendTransaction', [txParams(s.items[0].data, cid)]).then(function (h) {
+            if (!/^0x[0-9a-fA-F]{64}$/.test(String(h))) throw new Error('The wallet did not send the transaction.');
+            if (!approve) hash = h;
+            S.busy = approve ? 'Waiting for the approval to land…' : 'Swapping…';
+            renderGo();
+            return waitReceipt(h, approve);
+          }).then(next);
+        };
+        return next();
+      });
+    }).then(function (ord) {
+      S.busy = '';
+      showDoneEvm(ord, hash, side);
+      loadBalances(1500);
+      setTimeout(function () { loadBalances(); }, 6000);
+    }).catch(function (e) {
+      S.busy = '';
+      var m = String((e && e.message) || e || '');
+      var cancelled = /reject|denied|cancel|declin/i.test(m) || (e && e.code === 4001);
+      S.note = cancelled ? 'Cancelled in your wallet — nothing was sent.' : (m.slice(0, 180) || 'Something went wrong.');
+      S.noteBad = !cancelled;
+      render(); quote();
+    });
+  }
+
   function showDone(ord, r, side) {
     var sell = side === 'sell', dec = S.dec == null ? 0 : S.dec;
     var inAmt = fromUnits(r.inputAmountResult || ord.inAmount, sell ? dec : SOL_DEC);
@@ -1409,13 +2018,29 @@ a{color:inherit}
     }
     var tx = $('dTx');
     tx.hidden = !r.signature;
+    tx.textContent = 'View on Solscan ↗';
     if (r.signature) tx.href = 'https://solscan.io/tx/' + encodeURIComponent(r.signature);
-    /* the people who just bought a token are the people who boost it */
+    doneBoost(sell);
+    view('done');
+  }
+  function showDoneEvm(ord, hash, side) {
+    var C = CH(), sell = side === 'sell', dec = S.dec != null ? S.dec : (sell ? ord.inDec : ord.outDec);
+    var inAmt = fromUnits(ord.inAmount, sell ? dec : C.dec), outAmt = fromUnits(ord.outAmount, sell ? C.dec : dec);
+    $('dTitle').textContent = sell ? 'Sold ' + fmtAmt(inAmt) + ' $' + sym() : 'Bought ≈ ' + fmtAmt(outAmt) + ' $' + sym();
+    $('dSub').textContent = 'for ' + (sell ? '≈ ' : '') + fmtAmt(sell ? outAmt : inAmt) + ' ETH on ' + (C.full || C.name);
+    var tx = $('dTx');
+    tx.hidden = !hash;
+    tx.textContent = 'View on ' + C.scan + ' ↗';
+    if (hash) tx.href = C.explorer + '/tx/' + hash;
+    doneBoost(sell);
+    view('done');
+  }
+  /* the people who just bought a token are the people who boost it */
+  function doneBoost(sell) {
     var bo = $('dBoost');
     bo.hidden = sell;
     bo.href = '/?boost=' + encodeURIComponent(S.mint);
     bo.innerHTML = ic('bolt', 'f') + ' Make $' + esc(sym()) + ' gold on the map';
-    view('done');
   }
 
   /* ------------------------------------------------------------ inputs */
@@ -1426,7 +2051,7 @@ a{color:inherit}
     return v;
   }
   $('amt').addEventListener('input', function () {
-    var dec = S.side === 'buy' ? SOL_DEC : (S.dec == null ? 9 : S.dec);
+    var dec = S.side === 'buy' ? CH().dec : (S.dec == null ? 9 : S.dec);
     var v = cleanAmount(this.value, dec);
     if (v !== this.value) this.value = v;
     S.note = '';
@@ -1446,8 +2071,9 @@ a{color:inherit}
     quote();
   });
   $('bal').addEventListener('click', function () {
+    var C = CH();
     if (S.side === 'sell') { if (S.tokBal != null && S.dec != null) $('amt').value = fromUnits(S.tokBal, S.dec); }
-    else if (S.solBal != null) $('amt').value = fromUnits(maxSpend(S.solBal, RESERVE), SOL_DEC);
+    else if (S.natBal != null) $('amt').value = fromUnits(maxSpend(S.natBal, C.kind === 'evm' ? C.reserve : RESERVE), C.dec);
     S.note = '';
     quote();
   });
@@ -1455,11 +2081,11 @@ a{color:inherit}
     if (S.side === side || S.busy) return;
     S.side = side;
     $('amt').value = '';
-    S.order = null; S.orderKey = ''; S.err = ''; S.note = '';
+    S.order = null; S.orderKey = ''; S.err = ''; S.note = ''; S.armed = '';
     render();
     if (!S.mint) return;
     renderHero();
-    try { history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(S.mint) + (side === 'sell' ? '&side=sell' : '')); } catch (e) { /* a sandboxed frame */ }
+    try { history.replaceState(null, '', linkFor(S.mint, side)); } catch (e) { /* a sandboxed frame */ }
     $('amt').focus();
   }
   $('tBuy').onclick = function () { setSide('buy'); };
@@ -1468,7 +2094,12 @@ a{color:inherit}
   $('go').onclick = trade;
   $('wBtn').onclick = openSheet;
   $('sBg').onclick = closeSheet;
+  $('chains').addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-c]');
+    if (b) setChain(b.getAttribute('data-c'));
+  });
   $('inTok').onclick = $('outTok').onclick = function () { if (!this.disabled && !S.busy) openPicker(); };
+  $('hCa').onclick = function (e) { e.preventDefault(); if (S.mint) copy(S.mint, this); };
   $('pkBg').onclick = closePicker;
   $('pkX').onclick = closePicker;
   function onRow(rows) {
@@ -1482,22 +2113,23 @@ a{color:inherit}
   }
   $('pkList').addEventListener('click', onRow(function () { return PK.rows; }));
   $('pkChips').addEventListener('click', onRow(function () { return PK.rows; }));
-  $('trList').addEventListener('click', onRow(function () { return PK.trend || []; }));
+  $('trList').addEventListener('click', onRow(function () { return L(S.chain).trend || []; }));
   $('pkIn').addEventListener('input', function () {
-    var q = this.value.trim();
+    var q = this.value.trim(), C = CH();
     clearTimeout(PK.t);
     PK.seq++;
     PK.q = q; PK.res = null; PK.msg = '';
-    if (q && evmAddr(q)) { PK.res = []; PK.msg = 'That is an address on an EVM chain (Base, Ethereum, Robinhood). This swap trades Solana tokens.'; }
+    if (q && C.kind === 'sol' && evmAddr(q)) { PK.res = []; PK.msg = 'That is an address on an EVM chain — pick Base, Ethereum or Robinhood at the top of the swap.'; }
+    else if (q && C.kind === 'evm' && isMint(q)) { PK.res = []; PK.msg = 'That is a Solana address — pick Solana at the top of the swap.'; }
     renderPick();
-    if (q && !PK.msg) PK.t = setTimeout(function () { search(q); }, isMint(q) ? 0 : 260);
+    if (q && !PK.msg) PK.t = setTimeout(function () { (C.kind === 'evm' ? searchEvm : search)(q); }, isMint(q) || evmAddr(q) ? 0 : 260);
   });
   $('pkIn').addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     var r = PK.q && PK.res ? PK.res[0] : null;
     if (r) choose(r);
-    else if (isMint(PK.q)) choose({ mint: PK.q, raw: true });
+    else if (isEvm() ? evmAddr(PK.q) : isMint(PK.q)) choose({ mint: isEvm() ? PK.q.toLowerCase() : PK.q, raw: true });
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
@@ -1509,23 +2141,59 @@ a{color:inherit}
 
   /* -------------------------------------------------------------- boot */
   var tokSeq = 0;
+  /* decimals for an EVM token nobody has told us about yet: Relay's index,
+     else a tiny priced buy, whose quote names the token's decimals */
+  function evmDecimals(mint, my) {
+    var C = CH();
+    relayPost('/currencies/v2', { chainIds: [C.cid], address: mint, limit: 1 }).then(function (x) {
+      if (my !== tokSeq || S.dec != null) return null;
+      var c = x.ok && Array.isArray(x.j) ? x.j[0] : null;
+      if (c && c.decimals != null && isFinite(+c.decimals)) {
+        S.dec = +c.decimals;
+        if (!S.pre) S.pre = fromRelayCur(c);
+        renderHero(); render(); if (want()) quote();
+        return null;
+      }
+      return relayPost('/quote', { user: NOBODY, recipient: NOBODY, originChainId: C.cid, destinationChainId: C.cid, originCurrency: ETH0,
+        destinationCurrency: mint, amount: C.id === 'ethereum' ? '10000000000000000' : '1000000000000000', tradeType: 'EXACT_INPUT' }).then(function (y) {
+        if (my !== tokSeq || S.dec != null) return;
+        var co = y.ok && y.j && y.j.details && y.j.details.currencyOut && y.j.details.currencyOut.currency;
+        if (co && co.decimals != null && isFinite(+co.decimals)) { S.dec = +co.decimals; render(); if (want()) quote(); }
+      });
+    }).catch(function () { /* the wallet can still tell us, once connected */ });
+  }
   function start(mint, jt, row) {
-    var my = ++tokSeq;
-    S.mint = mint; S.tok = null; S.jt = jt || null; S.pre = row || null;
-    S.dec = mint === SOL ? SOL_DEC : jt && jt.decimals != null ? Number(jt.decimals) : row && row.dec != null ? row.dec : null;
-    S.tokBal = holdOf(mint);
-    var held = S.hold && S.hold[mint];
-    if (S.dec == null && held && held[0] && held[0].decimals != null) S.dec = Number(held[0].decimals);
-    S.order = null; S.orderKey = ''; S.err = ''; S.errKey = ''; S.note = '';
-    /* a sell amount was in the last token's units; a buy amount is SOL and stays */
+    var my = ++tokSeq, C = CH(), evm = C.kind === 'evm';
+    S.mint = mint; S.jt = evm ? null : (jt || null); S.pre = row || null;
+    S.tok = row && row.tok ? row.tok : null;
+    S.dec = evm ? (row && row.dec != null ? row.dec : null)
+      : mint === SOL ? SOL_DEC : jt && jt.decimals != null ? Number(jt.decimals) : row && row.dec != null ? row.dec : null;
+    S.tokBal = evm ? null : holdOf(mint);
+    if (!evm) {
+      var held = S.hold && S.hold[mint];
+      if (S.dec == null && held && held[0] && held[0].decimals != null) S.dec = Number(held[0].decimals);
+    }
+    S.order = null; S.orderKey = ''; S.err = ''; S.errKey = ''; S.note = ''; S.armed = '';
+    /* a sell amount was in the last token's units; a buy amount is the chain's own coin and stays */
     if (S.side === 'sell') $('amt').value = '';
     view('swap');
     render();
     renderHero();
-    /* A token picked from a list already carries Jupiter's record, which is
-       everything the header shows. One that came by link gets both ours (the
-       signed art, the map's market cap) and Jupiter's (decimals, price). */
-    if (!jt) {
+    if (evm) {
+      /* our record: the price, market cap, pool and art the map holds, resolved by address when the map does not */
+      if (!S.tok) {
+        fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
+          if (my !== tokSeq || !j || !j.ok || !j.token) return;
+          if (j.token.chain && j.token.chain !== C.id) return;   // the same address elsewhere is another token
+          S.tok = j.token; renderHero(); render();
+        }).catch(function () { /* the quote still names it */ });
+      }
+      if (S.dec == null) evmDecimals(mint, my);
+      loadBalances();
+    } else if (!jt) {
+      /* A token that came by link gets both ours (the signed art, the map's
+         market cap) and Jupiter's (decimals, price); one picked from a list
+         already carries Jupiter's, which is everything the header shows. */
       fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
         if (my !== tokSeq) return;
         if (j && j.ok && j.token) { S.tok = j.token; renderHero(); render(); }
@@ -1545,26 +2213,37 @@ a{color:inherit}
 
   fetch('/api/swap-config').then(function (r) { return r.json(); }).then(function (c) {
     S.cfg = c || {};
-    if (S.cfg.fee && S.cfg.feeBps) {
-      $('fine').textContent = 'Routed by Jupiter. Your wallet signs every trade; pumpbubble never holds your funds or keys. '
-        + 'Quotes include a ' + trimFix(S.cfg.feeBps / 100, 2) + '% pumpbubble fee, which keeps the map free.';
-    }
+    fine();
     if (want()) quote();
   }).catch(function () { /* no fee, still a swap */ });
 
-  var q = new URLSearchParams(location.search);
-  var mint = (q.get('mint') || '').trim();
-  if (q.get('side') === 'sell') S.side = 'sell';
-  var pre = q.get('amount');
-  if (pre && /^\d{0,6}(\.\d{1,9})?$/.test(pre) && Number(pre) > 0) $('amt').value = pre;
-  if (isMint(mint) && mint !== SOL) start(mint);
-  else {
+  var link = parseLink(location.search, CHAINS);
+  S.side = link.side;
+  if (link.amount) $('amt').value = link.amount;
+  if (link.chain) S.chain = link.chain;
+  try { window.dispatchEvent(new Event('eip6963:requestProvider')); } catch (e) { /* old browser */ }
+  setTimeout(onEvmWallets, 600);
+  fine();
+  if (link.token && evmAddr(link.token) && !link.chain) {
+    /* an EVM address with no chain: the map's record says which chain it trades on */
+    S.chain = 'base';
+    view('swap'); render();
+    fetch('/api/token?mint=' + encodeURIComponent(link.token)).then(function (r) { return r.json(); }).then(function (j) {
+      var t = j && j.ok && j.token, c = t && t.chain;
+      S.chain = CHAINS[c] && CHAINS[c].kind === 'evm' ? c : 'base';
+      fine();
+      start(link.token, null, t ? { mint: link.token, sym: tsym(t.sym), icon: t.img || '', tok: t } : null);
+    }).catch(function () { start(link.token); });
+  } else if (link.token && link.token !== SOL) {
+    start(link.token);
+  } else {
     view('swap');
-    if (mint) {
-      S.note = evmAddr(mint) ? 'That address is on an EVM chain. This swap trades Solana tokens — pick one instead.'
+    if (link.bad) {
+      S.note = link.bad === 'chain' ? 'That address does not belong to the chain in the link. Pick a token instead.'
         : 'That link does not carry a token address. Pick a token instead.';
       S.noteBad = true;
     }
+    if (S.chain !== 'solana') document.title = 'Swap on ' + (CH().full || CH().name) + ' · pumpbubble.fun';
     render();
     loadTrend();
   }

@@ -79,6 +79,12 @@ JUP_REFERRAL = "CHub77QZBcBrfRdBppkHpan2utxUn9T7qTNXUnzPbjBq"
 # 1% (2026-10-01, the operator's call): Jupiter keeps a fifth, so 0.8% lands.
 # Jupiter allows 50-255; swapConfig clamps to that.
 JUP_FEE_BPS = "100"
+# The same page on Base, Ethereum and Robinhood Chain routes through Relay
+# (src/refs.mjs). Its fee is an "app fee" on each quote: Relay keeps none of
+# it; it accrues in USDC to this address and is claimed at
+# relay.link/claim-app-fees. The operator's own wallet, 2026-10-01.
+RELAY_FEE_RECIPIENT = "0x1a654fcda6761087447bbca629c65b76f9d04c15"
+RELAY_FEE_BPS = "100"
 
 # SOLANA_RPC is deliberately NOT here.
 #

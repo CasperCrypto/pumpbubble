@@ -215,6 +215,92 @@ held.bal = '1500'; held.usd = 3000;
 is('a wallet row shows what it holds and what that is worth', /1,500 UDR/.test(P.rowHtml(held, 1)) && P.rowHtml(held, 1).includes('<b>$3K</b>'), true);
 is('an address Jupiter has not indexed is still offered', P.rowHtml({ mint: MINT, raw: true }, 0).includes('Use this address'), true);
 
+/* ----------------------------------------------- EVM, through Relay */
+/* An EVM transaction can do more than a Solana swap, so the check before the
+   wallet is stricter: shapes copied from live Relay quotes on Base. */
+const evmLines = ['ETH0', 'NOBODY', 'RELAY_TO'].map(n => (script.match(new RegExp('var ' + n + ' = [^\\n]*\\n')) || [''])[0]).join('');
+const E = liftWith(evmLines, 'evmAddr', 'relayOk', 'fromRelay', 'impactOf', 'hexQ', 'parseLink', 'evmWalletLinks', 'humanErr', 'fromRelayCur', 'fromMapRow', 'tsym');
+const EVM_ME = '0x1111111111111111111111111111111111111111', ETH = '0x0000000000000000000000000000000000000000';
+const ROUTER = '0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f', PROXY = '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be';
+const BRETT = '0x532f27101965dd16442e59d40670faf5ebb142e4';
+const cur = (address, decimals = 18) => ({ address, chainId: 8453, decimals });
+const quoteFor = (from, to, amount, steps) => ({
+  details: { sender: EVM_ME, recipient: EVM_ME,
+    currencyIn: { currency: cur(from), amount },
+    currencyOut: { currency: cur(to), amount: '4664827908612952162304', minimumAmount: '4618179629526822640680', amountUsd: '26.575525' },
+    swapImpact: { percent: '-0.57' }, slippageTolerance: { total: '100' } },
+  fees: { app: { amountUsd: '0.270405' }, relayerService: { amountUsd: '0.040560' }, gas: { amountUsd: '0.058455' } },
+  steps,
+});
+const tx = (to, value, data = '0xcd6e13f7' + '00'.repeat(60)) => ({ from: EVM_ME, to, value, chainId: 8453, data });
+const approveData = (spender, amount) => '0x095ea7b3' + spender.slice(2).padStart(64, '0') + BigInt(amount).toString(16).padStart(64, '0');
+const AMT = '10000000000000000', TOKAMT = '1000000000000000000000';
+const buyW = { inputMint: ETH, outputMint: BRETT, amount: AMT };
+const sellW = { inputMint: BRETT, outputMint: ETH, amount: TOKAMT };
+const buy = () => quoteFor(ETH, BRETT, AMT, [{ id: 'swap', kind: 'transaction', items: [{ data: tx(ROUTER, AMT) }] }]);
+const sell = (allow = TOKAMT, spender = PROXY, token = BRETT) => quoteFor(BRETT, ETH, TOKAMT, [
+  { id: 'approve', kind: 'transaction', items: [{ data: { ...tx(token, '0'), data: approveData(spender, allow) } }] },
+  { id: 'swap', kind: 'transaction', items: [{ data: tx(PROXY, '0') }] }]);
+const edit = (q, f) => { const c = JSON.parse(JSON.stringify(q)); f(c); return c; };
+is('a buy paid in ETH to Relay\'s router passes', E.relayOk(buy(), buyW, EVM_ME, 8453), true);
+is('a token sale: exact approval, then the swap', E.relayOk(sell(), sellW, EVM_ME, 8453), true);
+is('a swap to any other contract is refused', E.relayOk(edit(buy(), q => { q.steps[0].items[0].data.to = '0x' + '9'.repeat(40); }), buyW, EVM_ME, 8453), false);
+is('a swap carrying more ETH than the trade is refused', E.relayOk(edit(buy(), q => { q.steps[0].items[0].data.value = '20000000000000000'; }), buyW, EVM_ME, 8453), false);
+is('a token sale that also sends ETH is refused', E.relayOk(edit(sell(), q => { q.steps[1].items[0].data.value = '1'; }), sellW, EVM_ME, 8453), false);
+is('an unlimited approval is refused', E.relayOk(sell((2n ** 256n - 1n).toString()), sellW, EVM_ME, 8453), false);
+is('an approval to anyone but Relay is refused', E.relayOk(sell(TOKAMT, '0x' + '7'.repeat(40)), sellW, EVM_ME, 8453), false);
+is('an approval of a different token is refused', E.relayOk(sell(TOKAMT, PROXY, '0x' + '5'.repeat(40)), sellW, EVM_ME, 8453), false);
+is('a transaction from another wallet is refused', E.relayOk(buy(), buyW, '0x' + '2'.repeat(40), 8453), false);
+is('the right trade on the wrong chain is refused', E.relayOk(buy(), buyW, EVM_ME, 1), false);
+is('output sent to someone else is refused', E.relayOk(edit(buy(), q => { q.details.recipient = '0x' + '3'.repeat(40); }), buyW, EVM_ME, 8453), false);
+is('a different amount in is refused', E.relayOk(buy(), { ...buyW, amount: '1' }, EVM_ME, 8453), false);
+is('a different token out is refused', E.relayOk(buy(), { ...buyW, outputMint: '0x' + '4'.repeat(40) }, EVM_ME, 8453), false);
+is('a signature step this page does not do is refused', E.relayOk(edit(buy(), q => { q.steps.unshift({ id: 'authorize', kind: 'signature', items: [{ data: {} }] }); }), buyW, EVM_ME, 8453), false);
+is('two swaps in one quote are refused', E.relayOk(edit(buy(), q => { q.steps.push(q.steps[0]); }), buyW, EVM_ME, 8453), false);
+is('a quote with no steps is refused', E.relayOk(edit(buy(), q => { q.steps = []; }), buyW, EVM_ME, 8453), false);
+
+const shown = E.fromRelay(buy(), buyW, '0x000000000000000000000000000000000000dEaD', 100);
+is('a price for nobody yet has nothing to sign', shown.transaction, null);
+is('and no taker', shown.taker, '');
+is('the quote keeps its amounts as strings', shown.outAmount, '4664827908612952162304');
+is('minimum received comes through', shown.otherAmountThreshold, '4618179629526822640680');
+is('impact is a fraction, as Jupiter\'s is', shown.priceImpactPct.toFixed(4), '-0.0057');
+is('slippage in bps', shown.slippageBps, 100);
+is('our fee is recorded', shown.feeBps, 100);
+is('the output decimals come from the quote', shown.outDec, 18);
+const mine = E.fromRelay(buy(), buyW, EVM_ME, 0);
+is('a quote for the wallet can be signed', mine.transaction, 'relay');
+is('no fee when it went without one', mine._fee, false);
+is('impact reads as a positive percent', E.impactOf(shown).toFixed(2), '0.57');
+is('no impact figure, no claim', E.impactOf({ priceImpactPct: null }), null);
+
+is('a zero value in hex', E.hexQ('0'), '0x0');
+is('0.01 ETH in wei, in hex', E.hexQ(AMT), '0x2386f26fc10000');
+is('simulation failures speak ETH on EVM', /not enough ETH/.test(E.humanErr('Final transaction simulation failed', 'buy', 'BRETT', 'ETH')), true);
+is('too small, said plainly', /too small/.test(E.humanErr('Amount is too small to be swapped', 'sell', 'BRETT', 'ETH')), true);
+
+const CH = { solana: { kind: 'sol' }, base: { kind: 'evm' }, ethereum: { kind: 'evm' }, robinhood: { kind: 'evm' } };
+const P1 = E.parseLink('?mint=' + MINT + '&side=sell&amount=0.5', CH);
+is('a Solana link', [P1.chain, P1.token, P1.side, P1.amount].join(' '), ['solana', MINT, 'sell', '0.5'].join(' '));
+const P2 = E.parseLink('?chain=base&token=0x532F27101965dd16442E59d40670FaF5eBB142E4', CH);
+is('a Base link, the address lower-cased', P2.chain + ' ' + P2.token, 'base ' + BRETT);
+is('an EVM address with no chain is left for the map to place', E.parseLink('?token=' + BRETT, CH).chain, '');
+is('an EVM address on a Solana link is refused', E.parseLink('?chain=solana&token=' + BRETT, CH).bad, 'chain');
+is('a Solana mint on a Base link is refused', E.parseLink('?chain=base&mint=' + MINT, CH).bad, 'chain');
+is('junk is refused', E.parseLink('?mint=hello', CH).bad, 'junk');
+is('an unknown chain is ignored', E.parseLink('?chain=dogechain&mint=' + MINT, CH).chain, 'solana');
+is('an 18-decimal amount is kept', E.parseLink('?chain=base&amount=0.000000000000000001', CH).amount, '0.000000000000000001');
+is('a non-number amount is dropped', E.parseLink('?amount=lots', CH).amount, '');
+
+const EL = E.evmWalletLinks('https://pumpbubble.fun/swap?chain=base&token=' + BRETT, 'https://pumpbubble.fun');
+is('phone: open this page inside MetaMask', EL[0].href, 'https://metamask.app.link/dapp/pumpbubble.fun/swap?chain=base&token=' + BRETT);
+is('or Coinbase Wallet', EL[1].href.startsWith('https://go.cb-w.com/dapp?cb_url=https%3A%2F%2Fpumpbubble.fun%2Fswap'), true);
+is('a Relay token row', JSON.stringify(E.fromRelayCur({ address: '0x532F27101965dd16442E59d40670FaF5eBB142E4', symbol: 'BRETT', decimals: 18, metadata: { verified: true } })).includes('"verified":true'), true);
+is('junk from Relay is no row', E.fromRelayCur({ address: 'nope' }), null);
+const mr = E.fromMapRow({ addr: '0x62229F3CA0A51D2396DEDB6B54EA6789CBBC02B0', sym: 'PONS', pc: 4.2, mcap: 5e7, chain: 'robinhood' });
+is('a map row carries the map\'s own move', mr.chg + ' ' + mr.tok.pc.h24, '4.2 4.2');
+is('and a lower-cased address', mr.mint, '0x62229f3ca0a51d2396dedb6b54ea6789cbbc02b0');
+
 const { sumAmounts } = lift('sumAmounts');
 is('token accounts add up exactly', sumAmounts([{ amount: '9007199254740993' }, { amount: '7' }]), 9007199254741000n);
 is('junk accounts count as nothing', sumAmounts([{ amount: 'x' }, null, {}]), 0n);

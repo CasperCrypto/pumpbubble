@@ -31,7 +31,7 @@
 
 import { resolveAnyToken, pumpCoin, isCA, isMint, isEvmAddr, clean } from './core.mjs';
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
-import { buyOrSwap, pumpJoin } from './refs.mjs';
+import { buyOrSwap, pumpJoin, swapPath } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
 import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
@@ -341,8 +341,10 @@ export function emojiRow(usd, emoji = '🟢', step = 20) {
    figures, 🟢 otherwise. Everything from the token is escaped; every link is
    validated. */
 /* Where a token's buttons go, by chain. Solana: pump.fun or DexScreener,
-   Buy through the referral when one is set, else our /swap page. EVM: DexScreener, Buy on
-   Uniswap where it runs (Robinhood Chain falls back to the chart). */
+   Buy through the referral when one is set, else our /swap page. EVM:
+   DexScreener, and Buy on our /swap page too — Relay routes Base, Ethereum
+   and Robinhood Chain there, with our fee, where Uniswap earned nothing and
+   had no Robinhood Chain at all. */
 export function tokenLinks(env, g, token = {}) {
   const origin = site(env);
   const net = CHAINS[g.chain];
@@ -352,7 +354,7 @@ export function tokenLinks(env, g, token = {}) {
     const sym = clean(token.sym || g.sym || '', 12);
     return {
       chart,
-      buy: net.uniswap ? 'https://app.uniswap.org/swap?chain=' + net.uniswap + '&outputCurrency=' + encodeURIComponent(a) : chart,
+      buy: swapPath(g.chain, a) ? origin + swapPath(g.chain, a) : chart,
       bubble: g.chain === 'ethereum' || !sym ? origin + '/?source=trending' : origin + '/s/' + encodeURIComponent(sym) + '?source=' + g.chain,
       boost: origin + '/?boost=' + encodeURIComponent(a),
     };
@@ -1012,10 +1014,11 @@ async function shopFor(ctx, chatId, ca, what = '') {
   const top = isMint(key)
     ? [[{ text: '🛒 Buy $' + clean(t.sym, 12), url: buyOrSwap(env, site(env), key) },
         { text: '📊 Chart', url: (t.grad === false ? 'https://pump.fun/coin/' : 'https://dexscreener.com/solana/') + encodeURIComponent(key) }]]
-    : [[{ text: '📊 Chart', url: 'https://dexscreener.com/' + encodeURIComponent((CHAINS[t.chain] && CHAINS[t.chain].dex) || t.chain || 'ethereum') + '/' + encodeURIComponent(key) }]];
+    : [[...(swapPath(t.chain, key) ? [{ text: '🛒 Buy $' + clean(t.sym, 12), url: site(env) + swapPath(t.chain, key) }] : []),
+        { text: '📊 Chart', url: 'https://dexscreener.com/' + encodeURIComponent((CHAINS[t.chain] && CHAINS[t.chain].dex) || t.chain || 'ethereum') + '/' + encodeURIComponent(key) }]];
   return say(env, chatId,
     `<b>$${tgEsc(t.sym)}</b> — ${tgEsc(t.name)} · ${tgEsc(chain)}${t.mcap ? ' · MCap ' + fmtUsd(t.mcap) : ''}\n\n`
-    + (isMint(key) ? '🛒 Buy it from your own wallet, or promote it:\n\n' : 'Promote it:\n\n')
+    + (isMint(key) || swapPath(t.chain, key) ? '🛒 Buy it from your own wallet, or promote it:\n\n' : 'Promote it:\n\n')
     + '⚡ <b>Boost</b>: a golden bubble on the map, sized by what was paid, fading over its hours.\n'
     + '📣 <b>Map ad</b>: a slot on the moving rail above the map.\n'
     + '📣 <b>Buy-alert ad</b>: your token on a line under every buy alert, in every group I post in.\n'

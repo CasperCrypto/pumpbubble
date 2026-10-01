@@ -95,12 +95,20 @@ export const SWAP_PATH = '/swap?mint=';
    connection is the Wallet Standard's events and the swap is our own code —
    so scripts, styles and network stay 'self' plus Jupiter. */
 export const JUP_HOSTS = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
+/* Relay routes the same page's swaps on Base, Ethereum and Robinhood Chain.
+   Chosen on measurement (2026-10-01): the best price on all four EVM test
+   trades against LI.FI, whose fixed 0.25% fee was most of the gap; keyless,
+   CORS open; and it keeps none of the integrator's fee — an "app fee" set on
+   each quote, accruing in USDC to an EVM address, claimed at
+   relay.link/claim-app-fees. */
+export const RELAY_HOST = 'https://api.relay.link';
+export const SWAP_EVM = ['base', 'ethereum', 'robinhood'];
 export const SWAP_CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
-  "connect-src 'self' " + JUP_HOSTS.join(' '),
+  "connect-src 'self' " + JUP_HOSTS.join(' ') + ' ' + RELAY_HOST,
   "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -108,12 +116,32 @@ export const SWAP_CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 export const JUP_FEE_MIN = 50, JUP_FEE_MAX = 255;
+export const RELAY_FEE_DEFAULT = 100, RELAY_FEE_MAX = 300;
 export function swapConfig(env = {}) {
+  return { ...jupFee(env), evm: relayFee(env) };
+}
+function jupFee(env) {
   const acct = String(env.JUP_REFERRAL || '').trim();
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(acct)) return { fee: false };
   const raw = Math.round(Number(env.JUP_FEE_BPS) || JUP_FEE_MIN);
   const feeBps = Math.min(JUP_FEE_MAX, Math.max(JUP_FEE_MIN, raw));
   return { fee: true, referralAccount: acct, feeBps };
+}
+/* The EVM side's fee: where it lands is config, never a request parameter. */
+function relayFee(env) {
+  const to = String(env.RELAY_FEE_RECIPIENT || '').trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(to)) return { fee: false };
+  const raw = Math.round(Number(env.RELAY_FEE_BPS) || RELAY_FEE_DEFAULT);
+  return { fee: true, recipient: to.toLowerCase(), feeBps: Math.min(RELAY_FEE_MAX, Math.max(1, raw)) };
+}
+
+/* Our swap page for a token we can route: a Solana mint, or a contract on
+   an EVM chain Relay serves. '' for anything else (a stock, a chain row). */
+export function swapPath(chain, addr) {
+  const a = String(addr || '').trim();
+  if (/^0x[0-9a-fA-F]{40}$/.test(a)) return SWAP_EVM.includes(chain) ? '/swap?chain=' + chain + '&token=' + a.toLowerCase() : '';
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a) && (!chain || chain === 'solana')) return SWAP_PATH + encodeURIComponent(a);
+  return '';
 }
 
 /* What the page needs to build a link itself.

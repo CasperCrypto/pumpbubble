@@ -28,8 +28,11 @@ It is a payment-theft vector, not a defacement.
 
 **`/swap` talks to one more host: Jupiter's API.** The swap page is our own code — no widget, no
 wallet library — so its policy (`SWAP_CSP` in `src/refs.mjs`, set by `worker/index.js`) is the
-map's with `connect-src` extended to `lite-api.jup.ag` and `api.jup.ag`, where quotes, token search
-and signed trades go. Scripts and styles stay `'self'`. **Images are the one loosening: `https:`**,
+map's with `connect-src` extended to `lite-api.jup.ag` and `api.jup.ag` (Solana) and
+`api.relay.link` (Base, Ethereum, Robinhood Chain), where quotes, token search and signed trades
+go. On EVM the page refuses any transaction that is not to Relay's two pinned contracts, any
+approval that is not of the token being sold for at most the trade's amount, and any quote whose
+recipient is not the signing wallet (`relayOk`). Scripts and styles stay `'self'`. **Images are the one loosening: `https:`**,
 because the token picker shows each token's art wherever its creator put it (arweave, IPFS
 gateways, GitHub), and our signed proxy only covers tokens the map has already seen — proxying
 arbitrary search results would mean signing URLs on request, which is the open relay the signature

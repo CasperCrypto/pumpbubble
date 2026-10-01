@@ -129,8 +129,11 @@ try {
     ? pass('map CSP still strict')
     : fail('map CSP', 'loosened: ' + home.slice(0, 120));
   const cfg = await (await get('/api/swap-config', 15000)).json();
-  cfg.ok ? pass('/api/swap-config', cfg.fee ? `fee ${cfg.feeBps} bps` : 'no fee account set (JUP_REFERRAL)')
+  cfg.ok ? pass('/api/swap-config', (cfg.fee ? `Solana fee ${cfg.feeBps} bps` : 'no Solana fee account (JUP_REFERRAL)')
+      + (cfg.evm && cfg.evm.fee ? `, EVM fee ${cfg.evm.feeBps} bps` : ', no EVM fee address (RELAY_FEE_RECIPIENT)'))
     : fail('/api/swap-config', 'not ok');
+  csp.includes('https://api.relay.link') ? pass('/swap reaches Relay', 'Base, Ethereum, Robinhood Chain')
+    : fail('/swap reaches Relay', 'connect-src is missing api.relay.link — EVM quotes would be blocked');
 } catch (e) {
   fail('/swap', e.message);
 }

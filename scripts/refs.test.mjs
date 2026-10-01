@@ -8,7 +8,7 @@
    slotted in behind "Create an account".
    ========================================================================== */
 
-import { pumpJoin, buyConfig, buyUrl, buyOrSwap, swapConfig, SWAP_CSP } from '../src/refs.mjs';
+import { pumpJoin, buyConfig, buyUrl, buyOrSwap, swapConfig, swapPath, SWAP_CSP } from '../src/refs.mjs';
 
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? '  — ' + d : ''}`); };
@@ -47,13 +47,29 @@ is('and to its floor', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: '10' }).fee
 is('a set bps holds', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: '100' }).feeBps, 100);
 is('garbage bps is the floor', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: 'lots' }).feeBps, 50);
 
+/* The EVM side (Relay): the fee lands at a configured address, never one from a request. */
+const FEEW = '0x1a654fcda6761087447bbca629c65b76f9d04c15';
+is('no EVM address, no EVM fee', swapConfig({}).evm.fee, false);
+is('a non-address is refused', swapConfig({ RELAY_FEE_RECIPIENT: 'javascript:alert(1)' }).evm.fee, false);
+is('an address with no bps charges 1%', swapConfig({ RELAY_FEE_RECIPIENT: FEEW }).evm.feeBps, 100);
+is('the address passes through, lower-cased', swapConfig({ RELAY_FEE_RECIPIENT: '0x' + FEEW.slice(2).toUpperCase() }).evm.recipient, FEEW);
+is('bps is capped at 3%', swapConfig({ RELAY_FEE_RECIPIENT: FEEW, RELAY_FEE_BPS: '5000' }).evm.feeBps, 300);
+is('the Solana fee is untouched by it', swapConfig({ RELAY_FEE_RECIPIENT: FEEW, JUP_REFERRAL: ACCT }).referralAccount, ACCT);
+
+const TOK = '0x532F27101965dd16442E59d40670FaF5eBB142E4';
+is('a Base token swaps on our page', swapPath('base', TOK), '/swap?chain=base&token=' + TOK.toLowerCase());
+is('so does a Robinhood Chain one', swapPath('robinhood', TOK), '/swap?chain=robinhood&token=' + TOK.toLowerCase());
+is('a chain Relay is not used for gets nothing', swapPath('bsc', TOK), '');
+is('a Solana mint keeps its link', swapPath('solana', MINT), '/swap?mint=' + MINT);
+is('a stock gets nothing', swapPath('', 'stock:AAPL'), '');
+
 /* The policy the swap page is served with: the map's, plus Jupiter's API in
    connect-src and https: images for token art. No third-party script or frame,
    and no bare scheme anywhere but images. */
 const csp = Object.fromEntries(SWAP_CSP.split(/;\s*/).map(d => { const [k, ...v] = d.split(' '); return [k, v.join(' ')]; }));
 is('scripts: our own only', csp['script-src'], "'self' 'unsafe-inline'");
 is('images: ours, data: (wallet icons) and https: (token art)', csp['img-src'], "'self' data: https:");
-is('network: us and Jupiter\'s API', csp['connect-src'], "'self' https://lite-api.jup.ag https://api.jup.ag");
+is('network: us, Jupiter\'s API and Relay\'s', csp['connect-src'], "'self' https://lite-api.jup.ag https://api.jup.ag https://api.relay.link");
 is('never framed', csp['frame-ancestors'], "'none'");
 is('no forms', csp['form-action'], "'none'");
 is('no plugins', csp['object-src'], "'none'");

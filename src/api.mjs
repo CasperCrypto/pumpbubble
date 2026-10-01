@@ -288,6 +288,40 @@ async function railFill(ctx) {
   return rows;
 }
 
+/* ------------------------------------------------------ the swap's lists */
+/* The swap page's "on the map" list for an EVM chain: that tab's tokens as the
+   map already holds them — this isolate's snapshot, else the shared KV copy —
+   never a build. The map has done the hard part on these chains already: one
+   survivor per ticker, chosen by pool depth. A token search there cannot do
+   that — Relay's search for PONS on Robinhood Chain lists five clones before
+   the real one, and its index does not carry the real one at all. Most
+   traded first; the chain's own money (wrapped ETH, dollars) is what a buyer
+   pays with, so it is left out. */
+const SWAP_LIST_SRC = { base: 'base', robinhood: 'robinhood' };
+const SWAP_MONEY = /^(W?ETH|USDC|USDBC|USDT|USDG|DAI|USDE|PYUSD|RLUSD)$/i;
+const swapLists = {};
+async function swapList(ctx, chain) {
+  const sid = SWAP_LIST_SRC[chain];
+  const now = Date.now(), c = swapLists[chain];
+  if (c && now - c.at < 60_000) return c.rows;
+  let snap = cacheFor(sid).data;
+  if (!snap || !snap.tokens || !snap.tokens.length) {
+    try { snap = await ctx.store.get('snap:' + sid); } catch { snap = null; }
+  }
+  const hid = await hiddenSet(ctx);
+  const rows = ((snap && snap.tokens) || [])
+    .filter(t => t && t.addr && t.sym && t.solid !== false && !isHidden(hid, t) && (t.chain || chain) === chain && !SWAP_MONEY.test(t.sym))
+    .sort((a, b) => (b.vol || 0) - (a.vol || 0))
+    .slice(0, 30)
+    .map(t => ({
+      addr: String(t.addr).toLowerCase(), chain, sym: t.sym, name: t.name || '', img: t.img || '',
+      mcap: t.mcap || 0, liq: t.liq || 0, vol: t.vol || 0, price: t.price || 0,
+      pc: t.pc && Number.isFinite(t.pc.h24) ? t.pc.h24 : null,
+    }));
+  if (rows.length) swapLists[chain] = { at: now, rows };
+  return rows;
+}
+
 /* ------------------------------------------------------------- Tap wars */
 /* The arena is one Durable Object, and every visitor's map poll would be a
    request to it. Cached per isolate for five seconds instead, and busted by
@@ -1197,6 +1231,13 @@ export async function handle(req, ctx) {
        every swap it earns on. */
     if (path === '/api/swap-config') {
       return json({ ok: true, ...swapConfig(ctx.env) }, 200, { 'cache-control': 'public, max-age=300' });
+    }
+    if (path === '/api/swap/tokens') {
+      const limited = rateLimit(req, 'swaptok', 60, 60_000);
+      if (limited) return limited;
+      const chain = String(url.searchParams.get('chain') || '');
+      if (!SWAP_LIST_SRC[chain]) return json({ ok: false, error: 'no list for that chain' }, 400);
+      return json({ ok: true, chain, tokens: await swapList(ctx, chain) }, 200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* --------------------------------------------------------- /api/token */

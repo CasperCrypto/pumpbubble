@@ -2408,11 +2408,20 @@ addEventListener('pointerup',e=>{
 
 /* ------------------------------------------------------------ token card */
 const card=document.getElementById('card'),scrim=document.getElementById('scrim');
+/* Our swap for a contract on Base, Ethereum or Robinhood Chain (Relay routes
+   those, with our fee); '' for anything it cannot trade. */
+function evmSwap(t){
+  if(!t||!t.addr||!/^0x[0-9a-fA-F]{40}$/.test(t.addr))return '';
+  const id=String(t.id||'');
+  const c=t.chain||(id.startsWith('base:')?'base':id.startsWith('rh:')?'robinhood':'');
+  return ['base','ethereum','robinhood'].includes(c)?'/swap?chain='+c+'&token='+t.addr.toLowerCase():'';
+}
 function openCard(t){
   S.target=t;
-  /* Only for something with a mint: the referral when set up, else our swap. */
+  /* A Solana mint: the referral when set up, else our swap. An EVM contract on
+     a chain Relay serves: our swap. Nothing else has a Buy. */
   document.getElementById('cBuy').style.display =
-    ((BUY.enabled || BUY.swap) && t && t.mint) ? '' : 'none';
+    (((BUY.enabled || BUY.swap) && t && t.mint) || evmSwap(t)) ? '' : 'none';
   /* installing the bot for a token: only for something with an address */
   const botLink=document.getElementById('cBot');
   botLink.hidden=!(t && (t.mint || t.addr));
@@ -2751,7 +2760,8 @@ document.getElementById('cOpen').onclick=()=>{
    /swap page (Jupiter, our fee once JUP_REFERRAL is set) when not. A new tab
    either way, so the map stays where it was. */
 document.getElementById('cBuy').onclick=()=>{
-  const t=S.target;if(!t||!t.mint)return;
+  const t=S.target;if(!t)return;
+  if(!t.mint){const u=evmSwap(t);if(u){open(u,'_blank','noopener');closeAll()}return}
   const m=encodeURIComponent(t.mint);
   if(BUY.enabled)open(BUY.template.replace('__MINT__',m),'_blank','noopener');
   else if(BUY.swap&&/^\/swap\?mint=__MINT__$/.test(BUY.swap))open(BUY.swap.replace('__MINT__',m),'_blank','noopener');
