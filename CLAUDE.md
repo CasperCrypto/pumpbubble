@@ -1277,6 +1277,20 @@ the rail and the share cards. **Tap wars** can be reset or pruned per token, and
 token nobody tapped for `cfg.idleHours` (default 24, set in the console) — taps halve daily but a
 halving never reaches zero, so a 5,000-tap token sat on the tab for a week after its community left.
 
+**What the operator sees about the bot** (2026-10-01, asked as "I should see the list of users we
+can mass DM, the mass DM tool there, and which groups added our bot"). The Telegram card lists
+**every group that added the bot** — tracking a token, *not set up* (added by an admin who never
+ran /setup: the follow-ups worth making), or removed — with Telegram's own title, @username and
+member count read live for the first twenty (two calls each, inside the 50 subrequests a free-plan
+invocation may make), cached five minutes. Groups that never ran /setup used to leave no trace at
+all: the bot said thanks and forgot them; `my_chat_member` now records each join and leave in the
+AudienceDO (`g:<id>`, who added it and when). The Mass DM card lists **who is on the list** — the
+newest 300 in join order (a `recent` ring kept on each new Start) or everyone by id, 200 a page,
+with a filter — and **sends a test to one id** before the list gets it, Unsubscribe button
+included. Names and @usernames are kept from 2026-10-01 (people who started earlier gain theirs on
+their next message); control and direction-override characters are stripped, a username is kept
+only if it is a legal handle, and nothing else about a person is stored.
+
 **KV writes are over the free tier, and have been for a while.** Measured when the console's first
 save returned *"KV put() limit exceeded for the day"*: every `shared` source writes its snapshot on
 every rebuild (trending ≈1,440/day at a 60s lifetime, base ≈720, majors and robinhood ≈480, the four
@@ -1655,6 +1669,10 @@ they can't copy them inside the pump.fun app"):
 - **🧠 SMART BUY** on a group's alert when the buyer is one of pump.fun's top traders by realized
   profit (`src/smartset.mjs`: the Smart money tab's three boards as a wallet lookup, each wallet at
   its best rank, ten-minute cache): *"@CookerFlips, #3 on pump.fun this week by profit banked"*.
+- **📣 TOP CALLER BUY** when the buyer is one of the week's top fifty callers — the KOLs, by the
+  Calls tab's own ranking (`topCallers()`, the CallersDO's weekly board, ten-minute cache): *"@Bean,
+  #2 caller on pump.fun this week — 63% of their 16 calls hit 2×"*. Asked for as "show if a top
+  trader or KOL bought this token". A wallet that is both gets both lines.
 - **Tap wars head start**: every token set up with the bot enters the arena with 500 taps, once per
   token ever (`Arena.grant`, server-side, no address limits, decays like any tap) — half of a free
   rail slot, a reason for a project to install this bot rather than another.

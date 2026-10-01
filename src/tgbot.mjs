@@ -368,7 +368,7 @@ export function tokenLinks(env, g, token = {}) {
   };
 }
 
-export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null }) {
+export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null, caller = null }) {
   const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
   const sym = clean(token.sym || group.sym || '?', 12);
   const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
@@ -383,6 +383,14 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   if (smart && smart.rank) {
     const who = smart.xh && /^\w{1,15}$/.test(smart.xh) ? '@' + smart.xh : clean(smart.name || '', 20);
     lines.push(`🧠 <b>SMART BUY</b> — ${tgEsc(who)}, #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} by profit banked (+${fmtUsd(smart.realized)})`);
+  }
+  /* The KOL line: the buyer is one of the week's top callers on pump.fun —
+     the Calls tab's own ranking, whose calls reach 2× most reliably. Their
+     followers watch what they buy; a group seeing that line is seeing why. */
+  if (caller && caller.rank) {
+    const who = caller.xh && /^\w{1,15}$/.test(caller.xh) ? '@' + caller.xh : clean(caller.name || '', 20);
+    const hit = caller.hit2 != null && isFinite(+caller.hit2) && caller.n > 0 ? ` — ${Math.round(+caller.hit2 * 100)}% of their ${Math.floor(caller.n)} calls hit 2×` : '';
+    lines.push(`📣 <b>TOP CALLER BUY</b> — ${tgEsc(who)}, #${Math.floor(caller.rank)} caller on pump.fun this week${tgEsc(hit)}`);
   }
   lines.push('');
   lines.push(emojiRow(usd, group.emoji, group.step));
@@ -655,6 +663,13 @@ async function onMembership(ctx, m) {
   const status = m.new_chat_member && m.new_chat_member.status;
   const chat = m.chat;
   if (!chat || chat.type === 'private') return;
+  /* every group that adds the bot is remembered, set up or not, for the
+     console: the ones that added it and never ran /setup are the follow-ups */
+  if (ctx.audience) {
+    const f = m.from || {};
+    await ctx.audience('seenGroup', { group: { id: chat.id, title: chat.title, username: chat.username, type: chat.type, status,
+      by: f.id, byName: [f.first_name, f.last_name].filter(Boolean).join(' '), byUser: f.username } }).catch(() => null);
+  }
   if (status === 'left' || status === 'kicked') {
     /* an EVM token's watcher only notices a gone group when a buy happens —
        a quiet token was polled every few seconds for nobody */
@@ -1676,6 +1691,51 @@ export async function sendDm(env, id, html, buttons = [], { unsub = true } = {})
   }
 }
 
+/* The console's list of groups: every group configured with /setup, joined
+   with every group that ever added the bot (the AudienceDO keeps those, set
+   up or not), and Telegram's own title, @username and member count, read
+   live — for the first 20, since the free plan allows a Worker invocation 50
+   subrequests and each group costs two — and kept for five minutes. */
+let groupListMem = { at: 0, v: null };
+export async function groupList(ctx, { fresh = false } = {}) {
+  if (!fresh && groupListMem.v && Date.now() - groupListMem.at < 300_000) return groupListMem.v;
+  const { env, store } = ctx;
+  const ids = (await store.get(K.groups)) || [];
+  const seen = ctx.audience ? (((await ctx.audience('groups').catch(() => null)) || {}).list || []) : [];
+  const by = new Map();
+  for (const s of seen) by.set(String(s.id), { id: s.id, seen: s });
+  for (const id of ids) by.set(String(id), { ...(by.get(String(id)) || { id: +id }), configured: true });
+  const rows = [...by.values()];
+  for (const r of rows) if (r.configured) r.cfg = await getGroup(store, r.id).catch(() => null);
+  const gone = r => !r.configured && r.seen && (r.seen.status === 'left' || r.seen.status === 'kicked');
+  const live = rows.filter(r => !gone(r)).sort((a, b) => (b.configured ? 1 : 0) - (a.configured ? 1 : 0)).slice(0, 20);
+  for (let i = 0; i < live.length; i += 5) {
+    await Promise.all(live.slice(i, i + 5).map(async r => {
+      try {
+        const c = await tg(env, 'getChat', { chat_id: r.id });
+        r.title = c.title || ''; r.username = c.username || ''; r.type = c.type || '';
+      } catch (e) { if (/not found|kicked|forbidden|bot is not a member/i.test(String(e.description || e.message || ''))) r.lost = true; }
+      if (!r.lost) { try { r.members = await tg(env, 'getChatMemberCount', { chat_id: r.id }); } catch { /* unknown */ } }
+    }));
+  }
+  const rank = s => (s === 'tracking' ? 0 : s === 'not set up' ? 1 : 2);
+  const out = rows.map(r => {
+    const s = r.seen || {}, c = r.cfg || null;
+    const status = r.lost || gone(r) ? 'removed' : r.configured ? 'tracking' : 'not set up';
+    return {
+      id: r.id, status,
+      title: clean(r.title || s.title || '', 80), username: r.username || s.username || '', type: r.type || s.type || '',
+      members: Number.isFinite(+r.members) ? +r.members : null,
+      token: c ? { sym: c.sym || '', chain: c.chain || 'solana', addr: c.mint || c.token || '' } : null,
+      guard: !!(c && c.guard && (c.guard.captcha || c.guard.welcome || c.guard.clean)),
+      setupAt: (c && c.at) || 0, addedAt: s.addedAt || 0, leftAt: s.leftAt || 0,
+      by: s.by ? { id: s.by, name: s.byName || '', user: s.byUser || '' } : (c && c.by ? { id: c.by, name: '', user: '' } : null),
+    };
+  }).sort((a, b) => rank(a.status) - rank(b.status) || (b.members || 0) - (a.members || 0) || (b.addedAt || 0) - (a.addedAt || 0));
+  groupListMem = { at: Date.now(), v: out };
+  return out;
+}
+
 /* A ban this short lifts itself: removed now, free to rejoin in a minute. */
 const kick = (env, chatId, uid) => tg(env, 'banChatMember', {
   chat_id: chatId, user_id: uid, until_date: Math.floor(Date.now() / 1000) + KICK_S,
@@ -1703,7 +1763,10 @@ async function onPrivate(ctx, msg) {
   }
   /* anyone talking to the bot in private has pressed Start: on the list */
   if (ctx.audience && !(msg.from && msg.from.is_bot)) {
-    await ctx.audience('add', { id: uid, src: c && c.cmd === 'start' ? (c.arg || 'start').split('_')[0] : 'chat' }).catch(() => null);
+    await ctx.audience('add', {
+      id: uid, src: c && c.cmd === 'start' ? (c.arg || 'start').split('_')[0] : 'chat',
+      name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '), user: msg.from.username || '',
+    }).catch(() => null);
   }
   if (c && c.cmd === 'start' && /^v_m?\d{1,20}$/.test(c.arg || '')) return verifyStart(ctx, msg, c.arg);
   /* a pasted contract address is the start of a purchase */
@@ -2070,6 +2133,23 @@ async function sendAlert(env, store, chatId, g, caption, keyboard) {
    that asked for it. `solUsd` comes from the caller because the price cache
    lives in api.mjs. Returns counts so the route can report what it did. */
 export const LAT = [];              // seconds, block to posted, this isolate
+/* The week's top callers as a wallet lookup for the buy alert: the Calls
+   watcher's own board (2× hit rate at the lower edge of its Wilson
+   interval), its top fifty, kept ten minutes per isolate. A failed read
+   keeps the last good list. */
+let callerMem = { at: 0, v: new Map() };
+export async function topCallers(ctx, now = Date.now()) {
+  if (!ctx || !ctx.callers) return callerMem.v;
+  if (callerMem.v.size && now - callerMem.at < 600_000) return callerMem.v;
+  let rows = [];
+  try { rows = ((await ctx.callers('board', { window: 'weekly' })) || {}).rows || []; } catch { rows = []; }
+  const m = new Map();
+  for (const r of rows.slice(0, 50)) if (r && r.wallet) m.set(r.wallet, { name: r.name || '', xh: r.xh || '', rank: r.rank, hit2: r.hit2, n: r.n });
+  if (m.size || !callerMem.v.size) callerMem = { at: now, v: m };
+  else callerMem.at = now - 540_000;
+  return callerMem.v;
+}
+
 export async function onTrade(ctx, payload, solUsd) {
   const { env, store } = ctx;
   const w = await onWalletTrades(ctx, payload, solUsd).catch(() => ({ swaps: 0, dms: 0 }));
@@ -2092,12 +2172,13 @@ export async function onTrade(ctx, payload, solUsd) {
     const token = (await tokenInfo(env, buy.mint)) || { mint: buy.mint };
     const usd = buy.sol * num(solUsd);
     const smart = (await smartWallets().catch(() => null))?.get(buy.buyer) || null;
+    const caller = (await topCallers(ctx).catch(() => null))?.get(buy.buyer) || null;
     for (const chatId of chats) {
       const g = await getGroup(store, chatId);
       if (!g || g.mint !== buy.mint) continue;
       if (num(g.minBuy) > 0 && usd < num(g.minBuy)) { skipped++; continue; }
       if (!allowed(chatId)) { skipped++; continue; }
-      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart });
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart, caller });
       if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides

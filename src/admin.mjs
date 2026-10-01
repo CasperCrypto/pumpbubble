@@ -253,6 +253,10 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
   <div class="card">
     <h2>Telegram bot</h2>
     <div id="tg"></div>
+    <h2 style="margin-top:16px">Groups</h2>
+    <div class="dim" style="font-size:12px;margin-bottom:6px">Every group that added the bot. <b style="color:var(--gold)">Not set up</b> means an admin added it and never ran /setup — those are the ones worth a message.</div>
+    <div class="row" style="margin-top:0"><button id="gRefresh">Refresh</button><span class="dim" id="gSum"></span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table id="gTable"></table></div>
   </div>
 
   <div class="card">
@@ -268,6 +272,18 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
       <button class="go" id="dmCancel">Stop the send</button>
     </div>
     <div class="dim" id="bOut" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:10px">
+      <input id="dmTestId" placeholder="your Telegram user id" inputmode="numeric" style="flex:1">
+      <button id="dmTest">Send a test to this id</button>
+    </div>
+    <div class="dim" style="font-size:12px;margin-top:4px">Press Start on the bot yourself, find your id in the list below (the <b>test</b> button fills it in), and see exactly what everyone will get before sending.</div>
+    <h2 style="margin-top:16px">Who is on the list</h2>
+    <div class="row" style="margin-top:0">
+      <button id="uNewest">Newest</button><button id="uAll">Everyone, by id</button>
+      <input id="uFind" placeholder="filter by name, @username or id" style="flex:1;min-width:160px">
+    </div>
+    <div style="overflow:auto;max-height:440px;margin-top:8px"><table id="uTable"></table></div>
+    <div class="row"><button id="uMore" class="hide">Load more</button><span class="dim" id="uSum"></span></div>
     <h2 style="margin-top:16px">Smart money channel</h2>
     <div class="dim" style="margin-bottom:6px">A public Telegram channel where the bot posts every buy of half a SOL or more by pump.fun's top 300 traders, with ⚡ Copy buy — the free feed that brings people to the bot. Make the bot an admin of the channel, then put its @username here (empty to switch off).</div>
     <div class="row"><input id="chName" placeholder="@yourchannel" style="flex:1"><button class="go" id="chSave">Save channel</button></div>
@@ -328,6 +344,60 @@ $('bSend').onclick=async()=>{
 };
 $('chSave').onclick=async()=>{try{const r=await api('tg.channel',{channel:$('chName').value});say(r.channel?'posting to '+(r.channel.username?'@'+r.channel.username:r.channel.title):'channel off')}catch(e){say(e.message,true)}};
 $('dmCancel').onclick=async()=>{try{await api('dm.cancel');say('stopped');dmLoad()}catch(e){say(e.message,true)}};
+
+/* Groups: the ones tracking a token, the ones that added the bot and never
+   set it up, and the ones that removed it. Names and member counts are
+   Telegram's own, read live. */
+const ago=t=>{if(!t)return '—';const s=(Date.now()-t)/1000;
+  return s<3600?Math.max(1,Math.round(s/60))+'m ago':s<86400?Math.round(s/3600)+'h ago':Math.round(s/86400)+'d ago'};
+async function grpLoad(fresh){
+  try{
+    const g=(await api('tg.groups',{fresh:!!fresh})).groups||[];
+    const n=s=>g.filter(x=>x.status===s).length;
+    $('gSum').textContent=n('tracking')+' tracking · '+n('not set up')+' not set up · '+n('removed')+' removed';
+    $('gTable').innerHTML=g.length?'<tr><th>Group</th><th>Status</th><th>Token</th><th>Members</th><th>Added</th><th>By</th></tr>'+g.map(x=>{
+      const nm=esc(x.title||String(x.id));
+      const name=x.username?'<a href="https://t.me/'+esc(x.username)+'" target="_blank" rel="noopener">'+nm+'</a>':nm;
+      const st=x.status==='tracking'?'<span class="up">tracking</span>'+(x.guard?' <span class="dim">· guard on</span>':'')
+        :x.status==='not set up'?'<span style="color:var(--gold)">not set up</span>':'<span class="dim">removed '+esc(ago(x.leftAt))+'</span>';
+      const tok=x.token?'$'+esc(x.token.sym)+' <span class="dim">'+esc(x.token.chain)+'</span>':'<span class="dim">—</span>';
+      const by=x.by?(x.by.user?'<a href="https://t.me/'+esc(x.by.user)+'" target="_blank" rel="noopener">@'+esc(x.by.user)+'</a>':esc(x.by.name||('id '+x.by.id))):'<span class="dim">—</span>';
+      return '<tr><td>'+name+'</td><td>'+st+'</td><td>'+tok+'</td><td>'+(x.members!=null?x.members.toLocaleString():'—')+'</td><td>'+esc(ago(x.setupAt||x.addedAt))+'</td><td>'+by+'</td></tr>'}).join('')
+      :'<tr><td class="dim">no groups yet</td></tr>';
+  }catch(e){$('gSum').textContent=e.message}
+}
+$('gRefresh').onclick=()=>grpLoad(true);
+
+/* The DM list itself: the newest first, or everyone a page at a time. */
+const SRC={start:'Start',chat:'messaged the bot',v:'group captcha',boost:'boost link',optin:'old opt-in list',ad:'ad link',buy:'buy link'};
+let U={rows:[],next:'',mode:'newest'};
+function uRender(){
+  const f=$('uFind').value.trim().toLowerCase().replace(/^@/,'');
+  const rows=f?U.rows.filter(u=>(u.name||'').toLowerCase().includes(f)||(u.user||'').toLowerCase().includes(f)||String(u.id).includes(f)):U.rows;
+  $('uTable').innerHTML='<tr><th>Name</th><th>Username</th><th>Telegram id</th><th>Joined</th><th>Came from</th></tr>'+rows.map(u=>
+    '<tr><td>'+esc(u.name||'—')+'</td><td>'+(u.user?'<a href="https://t.me/'+esc(u.user)+'" target="_blank" rel="noopener">@'+esc(u.user)+'</a>':'<span class="dim">—</span>')+'</td>'
+    +'<td><code>'+esc(u.id)+'</code> <button data-uid="'+esc(u.id)+'" style="padding:2px 8px;font-size:11px">test</button></td>'
+    +'<td>'+esc(ago(u.at))+'</td><td class="dim">'+esc(SRC[u.src]||u.src||'—')+'</td></tr>').join('');
+  $('uSum').textContent=rows.length.toLocaleString()+' shown'+(U.mode==='newest'?' (the newest)':'')+(DM.count?' · '+DM.count.toLocaleString()+' on the list':'')
+    +' · names are kept from now on; people who started earlier show theirs the next time they message the bot';
+  $('uMore').classList.toggle('hide',!U.next);
+}
+async function uLoad(mode,more){
+  try{
+    if(!more)U={rows:[],next:'',mode};
+    const r=await api('dm.list',mode==='newest'?{newest:true,limit:200}:{after:more?U.next:'',limit:200});
+    U.rows=U.rows.concat(r.rows||[]);U.next=r.next||'';uRender();
+  }catch(e){$('uSum').textContent=e.message}
+}
+$('uNewest').onclick=()=>uLoad('newest');
+$('uAll').onclick=()=>uLoad('all');
+$('uMore').onclick=()=>uLoad('all',true);
+$('uFind').oninput=uRender;
+$('dmTest').onclick=async()=>{
+  const text=$('bText').value.trim();if(!text){say('write the message first',true);return}
+  try{await api('dm.test',{id:$('dmTestId').value.trim(),text,buttonText:$('dmBtnText').value,buttonUrl:$('dmBtnUrl').value});say('test sent — check Telegram')}
+  catch(e){say(e.message,true)}
+};
 $('dmReviews').onclick=async e=>{
   const ok=e.target.dataset.dmok,no=e.target.dataset.dmno;if(!ok&&!no)return;
   if(ok&&!confirm('Send this sponsored DM to '+(DM.count||0)+' people?'))return;
@@ -412,6 +482,7 @@ async function load(){
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b)return;
   try{
+    if(b.dataset.uid){$('dmTestId').value=b.dataset.uid;$('dmTestId').scrollIntoView({block:'center'});say('test id set — write the message, then Send a test');return}
     if(b.dataset.delAd){await api('ad.remove',{title:b.dataset.delAd});say('removed');return load()}
     if(b.dataset.delBoost){await api('boost.remove',{mint:b.dataset.delBoost});say('removed');return load()}
     if(b.dataset.delHide){await api('hide.remove',{key:b.dataset.delHide});say('back on the map');return load()}
@@ -432,7 +503,7 @@ document.addEventListener('click',async e=>{
 
 $('in').onclick=async()=>{
   PW=$('pw').value;
-  try{ await load(); dmLoad(); $('login').classList.add('hide'); $('app').classList.remove('hide');
+  try{ await load(); dmLoad(); grpLoad(); uLoad('newest'); $('login').classList.add('hide'); $('app').classList.remove('hide');
     /* unlock ready posts on the map, in this browser */
     try{localStorage.setItem('pb_op','1')}catch(_){}
     opState(); }

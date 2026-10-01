@@ -195,6 +195,15 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
     smart: { rank: 7, when: 'today', realized: 1000, xh: 'not a handle!', name: '<b>x</b>' } }).caption;
   is('no @ on an illegal handle, and the name is escaped', sm2.includes('@not') || sm2.includes('<b>x</b>'), false);
   is('no tag for an ordinary buyer', formatBuy({ buy: { sol: 1, tokens: 1 }, token: { mint: MINT }, group: { mint: MINT }, solUsd: 1 }).caption.includes('SMART'), false);
+  const kol = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    caller: { rank: 2, xh: 'BeanCalls', name: 'bean', hit2: 0.625, n: 16 } }).caption;
+  is('a top caller’s buy is tagged, with their record', kol.includes('📣 <b>TOP CALLER BUY</b> — @BeanCalls, #2 caller on pump.fun this week — 63% of their 16 calls hit 2×'), true);
+  const kol2 = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    caller: { rank: 9, xh: '', name: '<i>sneaky</i>', hit2: null, n: 0 } }).caption;
+  is('a caller with no handle is named, escaped, and no record is invented', kol2.includes('<i>sneaky</i>') || kol2.includes('% of'), false);
+  const both = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+    smart: { rank: 3, when: 'this week', realized: 74400, xh: 'CookerFlips' }, caller: { rank: 2, xh: 'CookerFlips', hit2: 0.5, n: 10 } }).caption;
+  is('a wallet that is both says both', both.includes('SMART BUY') && both.includes('TOP CALLER BUY'), true);
   const bad = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
     ad: { title: '$X', url: 'javascript:alert(1)' } });
   is('an ad with a non-http link is not printed', bad.caption.includes('javascript:'), false);

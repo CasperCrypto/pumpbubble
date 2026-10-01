@@ -18,6 +18,7 @@ import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from 
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
   onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks, setChannel as tgSetChannel, watchAddresses as tgWatch,
+  groupList as tgGroups, sendDm as tgSendDm,
 } from './tgbot.mjs';
 import { deliveryAuth as heliusAuth, syncWebhook as heliusSync } from './helius.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
@@ -2213,6 +2214,30 @@ export async function handle(req, ctx) {
           }
           const reviews = ((await ctx.store.get('dmads')) || []).filter(a => a.status === 'review' || a.status === 'sent' || a.status === 'rejected').slice(-20);
           return json({ ok: true, count: st.count || 0, job: st.job || null, reviews });
+        }
+        /* who is on the DM list: the newest first, or every record a page at a time */
+        if (action === 'dm.list') {
+          if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);
+          return json(await ctx.audience('list', { after: String(body.after || ''), limit: Math.min(200, Math.max(1, +body.limit || 100)), newest: !!body.newest }));
+        }
+        /* one message to one person before the list gets it: the same HTML,
+           button and Unsubscribe the send would carry */
+        if (action === 'dm.test') {
+          if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);
+          const id = Math.floor(+body.id);
+          if (!(id > 0)) return json({ ok: false, error: 'put a Telegram user id — the number in the list — in the test box' }, 400);
+          const html = String(body.text || '').slice(0, 3500);
+          if (!html.trim()) return json({ ok: false, error: 'write the message first' }, 400);
+          const bt = String(body.buttonText || '').trim().slice(0, 40), bu = String(body.buttonUrl || '').trim();
+          const buttons = bt && /^https:\/\/[^\s"'<>]{4,300}$/i.test(bu) ? [[{ text: bt, url: bu }]] : [];
+          const r = await tgSendDm(ctx.env, id, html, buttons);
+          return r === 'ok' ? json({ ok: true })
+            : json({ ok: false, error: r === 'gone' ? 'that person has not pressed Start or has blocked the bot' : 'Telegram refused the message — check the HTML tags' }, 400);
+        }
+        /* every group the bot is in, set up or not, and the ones it left */
+        if (action === 'tg.groups') {
+          if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);
+          return json({ ok: true, groups: await tgGroups(ctx, { fresh: !!body.fresh }) });
         }
         if (action === 'dm.send') {
           if (!ctx.audience) return json({ ok: false, error: 'the audience object is not deployed yet' }, 503);

@@ -150,7 +150,10 @@ export class AudienceDO {
     try { b = await req.json(); } catch { b = {}; }
     let out;
     switch (b.op) {
-      case 'add': out = await this.a.add(b.id, b.src); break;
+      case 'add': out = await this.a.add(b.id, b.src, { name: b.name, user: b.user }); break;
+      case 'list': out = await this.a.list({ after: b.after, limit: b.limit, newest: !!b.newest }); break;
+      case 'seenGroup': out = await this.a.seenGroup(b.group || {}); break;
+      case 'groups': out = { ok: true, list: await this.a.groups() }; break;
       case 'remove': out = await this.a.remove(b.id); break;
       case 'count': out = { ok: true, count: await this.a.count() }; break;
       case 'start':

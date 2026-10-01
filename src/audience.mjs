@@ -30,21 +30,89 @@ export const MAX_FOLLOWS = 10;     // wallets one person can track
 export const TICK_MS = 1100;
 
 export const UNSUB = { text: '🔕 Unsubscribe', callback_data: 'unsub' };
+export const RECENT = 300;         // the newest subscribers, kept in order for the console
+export const GROUPS_MAX = 2000;
+
+/* Telegram names are typed by their owners: no control characters, no
+   direction overrides, nothing long. The console escapes them as well. */
+const tidy = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, n);
+const handle = s => /^[A-Za-z0-9_]{4,32}$/.test(String(s || '')) ? String(s) : '';
 
 export class Audience {
   constructor(storage) { this.s = storage; }
 
   async count() { return (await this.s.get('n')) || 0; }
 
-  /* Everyone who pressed Start. A repeat is free: no write. */
-  async add(id, src = '') {
+  /* Everyone who pressed Start, with the name and @username they show on
+   Telegram — what the operator's console lists, and nothing else about
+   them. A repeat costs no write unless the name changed (or was never kept:
+   people who started before names were). The newest are also kept in order,
+   so the console can show who joined lately without reading the whole list. */
+  async add(id, src = '', meta = {}) {
     id = Math.floor(+id);
     if (!(id > 0)) return { ok: false };
     const k = 'u:' + String(id).padStart(15, '0');
-    if (await this.s.get(k)) return { ok: true, added: false };
-    await this.s.put(k, { at: Date.now(), src: String(src).slice(0, 24) });
+    const name = tidy(meta.name, 48), user = handle(meta.user);
+    const have = await this.s.get(k);
+    if (have) {
+      if ((name && have.name !== name) || (user && have.user !== user)) {
+        await this.s.put(k, { ...have, ...(name ? { name } : {}), ...(user ? { user } : {}) });
+      }
+      return { ok: true, added: false };
+    }
+    await this.s.put(k, { at: Date.now(), src: String(src).slice(0, 24), ...(name ? { name } : {}), ...(user ? { user } : {}) });
     await this.s.put('n', (await this.count()) + 1);
+    const recent = (await this.s.get('recent')) || [];
+    recent.unshift(id);
+    await this.s.put('recent', recent.slice(0, RECENT));
     return { ok: true, added: true };
+  }
+
+  /* The list for the console: the newest first, or every record in id order
+     a page at a time (`after` is the last id of the page before). */
+  async list({ after = '', limit = 100, newest = false } = {}) {
+    limit = Math.max(1, Math.min(200, Math.floor(+limit) || 100));
+    if (newest) {
+      const rows = [];
+      for (const id of ((await this.s.get('recent')) || []).slice(0, limit)) {
+        const r = await this.s.get('u:' + String(id).padStart(15, '0'));
+        if (r) rows.push({ id, ...r });
+      }
+      return { ok: true, rows, next: '' };
+    }
+    const opt = { prefix: 'u:', limit };
+    if (after) opt.startAfter = 'u:' + String(Math.floor(+after) || 0).padStart(15, '0');
+    const rows = [...(await this.s.list(opt)).entries()].map(([k, v]) => ({ id: +k.slice(2), ...(v || {}) }));
+    return { ok: true, rows, next: rows.length === limit ? String(rows[rows.length - 1].id) : '' };
+  }
+
+  /* --------------------------------------------------- groups the bot met */
+  /* Every group the bot was added to, set up or not, written when it joins or
+     leaves — so the console can show the groups that added it and never ran
+     /setup, the ones worth a follow-up. */
+  async seenGroup(g = {}) {
+    const id = Math.trunc(+g.id);
+    if (!id || id > 0) return { ok: false };          // group and channel ids are negative
+    const k = 'g:' + id, prev = (await this.s.get(k)) || {};
+    const gone = g.status === 'left' || g.status === 'kicked';
+    const wasIn = prev.status && prev.status !== 'left' && prev.status !== 'kicked';
+    await this.s.put(k, {
+      id,
+      title: tidy(g.title, 80) || prev.title || '',
+      username: handle(g.username) || prev.username || '',
+      type: tidy(g.type, 16) || prev.type || '',
+      status: tidy(g.status, 16) || prev.status || '',
+      addedAt: gone ? (prev.addedAt || 0) : (wasIn && prev.addedAt ? prev.addedAt : Date.now()),
+      leftAt: gone ? Date.now() : 0,
+      by: gone ? (prev.by || 0) : (Math.floor(+g.by) || prev.by || 0),
+      byName: gone ? (prev.byName || '') : (tidy(g.byName, 48) || prev.byName || ''),
+      byUser: gone ? (prev.byUser || '') : (handle(g.byUser) || prev.byUser || ''),
+    });
+    return { ok: true };
+  }
+  async groups() {
+    const list = [...(await this.s.list({ prefix: 'g:', limit: GROUPS_MAX })).values()];
+    return list.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
   }
 
   async remove(id) {
