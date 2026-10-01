@@ -1055,8 +1055,13 @@ Solana token), the bot's Buy and ⚡ Copy buy. The old rule was "no code, no but
 out to someone else's terminal with no referral spends the click and earns nothing. This keeps the
 visitor on pumpbubble, and it starts earning the day the fee account exists, without a deploy: set
 `JUP_REFERRAL` (the public key of a referral account under **Jupiter Ultra**'s referral project,
-with a wrapped-SOL fee account so SOL-in trades pay in SOL) and optionally `JUP_FEE_BPS` (50–255,
-default 50; Jupiter keeps a fifth). A trading-bot referral still wins when both are set.
+`DkiqsTrw1u1bYFumumC7sCG2S8K25qc2vemJFHyW2wJc`, made at referral.jup.ag with the operator's own
+wallet) and `JUP_FEE_BPS` (50–255; **100, i.e. 1%, since 2026-10-01**, the operator's call —
+Jupiter keeps a fifth, so 0.8% lands; Ultra's own base fee is then not charged on top). Jupiter
+picks the mint each order's fee is taken in (`feeMint`: SOL first, then stablecoins), and **if the
+referral token account for that mint does not exist, the trade executes without the fee** — so the
+account needs SOL and USDC token accounts at least. Integrator fees also route through Metis only
+(JupiterZ's RFQ quotes do not take them). A trading-bot referral still wins when both are set.
 
 **Why our own and not Jupiter's widget.** The first version embedded Jupiter's Plugin; it worked,
 and it looked like Jupiter — a fixed 360×550 black box, their lime button — which is what was asked

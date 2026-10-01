@@ -67,11 +67,16 @@ TG_COMMUNITY = "https://t.me/pumpbubble"
 # Our X account, linked from the bot's Start menu and setup reply.
 X_PROFILE = "https://x.com/pumpbubblefun"
 # The /swap page's fee (src/refs.mjs swapConfig). JUP_REFERRAL is the public key
-# of a Jupiter referral account (referral.jup.ag), which is where the fee lands;
-# it goes in every swap it earns on, so it is config, not a secret. Uncomment
-# with the real key once the account exists — until then swaps carry no fee.
+# of a Jupiter referral account (referral.jup.ag, under the Jupiter Ultra
+# project), which is where the fee lands; it goes in every swap it earns on, so
+# it is config, not a secret. Uncomment with the real key once the account
+# exists — until then swaps carry no fee. The account needs referral token
+# accounts for the mints fees are taken in (SOL first, then USDC/USDT), or
+# Jupiter executes the trade without the fee.
 # JUP_REFERRAL = ""
-JUP_FEE_BPS = "50"
+# 1% (2026-10-01, the operator's call): Jupiter keeps a fifth, so 0.8% lands.
+# Jupiter allows 50-255; swapConfig clamps to that.
+JUP_FEE_BPS = "100"
 
 # SOLANA_RPC is deliberately NOT here.
 #
