@@ -128,6 +128,7 @@ is('gasless minimum, said plainly', /little SOL/.test(humanErr('Minimum $5 for g
 is('not enough SOL on a buy', humanErr('Insufficient funds', 'buy', 'UDR'), 'Not enough SOL for this amount plus network fees.');
 is('not enough of the token on a sell', humanErr('Insufficient funds', 'sell', 'UDR'), 'You do not hold that much $UDR.');
 is('anything else passes through, capped', humanErr('x'.repeat(400), 'buy', 'UDR').length, 160);
+is('no quote for a huge amount, said plainly', /smaller amount/.test(humanErr('Failed to get quotes', 'sell', 'USDT')), true);
 
 /* --------------------------------------------------------- wallets */
 const { isSolanaWallet, walletIcon, walletLinks } = lift('isSolanaWallet', 'walletIcon', 'walletLinks');
@@ -152,6 +153,71 @@ is('a comma is a decimal point', cleanAmount('0,5', 9), '0.5');
 is('letters are dropped', cleanAmount('1a2', 9), '12');
 is('one dot only', cleanAmount('1.2.3', 9), '1.23');
 is('decimals capped at the token\'s', cleanAmount('0.1234567', 6), '0.123456');
+
+/* ------------------------------------------------------- the picker */
+/* The page opens on the swap; picking a token is a sheet with search, paste,
+   popular tokens, the map's trending and the wallet's own. Its rows draw
+   token names and art from Jupiter — strings the token's creator chose. */
+is('the paste-only first screen is gone', /id="pick"/.test(html), false);
+is('the picker is there, with its search', /id="pk"/.test(html) && /id="pkIn"/.test(html), true);
+is('both sides of the swap are buttons', /<button class="tok" id="inTok"/.test(html) && /<button class="tok" id="outTok"/.test(html), true);
+const popular = [...script.matchAll(/'([1-9A-HJ-NP-Za-km-z]{32,44})', \/\/ [A-Z]+/g)].map(m => m[1]);
+is('popular tokens are written as real addresses', popular.length >= 5 && new Set(popular).size === popular.length, true);
+
+const escLine = (script.match(/var esc = function[^\n]*\n/) || [''])[0];
+const liftWith = (pre, ...names) => new Function(pre + names.map(name => {
+  const at = script.search(new RegExp('function ' + name + '\\s*\\('));
+  if (at < 0) throw new Error('no function ' + name);
+  let d = 0, i = script.indexOf('{', at);
+  for (; i < script.length; i++) { if (script[i] === '{') d++; else if (script[i] === '}' && --d === 0) { i++; break; } }
+  return script.slice(at, i);
+}).join('\n') + '\nreturn {' + names.join(',') + '};')();
+const gwLines = (script.match(/var IPFS_GW = [^\n]*\n/) || [''])[0] + (script.match(/var IPFS_DEAD = [^\n]*\n/) || [''])[0];
+const A = liftWith(gwLines, 'ipfsPath', 'iconSrc', 'nextSrc', 'tsym');
+const { iconSrc, nextSrc } = A;
+const CID = 'bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum';
+is('our signed proxy passes', iconSrc('/api/img?u=x&s=y'), '/api/img?u=x&s=y');
+is('https art passes', iconSrc('https://arweave.net/hQiPZOsRZXGXBJd'), 'https://arweave.net/hQiPZOsRZXGXBJd');
+is('http art does not', iconSrc('http://example.com/a.png'), '');
+is('javascript: does not', iconSrc('javascript:alert(1)'), '');
+is('data: does not — that is for wallet icons only', iconSrc('data:image/svg+xml;base64,PHN2Zz4='), '');
+is('a quote cannot leave the attribute', iconSrc('https://x.example/a"onerror="alert(1)'), '');
+is('nor an angle bracket', iconSrc('https://x.example/<script>'), '');
+is('ipfs:// is read from filebase', iconSrc('ipfs://' + CID), 'https://ipfs.filebase.io/ipfs/' + CID);
+is('the dead nftstorage gateway (WIF\'s icon) too', iconSrc('https://' + CID + '.ipfs.nftstorage.link'), 'https://ipfs.filebase.io/ipfs/' + CID);
+is('and the dead Cloudflare one', iconSrc('https://cf-ipfs.com/ipfs/' + CID), 'https://ipfs.filebase.io/ipfs/' + CID);
+is('a path inside the content survives', iconSrc('https://w3s.link/ipfs/' + CID + '/logo.png'), 'https://ipfs.filebase.io/ipfs/' + CID + '/logo.png');
+is('a working gateway is left alone', iconSrc('https://ipfs.io/ipfs/' + CID), 'https://ipfs.io/ipfs/' + CID);
+is('a failed ipfs.io picture asks filebase', nextSrc('https://ipfs.io/ipfs/' + CID), 'https://ipfs.filebase.io/ipfs/' + CID);
+is('then pinata', nextSrc('https://ipfs.filebase.io/ipfs/' + CID), 'https://gateway.pinata.cloud/ipfs/' + CID);
+is('then gives up', nextSrc('https://gateway.pinata.cloud/ipfs/' + CID), '');
+is('a picture that is not IPFS has no second gateway', nextSrc('https://arweave.net/x'), '');
+is('Jupiter\'s "$WIF" is the ticker WIF', A.tsym('$WIF'), 'WIF');
+
+const P = liftWith(escLine + gwLines + 'var SUB = {}, BAD = {};\n', 'trimFix', 'fmtAmt', 'fmtUsd', 'fmtPrice', 'fmtPct', 'short',
+  'ipfsPath', 'iconSrc', 'tsym', 'initial', 'live', 'avatar', 'ic', 'fromJup', 'fromFill', 'rowHtml');
+is('a ticker never prints two dollar signs', P.rowHtml(P.fromJup({ id: MINT, symbol: '$WIF' }), 0).includes('$$'), false);
+const evil = P.fromJup({ id: MINT, symbol: '<img src=x onerror=alert(1)>', name: '"><script>alert(1)</script>',
+  icon: 'https://x.example/a.png', decimals: 6, mcap: 1234567, usdPrice: 0.0012, isVerified: true, stats24h: { priceChange: 12.5 } });
+const row = P.rowHtml(evil, 0);
+is('a hostile symbol is escaped in a row', row.includes('<img src=x'), false);
+is('a hostile name is escaped too', row.includes('<script>'), false);
+is('Jupiter\'s verified badge shows', row.includes('#i-verified'), true);
+is('the row carries its index', /data-i="0"/.test(row), true);
+is('a rising token reads green', row.includes('class="up"'), true);
+is('decimals come with the row', evil.dec, 6);
+const fill = P.fromFill({ mint: MINT, sym: 'UDR', img: '/api/img?u=a&s=b', pc: 18936.4, rank: 1 });
+is('a trending row keeps the map\'s rank', P.rowHtml(fill, 3).includes('#1 trending'), true);
+is('and its art through our proxy', P.rowHtml(fill, 3).includes('src="/api/img?u=a&amp;s=b"'), true);
+is('an unmeasured move is null, not zero', P.fromFill({ mint: MINT, sym: 'X', pc: null }).chg, null);
+const held = P.fromJup({ id: MINT, symbol: 'UDR', usdPrice: 2 });
+held.bal = '1500'; held.usd = 3000;
+is('a wallet row shows what it holds and what that is worth', /1,500 UDR/.test(P.rowHtml(held, 1)) && P.rowHtml(held, 1).includes('<b>$3K</b>'), true);
+is('an address Jupiter has not indexed is still offered', P.rowHtml({ mint: MINT, raw: true }, 0).includes('Use this address'), true);
+
+const { sumAmounts } = lift('sumAmounts');
+is('token accounts add up exactly', sumAmounts([{ amount: '9007199254740993' }, { amount: '7' }]), 9007199254741000n);
+is('junk accounts count as nothing', sumAmounts([{ amount: 'x' }, null, {}]), 0n);
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

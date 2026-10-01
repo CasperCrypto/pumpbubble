@@ -11,18 +11,24 @@
   Our own swap. The map's look, Jupiter's routing, the visitor's wallet.
 
   Nothing third-party runs here: the page talks to Jupiter's Ultra API for
-  quotes and execution (lite-api.jup.ag, api.jup.ag as the spare) and finds
-  wallets through the Wallet Standard — the events Phantom, Solflare and
-  Backpack already answer — so there is no wallet library and no widget
-  script. The wallet signs the transaction Jupiter built; we never see a key
-  and never hold funds. Before a transaction goes to the wallet it is checked
-  against what was asked for (mints, amount, taker), because it came from
-  somebody else's server.
+  quotes, execution and token search (lite-api.jup.ag, api.jup.ag as the
+  spare) and finds wallets through the Wallet Standard — the events Phantom,
+  Solflare and Backpack already answer — so there is no wallet library and
+  no widget script. The wallet signs the transaction Jupiter built; we never
+  see a key and never hold funds. Before a transaction goes to the wallet it
+  is checked against what was asked for (mints, amount, taker), because it
+  came from somebody else's server.
 
-  Token strings reach the page only through esc() or textContent, art only
-  as our own signed /api/img path, wallet icons only as data:image URIs.
-  worker/index.js serves this page with its own CSP (SWAP_CSP in
-  src/refs.mjs): the map's, plus connect-src to Jupiter's API hosts.
+  The page opens on the swap itself. Without a token in the link, the token
+  side says "Select token" and opens the picker: search by name, paste an
+  address, one tap on a popular token, the map's own Trending list, and the
+  visitor's own tokens once a wallet is connected.
+
+  Token strings reach the page only through esc() or textContent. Token art
+  is our signed /api/img where we have it, otherwise the https URL Jupiter
+  lists for the token (this page's policy allows https: images and nothing
+  else from outside); wallet icons only as data:image URIs. worker/index.js
+  serves the page with its own CSP (SWAP_CSP in src/refs.mjs).
 -->
 <style>
 :root{
@@ -37,6 +43,7 @@
 [hidden]{display:none!important}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
+html.lock,html.lock body{overflow:hidden}
 body{background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh;
   font:500 14px/1.35 ui-sans-serif,-apple-system,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;
   -webkit-font-smoothing:antialiased}
@@ -97,10 +104,11 @@ a{color:inherit}
 .hero::before{content:"";position:absolute;width:260px;height:260px;left:-80px;top:-120px;border-radius:50%;
   background:radial-gradient(circle,rgba(var(--tone),.24),transparent 68%);pointer-events:none}
 .hrow{position:relative;display:flex;align-items:center;gap:13px}
-.av{width:58px;height:58px;border-radius:50%;flex:0 0 auto;object-fit:cover;background:#1a2030;
-  display:grid;place-items:center;font-weight:900;font-size:22px;color:#08110c;
+.av{width:58px;height:58px;border-radius:50%;flex:0 0 auto;overflow:hidden;display:grid;place-items:center;
+  font-weight:900;font-size:22px;color:#08110c;
+  background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(var(--tone),.9) 45%,rgba(var(--tone),.45));
   box-shadow:0 0 0 2px rgba(var(--tone),.6),0 0 30px rgba(var(--tone),.38)}
-span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(var(--tone),.9) 45%,rgba(var(--tone),.45))}
+.av img{width:100%;height:100%;object-fit:cover;display:block;background:#1a2030}
 .who{min-width:0;flex:1}
 .who h1{margin:0;font-size:22px;font-weight:900;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who .nm{color:var(--dim);font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -153,12 +161,26 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 #out{flex:1;min-width:0;font:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.02em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #out.wait{color:#3a4150}
-.tok{flex:0 0 auto;display:flex;align-items:center;gap:7px;height:36px;padding:0 12px 0 5px;border-radius:999px;
-  background:rgba(255,255,255,.07);border:1px solid var(--line);font-weight:900;font-size:14px;max-width:48%}
-.tok span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ti{width:26px;height:26px;flex:0 0 auto;border-radius:50%;object-fit:cover;display:grid;place-items:center;
-  font-size:13px;font-weight:900;color:#08110c;background:#2a3140}
+/* the token side of the swap is a button: it opens the picker */
+.tok{flex:0 0 auto;display:flex;align-items:center;gap:7px;height:38px;max-width:56%;padding:0 9px 0 5px;
+  border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--line);
+  font-weight:900;font-size:14px;cursor:pointer;transition:background .12s,border-color .12s}
+.tok:disabled{cursor:default}
+.tok:not(:disabled):hover{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.2)}
+.tok .sy{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tok:disabled .sy{padding-right:5px}
+.tok .chev{width:15px;height:15px;color:var(--dim);stroke-width:2.6}
+.tok.pick{padding:0 10px 0 15px;border-color:transparent;color:#04210f;
+  background:linear-gradient(180deg,#3df09b,#0fae66);box-shadow:0 6px 20px -6px rgba(40,224,140,.6)}
+.panel.sell .tok.pick{color:#2a0009;background:linear-gradient(180deg,#ff8398,#e0304f);box-shadow:0 6px 20px -6px rgba(255,77,106,.55)}
+.tok.pick .chev{color:inherit}
+.tok.pick:not(:disabled):hover{filter:brightness(1.07);border-color:transparent}
+.ti{width:26px;height:26px;flex:0 0 auto;border-radius:50%;overflow:hidden;display:grid;place-items:center;
+  font-size:12px;font-weight:900;color:#cfd6e4;background:linear-gradient(135deg,#2a3242,#171c27)}
+.ti img{width:100%;height:100%;object-fit:cover;display:block}
 .ti.sol{background:linear-gradient(135deg,#9945ff,#14f195);color:#fff;font-size:15px}
+.ti.lg{width:38px;height:38px;font-size:15px}
+.ti .ic{width:18px;height:18px}
 .presets{display:flex;gap:6px;margin-top:10px}
 .presets button{flex:1;height:30px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);
   font-weight:800;font-size:12px;cursor:pointer;font-variant-numeric:tabular-nums}
@@ -186,15 +208,29 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 .spin{width:13px;height:13px;flex:0 0 auto;border-radius:50%;border:2px solid rgba(255,255,255,.2);
   border-top-color:var(--mint2);animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-
-/* ---- paste a token ---- */
-#pick h1{margin:2px 0 4px;font-size:20px;font-weight:900;letter-spacing:-.02em}
 .sub{margin:0 0 14px;color:var(--dim);font-size:12.5px;line-height:1.5;font-weight:600}
-#pickIn{width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);
-  outline:none;font:700 16px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace}
-#pickIn:focus{border-color:rgba(40,224,140,.5)}
-#pickIn::placeholder{color:var(--dim);font-family:inherit;font-weight:600}
-#pickMsg{margin:10px 2px 0;font-size:12.5px;font-weight:700;color:var(--rose2)}
+
+/* ---- token lists: the picker, and the map's trending under the swap ---- */
+.plab{display:flex;align-items:center;gap:6px;margin:14px 8px 4px;font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--dim);font-weight:800}
+.plab .ic{width:14px;height:14px}
+.plab a{margin-left:auto;letter-spacing:0;text-transform:none;font-size:11.5px;text-decoration:none;color:var(--mint2)}
+.pnote{display:flex;align-items:center;gap:9px;margin:14px 8px;color:var(--dim);font-size:13px;font-weight:700;line-height:1.45}
+.trow{display:flex;align-items:center;gap:11px;width:100%;padding:9px 8px;border:0;border-radius:14px;
+  background:none;cursor:pointer;text-align:left}
+.trow:hover,.trow:focus-visible{background:var(--glass2);outline:none}
+.tm{flex:1;min-width:0}
+.tm b{display:flex;align-items:center;gap:4px;font-size:14.5px;font-weight:900;min-width:0}
+.tm b .sy{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm .vf{width:15px;height:15px;color:#7fd7ff}
+.tm small{display:block;margin-top:1px;color:var(--dim);font-size:11.5px;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tn{flex:0 0 auto;max-width:42%;text-align:right}
+.tn b{display:block;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tn small{display:block;font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--mint2)}.dn{color:var(--rose2)}
+.trow.cta .ti{background:rgba(40,224,140,.12);color:var(--mint2)}
+.panel.lite{padding:2px 6px 8px;background:rgba(255,255,255,.022);border-top-color:var(--line);box-shadow:none}
 
 /* ---- done ---- */
 #done{text-align:center;padding:24px 18px 18px}
@@ -219,18 +255,18 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 
 .fine{margin:2px 6px 0;text-align:center;color:var(--faint);font-size:11.5px;line-height:1.55;font-weight:600}
 
-/* ---- wallet sheet: a bottom sheet on a phone, a dialog on a desk ---- */
-#sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:end center}
-#sheet .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-#sheet .card{position:relative;width:100%;max-width:440px;max-height:88dvh;overflow-y:auto;
+/* ---- sheets: a bottom sheet on a phone, a dialog on a desk ---- */
+.sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:end center}
+.sheet .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.sheet .card{position:relative;width:100%;max-width:440px;max-height:88vh;max-height:88dvh;overflow-y:auto;
   padding:18px 18px calc(20px + var(--safe));border-radius:22px 22px 0 0;
   background:linear-gradient(180deg,rgba(19,23,32,.99),rgba(8,10,15,.99));
   border:1px solid var(--line);border-top-color:rgba(40,224,140,.3);box-shadow:0 -26px 70px rgba(0,0,0,.8);
   animation:up .32s cubic-bezier(.2,.9,.25,1)}
-@media (min-width:820px){#sheet{place-items:center}#sheet .card{border-radius:22px}}
+@media (min-width:820px){.sheet{place-items:center}.sheet .card{border-radius:22px}}
 @keyframes up{from{transform:translateY(60px);opacity:.4}to{transform:none;opacity:1}}
 .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 14px}
-#sheet h3{margin:0 0 4px;font-size:18px;font-weight:900;letter-spacing:-.02em}
+.sheet h3{margin:0 0 4px;font-size:18px;font-weight:900;letter-spacing:-.02em}
 .wopt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;margin-bottom:8px;border-radius:14px;
   border:1px solid var(--line);background:var(--glass);cursor:pointer;text-align:left;text-decoration:none;
   font-weight:900;font-size:14.5px}
@@ -242,8 +278,37 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   padding:12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);margin:10px 0 12px}
 #sMsg{margin:8px 2px 0;font-size:12.5px;font-weight:700;color:var(--rose2)}
 
+/* ---- the token picker: the search stays, the list scrolls ---- */
+#pk .card{display:flex;flex-direction:column;overflow:hidden;padding-bottom:0;
+  height:min(640px,86vh);height:min(640px,86dvh)}
+/* Full screen on a phone, so the search box sits above the keyboard rather
+   than under it. */
+@media (max-width:819px){
+  #pk{place-items:stretch}
+  #pk .card{max-width:none;max-height:none;height:100%;border-radius:0;border:0;animation:none;
+    padding-top:max(14px,env(safe-area-inset-top))}
+  #pk .grab{display:none}
+}
+.pkh{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pkh h3{margin:0}
+.xb{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--glass);
+  color:var(--dim);display:grid;place-items:center;cursor:pointer}
+.xb:hover{color:var(--ink);background:var(--glass2)}
+.srch{display:flex;align-items:center;gap:10px;height:50px;padding:0 14px;margin-top:12px;border-radius:14px;
+  border:1px solid var(--line);background:rgba(255,255,255,.045);cursor:text}
+.srch:focus-within{border-color:rgba(40,224,140,.5)}
+.srch .ic{color:var(--dim);width:18px;height:18px}
+#pkIn{flex:1;min-width:0;height:100%;padding:0;border:0;outline:none;background:none;font-size:16px;font-weight:700}
+#pkIn::placeholder{color:var(--dim);font-weight:600}
+.pchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.pchip{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px 0 4px;border-radius:999px;
+  border:1px solid var(--line);background:var(--glass);font-weight:800;font-size:12.5px;cursor:pointer}
+.pchip:hover{background:var(--glass2);border-color:rgba(40,224,140,.4)}
+.plist{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;margin:4px -12px 0;
+  padding:0 6px calc(16px + var(--safe))}
+
 @media (prefers-reduced-motion:reduce){
-  .spin{animation:none}#dBoost::after{display:none}#sheet .card{animation:none}
+  .spin{animation:none}#dBoost::after{display:none}.sheet .card{animation:none}
 }
 </style>
 </head>
@@ -256,6 +321,12 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 <symbol id="i-x" viewBox="0 0 24 24"><path d="M17.75 3h3.07l-6.72 7.68L22 21h-6.19l-4.85-6.34L5.41 21H2.34l7.19-8.21L1.95 3h6.35l4.38 5.79zM16.67 19.18h1.7L7.38 4.72H5.56z"/></symbol>
 <symbol id="i-telegram" viewBox="0 0 24 24"><path d="M21.9 4.3 18.7 19.5c-.2 1-.9 1.3-1.7.8l-4.8-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.9 8.9-8c.4-.3-.1-.5-.6-.2L6.5 13.3 1.8 11.8c-1-.3-1-1 .2-1.5L20.5 3.2c.9-.3 1.6.2 1.4 1.1z"/></symbol>
 <symbol id="i-bot" viewBox="0 0 24 24"><path d="M6.5 9h11A2.5 2.5 0 0 1 20 11.5v5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-5A2.5 2.5 0 0 1 6.5 9zM12 5.5V9M12 3.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM9 13.5v1M15 13.5v1M2 12.5v3M22 12.5v3"/></symbol>
+<symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2.8c.7 3.3 4 5.1 5.2 8.3 1.4 3.9-.9 8.4-5.2 8.4s-6.5-4.5-5.1-8.2c.6-1.7 1.7-2.9 2.7-3.7-.1 1.9.6 3.3 1.9 4 .4-2.9.1-5.9.5-8.8z"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7.5V6a1.5 1.5 0 0 0-1.5-1.5H5A2.5 2.5 0 0 0 2.5 7v10A2.5 2.5 0 0 0 5 19.5h14a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 19 7.5H5M20.5 11h-3.5a2 2 0 0 0 0 4h3.5"/></symbol>
+<symbol id="i-verified" viewBox="0 0 24 24"><path d="M12 2.5l2.4 1.8 3-.2.9 2.9 2.4 1.8-.9 2.9.9 2.9-2.4 1.8-.9 2.9-3-.2L12 21.5l-2.4-1.8-3 .2-.9-2.9-2.4-1.8.9-2.9-.9-2.9 2.4-1.8.9-2.9 3 .2zM8.5 12.2l2.4 2.4 4.6-4.8"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3.5a7 7 0 1 1 0 14 7 7 0 0 1 0-14zM15.6 15.6l4.9 4.9"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="M6.5 9.5 12 15l5.5-5.5"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
 </defs></svg>
 <div id="aura"><b></b><b></b><b></b></div>
 <div id="grain"></div>
@@ -267,16 +338,9 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 </header>
 
 <main class="wrap">
-  <section class="panel" id="pick" hidden>
-    <h1>Swap any Solana token</h1>
-    <p class="sub">Paste a token's contract address. Jupiter finds the best route; your own wallet signs.</p>
-    <input id="pickIn" placeholder="Token address" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text">
-    <p id="pickMsg" hidden></p>
-  </section>
-
   <section class="hero" id="hero" hidden>
     <div class="hrow">
-      <span class="av" id="hIm">?</span>
+      <span class="av" id="hIm" data-l="?">?</span>
       <div class="who"><h1 id="hSym">—</h1><div class="nm" id="hName"></div></div>
       <div class="px"><b id="hPx">—</b><span id="hChg"></span></div>
     </div>
@@ -299,14 +363,14 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
       <div class="lab"><span>You pay</span><button class="bal" id="bal" type="button" hidden></button></div>
       <div class="line">
         <input id="amt" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to pay">
-        <span class="tok" id="inTok"></span>
+        <button class="tok" id="inTok" type="button"></button>
       </div>
       <div class="presets" id="presets"></div>
     </div>
     <button id="flip" type="button" aria-label="Switch between buy and sell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M3 14l4 4 4-4M17 20V6M13 10l4-4 4 4"/></svg></button>
     <div class="box">
       <div class="lab"><span>You get</span><span class="usd" id="outUsd"></span></div>
-      <div class="line"><div id="out" class="wait">0</div><span class="tok" id="outTok"></span></div>
+      <div class="line"><div id="out" class="wait">0</div><button class="tok" id="outTok" type="button"></button></div>
     </div>
     <div class="kvs" id="kvs" hidden>
       <div class="kv"><span>Rate</span><b id="kRate"></b></div>
@@ -318,6 +382,12 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     </div>
     <p id="msg" aria-live="polite" hidden></p>
     <button id="go" type="button">Connect wallet</button>
+  </section>
+
+  <!-- the map's trending, one tap from the swap while nothing is picked -->
+  <section class="panel lite" id="trend" hidden>
+    <div class="plab"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span id="trLab">Trending on the map</span><a href="/?source=trending">Open the map →</a></div>
+    <div id="trList"></div>
   </section>
 
   <section class="panel" id="done" hidden>
@@ -337,7 +407,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   </p>
 </main>
 
-<div id="sheet" hidden>
+<div id="sheet" class="sheet" hidden>
   <div class="bg" id="sBg"></div>
   <div class="card" role="dialog" aria-modal="true" aria-labelledby="sTitle">
     <div class="grab"></div>
@@ -345,6 +415,17 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     <p class="sub" id="sSub"></p>
     <div id="sBody"></div>
     <p id="sMsg" hidden></p>
+  </div>
+</div>
+
+<div id="pk" class="sheet" hidden>
+  <div class="bg" id="pkBg"></div>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+    <div class="grab"></div>
+    <div class="pkh"><h3 id="pkTitle">Select a token</h3><button class="xb" id="pkX" type="button" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <label class="srch"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><input id="pkIn" type="text" placeholder="Search a name or paste an address" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search tokens"></label>
+    <div class="pchips" id="pkChips" hidden></div>
+    <div class="plist" id="pkList"></div>
   </div>
 </div>
 
@@ -362,6 +443,18 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   var REFRESH_MS = 12000;   // a quote this old is refreshed while it sits on screen
   var FRESH_MS = 20000;     // and one this old is never signed without re-asking
   var LAST = 'pb.swap.wallet';
+  /* The picker's one-tap row: what most people come to trade. Under it sit
+     the map's own Trending list and, once connected, the visitor's wallet. */
+  var POPULAR = [
+    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+    'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', // JUP
+    'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', // BONK
+    'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', // WIF
+    '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN', // TRUMP
+    '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', // POPCAT
+  ];
+  /* mints one Jupiter search answers at once (measured: 100 in, 100 out) */
+  var MANY = 100;
 
   var $ = function (id) { return document.getElementById(id); };
   /* one icon from the sprite at the top of the body */
@@ -372,6 +465,10 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     set: function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
   };
   function isMint(s) { return typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s); }
+  function evmAddr(s) { return typeof s === 'string' && /^0x[0-9a-fA-F]{40}$/.test(s); }
+  /* rewrite an element only when what it shows has changed, so a quote
+     landing every few seconds does not reload the token's picture */
+  function setHtml(el, h) { if (el._h !== h) { el._h = h; el.innerHTML = h; } }
 
   /* ------------------------------------------------ amounts, without floats */
   /* Money is integers in base units end to end; a float only ever reaches the
@@ -392,6 +489,11 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     return (neg ? '-' : '') + w.toString() + (f ? '.' + f : '');
   }
   function maxSpend(bal, reserve) { return bal > reserve ? bal - reserve : 0n; }
+  function sumAmounts(accts) {
+    var sum = 0n;
+    (Array.isArray(accts) ? accts : []).forEach(function (a) { try { sum += BigInt((a && a.amount) || 0); } catch (e) { /* not a number */ } });
+    return sum;
+  }
 
   function trimFix(n, d) { return n.toFixed(d).replace(/\.?0+$/, ''); }
   function fmtAmt(v) {
@@ -487,8 +589,109 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     var m = String(msg || '');
     if (/minimum \$?5 for gasless/i.test(m)) return 'Your wallet needs a little SOL for the network fee — or trade $5 or more and Jupiter covers it.';
     if (/insufficient/i.test(m)) return side === 'sell' ? 'You do not hold that much $' + sym + '.' : 'Not enough SOL for this amount plus network fees.';
-    if (/route/i.test(m)) return 'No route for this trade right now — the pool may be too thin.';
+    if (/route|failed to get quotes/i.test(m)) return 'No route can fill this trade right now — try a smaller amount; the pool may be too thin.';
     return m.slice(0, 160);
+  }
+
+  /* ------------------------------------------------------- token art */
+  /* Art Jupiter lists lives wherever the token's creator put it. Only https
+     is drawn, and our own signed /api/img passes as it is.
+
+     A third of it is IPFS, and an IPFS picture is the same picture on every
+     gateway — the gateway is what fails. Measured for WIF's icon: its own
+     nftstorage.link redirects to dweb.link, which answers 429, as ipfs.io
+     does (one operator, one limiter); filebase and pinata serve it. So the
+     gateways known to be gone or limited are read from filebase, and any
+     IPFS picture that fails is asked of the next gateway before it becomes
+     a letter (the same order the server's altGateways uses). */
+  var IPFS_GW = ['https://ipfs.filebase.io/ipfs/', 'https://gateway.pinata.cloud/ipfs/'];
+  var IPFS_DEAD = /^https:\/\/(?:[^\/]+\.)?(?:cf-ipfs\.com|cloudflare-ipfs\.com|nftstorage\.link|w3s\.link|dweb\.link)(?:\/|$)/i;
+  /* the content id (and path) of an IPFS URL, in whichever form it came */
+  function ipfsPath(u) {
+    u = String(u == null ? '' : u);
+    var m = /^ipfs:\/\/(?:ipfs\/)?([A-Za-z0-9]{20,})(\/[^\s"'<>\\?#]*)?$/i.exec(u)
+      || /^https:\/\/[^\/\s]+\/ipfs\/([A-Za-z0-9]{20,})(\/[^\s"'<>\\?#]*)?/i.exec(u)
+      || /^https:\/\/([a-z0-9]{20,})\.ipfs\.[a-z0-9.-]+(\/[^\s"'<>\\?#]*)?/i.exec(u);
+    return m ? m[1] + (m[2] && m[2] !== '/' ? m[2] : '') : '';
+  }
+  function iconSrc(u) {
+    u = String(u == null ? '' : u).trim();
+    if (/^\/api\/img\?[^\s"'<>\\]*$/.test(u)) return u;
+    var p = ipfsPath(u);
+    if (p && (/^ipfs:/i.test(u) || IPFS_DEAD.test(u))) u = IPFS_GW[0] + p;
+    return u.length < 2048 && /^https:\/\/[^\s"'<>\\]+$/i.test(u) ? u : '';
+  }
+  /* the gateway to ask after this one failed, or '' when there is none left */
+  function nextSrc(src) {
+    var p = ipfsPath(src);
+    if (!p) return '';
+    for (var i = 0; i < IPFS_GW.length; i++) if (src.indexOf(IPFS_GW[i]) === 0) return IPFS_GW[i + 1] ? IPFS_GW[i + 1] + p : '';
+    return IPFS_GW[0] + p;
+  }
+  /* Jupiter writes some tickers with their own dollar sign ("$WIF") */
+  function tsym(s) { return String(s == null ? '' : s).replace(/^\$+/, '').trim().slice(0, 24); }
+  function initial(s) { return tsym(s).charAt(0).toUpperCase() || '?'; }
+  /* where a picture moved to after a failure, and pictures that never loaded */
+  var SUB = {}, BAD = {};
+  function live(src) {
+    for (var n = 0; src && SUB[src] && n < 4; n++) src = SUB[src];
+    return src && !BAD[src] ? src : '';
+  }
+  function avatar(src, letter, cls) {
+    src = live(iconSrc(src));
+    var l = esc(letter);
+    return '<span class="ti' + (cls ? ' ' + cls : '') + '" data-l="' + l + '">'
+      + (src ? '<img alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" src="' + esc(src) + '">' : l) + '</span>';
+  }
+  /* a picture that fails is asked of the next gateway, then becomes the letter it stood for */
+  document.addEventListener('error', function (e) {
+    var t = e.target, p = t && t.parentNode;
+    if (!t || t.tagName !== 'IMG' || !p || !p.getAttribute || p.getAttribute('data-l') == null) return;
+    var src = t.getAttribute('src') || '', next = nextSrc(src);
+    if (next && !SUB[src] && !BAD[next]) { SUB[src] = next; t.setAttribute('src', next); return; }
+    BAD[src] = 1;
+    p.textContent = p.getAttribute('data-l') || '?';
+    if (p.id === 'hIm' || (p.parentNode && p.parentNode.classList && p.parentNode.classList.contains('tok'))) setTimeout(render, 0);
+  }, true);
+
+  /* One shape for a row in any list, whichever source it came from. */
+  function fromJup(j) {
+    var s = (j && j.stats24h) || {};
+    return {
+      mint: String(j.id), sym: tsym(j.symbol), name: String(j.name || '').slice(0, 60),
+      icon: j.icon || '', dec: j.decimals != null && isFinite(+j.decimals) ? +j.decimals : null,
+      mcap: +j.mcap || 0, price: +j.usdPrice || 0,
+      chg: s.priceChange != null && isFinite(+s.priceChange) ? +s.priceChange : null,
+      verified: j.isVerified === true, jt: j,
+    };
+  }
+  /* a row of the map's Trending list, as /api/ads hands it to the rail */
+  function fromFill(f) {
+    return {
+      mint: String(f.mint), sym: tsym(f.sym), name: '', icon: f.img || '', dec: null,
+      mcap: 0, price: 0, chg: f.pc != null && isFinite(+f.pc) ? +f.pc : null,
+      rank: +f.rank > 0 ? Math.round(+f.rank) : null, verified: false, jt: null,
+    };
+  }
+  function rowHtml(r, i) {
+    if (r.raw) {
+      return '<button type="button" class="trow" data-i="' + i + '">' + avatar('', '?', 'lg')
+        + '<span class="tm"><b><span class="sy">Use this address</span></b><small>' + esc(r.mint) + '</small></span></button>';
+    }
+    var sub = [];
+    if (r.bal != null) sub.push(esc(fmtAmt(r.bal)) + ' ' + esc(r.sym));
+    else if (r.rank) sub.push('#' + r.rank + ' trending');
+    if (r.name && r.name.toLowerCase() !== r.sym.toLowerCase()) sub.push(esc(r.name));
+    if (r.bal == null && r.mcap > 0) sub.push(esc(fmtUsd(r.mcap)));
+    var right = '';
+    if (r.usd != null) right += '<b>' + esc(fmtUsd(r.usd)) + '</b>';
+    else if (r.price > 0) right += '<b>' + esc(fmtPrice(r.price)) + '</b>';
+    if (r.chg != null) right += '<small class="' + (r.chg >= 0 ? 'up' : 'dn') + '">' + esc(fmtPct(r.chg)) + '</small>';
+    return '<button type="button" class="trow" data-i="' + i + '">' + avatar(r.icon, initial(r.sym), 'lg')
+      + '<span class="tm"><b><span class="sy">' + esc(r.sym ? '$' + r.sym : short(r.mint)) + '</span>'
+      + (r.verified ? ic('verified', 'vf') : '') + '</b>'
+      + '<small>' + (sub.join(' · ') || esc(short(r.mint))) + '</small></span>'
+      + (right ? '<span class="tn">' + right + '</span>' : '') + '</button>';
   }
 
   /* --------------------------------------------------------- wallets */
@@ -530,13 +733,14 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
 
   /* ------------------------------------------------------------ state */
   var S = {
-    mint: '', side: 'buy', dec: null, tok: null, jt: null,
+    mint: '', side: 'buy', dec: null, tok: null, jt: null, pre: null,
     cfg: {}, feeOff: false,
-    solBal: null, tokBal: null,
+    solBal: null, tokBal: null, hold: null, holdAt: 0,
     order: null, orderKey: '', orderAt: 0, orderFee: false,
-    quoting: false, busy: '', err: '', errKey: '', note: '', noteBad: false,
+    quoting: false, busy: '', err: '', errKey: '', note: '', noteBad: false, view: '',
   };
-  var sym = function () { return (S.tok && S.tok.sym) || (S.jt && S.jt.symbol) || 'token'; };
+  var sym = function () { return tsym((S.tok && S.tok.sym) || (S.jt && S.jt.symbol) || (S.pre && S.pre.sym)) || 'token'; };
+  function holdOf(mint) { return S.hold ? sumAmounts(S.hold[mint]) : null; }
 
   /* one Jupiter call, falling over to the spare host on a network error or a 5xx */
   function jup(path, opts) {
@@ -557,27 +761,50 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     }
     return attempt();
   }
+  /* several mints, one search: names, decimals, prices and art for a whole list */
+  function lookup(mints) {
+    mints = mints.filter(isMint).slice(0, MANY);
+    if (!mints.length) return Promise.resolve({});
+    return jup('/ultra/v1/search?query=' + encodeURIComponent(mints.join(','))).then(function (list) {
+      var by = {};
+      (Array.isArray(list) ? list : []).forEach(function (j) { if (j && typeof j.id === 'string') by[j.id] = j; });
+      return by;
+    });
+  }
 
   /* ------------------------------------------------------------- views */
   function view(v) {
-    $('pick').hidden = v !== 'pick';
-    $('hero').hidden = v === 'pick';
+    S.view = v;
+    $('hero').hidden = !S.mint;
     $('swap').hidden = v !== 'swap';
     $('done').hidden = v !== 'done';
-    S.view = v;
+    renderTrend();
   }
 
+  /* the token's picture: ours first (signed, cached at our edge), then Jupiter's */
+  function tokImg() {
+    var t = S.tok || {}, c = [t.img, S.jt && S.jt.icon, S.pre && S.pre.icon];
+    for (var i = 0; i < c.length; i++) { var u = live(iconSrc(c[i])); if (u) return u; }
+    return '';
+  }
+  var CHEV = ic('chev', 'chev');
   function tokPill(isSol) {
-    if (isSol) return '<span class="ti sol">◎</span><span>SOL</span>';
-    var t = S.tok || {};
-    var im = typeof t.img === 'string' && t.img.indexOf('/api/img?') === 0
-      ? '<img class="ti" alt="" src="' + esc(t.img) + '">'
-      : '<span class="ti">' + esc(sym().charAt(0)) + '</span>';
-    return im + '<span>' + esc(sym()) + '</span>';
+    if (isSol) return '<span class="ti sol">◎</span><span class="sy">SOL</span>';
+    if (!S.mint) return '<span class="sy">Select token</span>' + CHEV;
+    var src = tokImg(), l = esc(initial(sym()));
+    return '<span class="ti" data-l="' + l + '">' + (src ? '<img alt="" decoding="async" referrerpolicy="no-referrer" src="' + esc(src) + '">' : l) + '</span>'
+      + '<span class="sy">' + esc(sym()) + '</span>' + CHEV;
+  }
+  /* SOL is fixed; the token side opens the picker */
+  function pill(el, isSol) {
+    setHtml(el, tokPill(isSol));
+    el.disabled = isSol;
+    el.classList.toggle('pick', !isSol && !S.mint);
+    el.setAttribute('aria-label', isSol ? 'SOL' : S.mint ? 'Change token — now $' + sym() : 'Select a token');
   }
 
   function renderHero() {
-    var t = S.tok || {}, j = S.jt || {}, s24 = j.stats24h || {};
+    var t = S.tok || {}, j = S.jt || {}, p = S.pre || {}, s24 = j.stats24h || {};
     /* The price and its move come from one source. Jupiter's price is the
        one being traded against, so its 24h change leads; ours is the
        fallback. Mixing them printed our +1,060,591% (a token hours old,
@@ -586,16 +813,12 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     var hero = $('hero');
     hero.classList.toggle('up', chg != null && chg >= 0);
     hero.classList.toggle('dn', chg != null && chg < 0);
-    $('hSym').textContent = S.tok || S.jt ? '$' + sym() : '…';
-    $('hName').textContent = t.name || j.name || '';
-    var im = $('hIm');
-    if (typeof t.img === 'string' && t.img.indexOf('/api/img?') === 0) {
-      if (im.tagName !== 'IMG') { var n = document.createElement('img'); n.className = 'av'; n.id = 'hIm'; n.alt = ''; im.replaceWith(n); im = n; }
-      if (im.getAttribute('src') !== t.img) im.src = t.img;
-    } else if (im.tagName === 'IMG') {
-      var sp = document.createElement('span'); sp.className = 'av'; sp.id = 'hIm'; im.replaceWith(sp); im = sp;
-    }
-    if (im.tagName !== 'IMG') im.textContent = sym().charAt(0).toUpperCase();
+    $('hSym').textContent = S.tok || S.jt || S.pre ? '$' + sym() : '…';
+    $('hName').textContent = t.name || j.name || p.name || '';
+    var im = $('hIm'), src = tokImg(), l = initial(sym()), cur = im.querySelector('img');
+    im.setAttribute('data-l', l);
+    if (src) { if (!cur || cur.getAttribute('src') !== src) im.innerHTML = '<img alt="" decoding="async" referrerpolicy="no-referrer" src="' + esc(src) + '">'; }
+    else if (cur || im.textContent !== l) im.textContent = l;
     $('hPx').textContent = fmtPrice(j.usdPrice || t.price);
     $('hChg').textContent = chg != null ? fmtPct(chg) + ' 24h' : '';
     $('sMcap').textContent = fmtUsd(t.mcap || j.mcap);
@@ -652,33 +875,36 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     $('tSell').classList.toggle('on', sell);
     $('tBuy').setAttribute('aria-selected', String(!sell));
     $('tSell').setAttribute('aria-selected', String(sell));
-    $('inTok').innerHTML = tokPill(!sell);
-    $('outTok').innerHTML = tokPill(sell);
+    pill($('inTok'), !sell);
+    pill($('outTok'), sell);
 
     /* the wallet button */
     var wb = $('wBtn');
     if (ACCT) {
-      var ic = W && walletIcon(W);
+      var wi = W && walletIcon(W);
       wb.className = 'on';
-      wb.innerHTML = (ic ? '<img alt="" src="' + esc(ic) + '">' : '<span class="dot"></span>') + esc(short(ACCT.address));
+      setHtml(wb, (wi ? '<img alt="" src="' + esc(wi) + '">' : '<span class="dot"></span>') + esc(short(ACCT.address)));
     } else {
       wb.className = '';
-      wb.textContent = 'Connect';
+      setHtml(wb, 'Connect');
     }
 
     /* balance and presets */
     var bal = $('bal');
-    if (ACCT && (sell ? S.tokBal != null && S.dec != null : S.solBal != null)) {
+    if (ACCT && S.mint && (sell ? S.tokBal != null && S.dec != null : S.solBal != null)) {
       bal.hidden = false;
-      bal.innerHTML = 'Balance <b>' + esc(fmtAmt(sell ? fromUnits(S.tokBal, S.dec) : fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>';
+      setHtml(bal, 'Balance <b>' + esc(fmtAmt(sell ? fromUnits(S.tokBal, S.dec) : fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>');
+    } else if (ACCT && !sell && S.solBal != null) {
+      bal.hidden = false;
+      setHtml(bal, 'Balance <b>' + esc(fmtAmt(fromUnits(S.solBal, SOL_DEC))) + '</b><em>MAX</em>');
     } else bal.hidden = true;
     var pre = sell
       ? [['25%', 25], ['50%', 50], ['100%', 100]]
       : [['0.1', '0.1'], ['0.25', '0.25'], ['0.5', '0.5'], ['1 SOL', '1']];
     var canPct = ACCT && S.tokBal != null && S.tokBal > 0n && S.dec != null;
-    $('presets').innerHTML = pre.map(function (p) {
+    setHtml($('presets'), pre.map(function (p) {
       return '<button type="button" data-v="' + esc(p[1]) + '"' + (sell && !canPct ? ' disabled' : '') + '>' + esc(p[0]) + '</button>';
-    }).join('');
+    }).join(''));
 
     renderQuote();
     renderGo();
@@ -732,6 +958,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     var verb = (S.side === 'buy' ? 'Buy $' : 'Sell $') + sym();
     var label = verb, dis = false, spin = false;
     if (S.busy) { label = S.busy; dis = true; spin = true; }
+    else if (!S.mint) { label = S.side === 'sell' ? 'Choose a token to sell' : 'Choose a token to buy'; }
     else if (!ACCT) { label = 'Connect wallet'; }
     else if (!w) { label = S.side === 'sell' && S.dec == null ? 'Loading token…' : 'Enter an amount'; dis = true; }
     else if (insufficient(w)) { label = S.side === 'buy' ? 'Not enough SOL' : 'Not enough $' + sym(); dis = true; }
@@ -740,7 +967,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     else if (!o.transaction) { dis = true; spin = S.quoting; }
     go.disabled = dis;
     $('amt').disabled = !!S.busy;
-    go.innerHTML = (spin ? '<span class="spin"></span>' : '') + '<span>' + esc(label) + '</span>';
+    setHtml(go, (spin ? '<span class="spin"></span>' : '') + '<span>' + esc(label) + '</span>');
   }
 
   /* ------------------------------------------------------------- quotes */
@@ -756,7 +983,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     clearTimeout(qTimer);
     if (qCtl) { try { qCtl.abort(); } catch (e) { /* done already */ } qCtl = null; }
     var w = want();
-    if (!w) { S.order = null; S.orderKey = ''; S.quoting = false; S.err = ''; render(); return Promise.resolve(null); }
+    if (!w) { qSeq++; S.order = null; S.orderKey = ''; S.quoting = false; S.err = ''; render(); return Promise.resolve(null); }
     var my = ++qSeq;
     var ctl = qCtl = window.AbortController ? new AbortController() : null;
     var p = { inputMint: w.inputMint, outputMint: w.outputMint, amount: w.amount };
@@ -805,12 +1032,13 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
       jup('/ultra/v1/holdings/' + encodeURIComponent(who)).then(function (h) {
         if (!ACCT || ACCT.address !== who || !h || h.error) return;
         try { S.solBal = BigInt(h.amount || 0); } catch (e) { S.solBal = null; }
-        var list = (h.tokens && h.tokens[S.mint]) || [];
-        var sum = 0n;
-        list.forEach(function (a) { try { sum += BigInt(a.amount || 0); } catch (e) { /* skip */ } });
-        S.tokBal = sum;
+        S.hold = h.tokens && typeof h.tokens === 'object' ? h.tokens : {};
+        S.holdAt = Date.now();
+        var list = (S.mint && S.hold[S.mint]) || [];
+        S.tokBal = S.mint ? sumAmounts(list) : null;
         if (S.dec == null && list[0] && list[0].decimals != null) S.dec = Number(list[0].decimals);
         render();
+        if (!$('pk').hidden) loadMine();
       }).catch(function () { /* the balance line just stays hidden */ });
     }, delay || 0);
   }
@@ -828,23 +1056,24 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   function setAccount(w, a) {
     if (offEvents) { try { offEvents(); } catch (e) { /* gone */ } offEvents = null; }
     W = w; ACCT = a;
-    S.solBal = null; S.tokBal = null;
+    clearHoldings();
     var ev = w.features['standard:events'];
     if (ev && ev.on) {
       try {
         offEvents = ev.on('change', function (p) {
           if (!p || !p.accounts) return;
           var next = p.accounts.filter(function (x) { return isMint(x.address); })[0];
-          if (!next) forget(); else if (!ACCT || next.address !== ACCT.address) { ACCT = next; S.solBal = S.tokBal = null; afterAccount(); }
+          if (!next) forget(); else if (!ACCT || next.address !== ACCT.address) { ACCT = next; clearHoldings(); afterAccount(); }
         });
       } catch (e) { /* events are optional */ }
     }
     afterAccount();
   }
+  function clearHoldings() { S.solBal = null; S.tokBal = null; S.hold = null; PK.mine = null; PK.mineKey = ''; }
   function afterAccount() { S.order = null; S.orderKey = ''; S.note = ''; render(); loadBalances(); quote(); }
   function forget() {
     if (offEvents) { try { offEvents(); } catch (e) { /* gone */ } offEvents = null; }
-    W = null; ACCT = null; S.solBal = S.tokBal = null; S.order = null; S.orderKey = '';
+    W = null; ACCT = null; clearHoldings(); S.order = null; S.orderKey = '';
     render(); quote();
   }
   function disconnect() {
@@ -888,8 +1117,8 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
       wallets.forEach(function (w) {
         var b = document.createElement('button');
         b.type = 'button'; b.className = 'wopt';
-        var ic = walletIcon(w);
-        b.innerHTML = (ic ? '<img alt="" src="' + esc(ic) + '">' : '<span class="ti">' + esc(String(w.name || '?').charAt(0)) + '</span>')
+        var wi = walletIcon(w);
+        b.innerHTML = (wi ? '<img alt="" src="' + esc(wi) + '">' : '<span class="ti">' + esc(String(w.name || '?').charAt(0)) + '</span>')
           + '<span>' + esc(w.name) + '</span>' + (w.name === last ? '<small>last used</small>' : '');
         b.onclick = function () {
           b.disabled = true; msg.hidden = true;
@@ -919,6 +1148,186 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   }
   function closeSheet() { $('sheet').hidden = true; }
 
+  /* ---------------------------------------------------------- the picker */
+  /* Search goes straight to Jupiter from the browser (its CORS allows us),
+     so it costs the site no request. The default lists: popular tokens, the
+     map's Trending (the rail's own warm list from /api/ads, named and priced
+     by one Jupiter search), and the wallet's tokens priced the same way —
+     tokens Jupiter does not know and dust under a cent are left out, which
+     is where airdropped junk lands. */
+  var PK = { rows: [], q: '', seq: 0, t: 0, res: null, msg: '',
+    pop: null, popBusy: false, trend: null, trendAt: 0, trendBusy: false, trendSrc: 'map', mine: null, mineKey: '' };
+
+  function loadPopular() {
+    if (PK.pop || PK.popBusy) return;
+    PK.popBusy = true;
+    lookup(POPULAR).then(function (by) {
+      PK.pop = POPULAR.filter(function (m) { return by[m]; }).map(function (m) { return fromJup(by[m]); });
+    }, function () { /* the chips stay away; the next open asks again */ }).then(function () { PK.popBusy = false; renderPick(); });
+  }
+
+  function loadTrend() {
+    if (PK.trendBusy || (PK.trend && Date.now() - PK.trendAt < 60000)) return;
+    PK.trendBusy = true;
+    fetch('/api/ads').then(function (r) { return r.json(); }).then(function (j) {
+      var rows = ((j && j.fill) || []).filter(function (f) {
+        return f && (f.chain || 'solana') === 'solana' && isMint(f.mint) && f.mint !== SOL;
+      }).slice(0, 14).map(fromFill);
+      if (!rows.length) throw new Error('no trending rows');
+      PK.trendSrc = 'map';
+      return rows;
+    }).catch(function () {
+      /* the map's list did not come: Jupiter's own trending stands in, said so */
+      return jup('/tokens/v2/toptrending/1h?limit=20').then(function (list) {
+        PK.trendSrc = 'jup';
+        return (Array.isArray(list) ? list : []).filter(function (j) { return j && isMint(j.id) && j.id !== SOL; }).slice(0, 14).map(fromJup);
+      });
+    }).then(function (rows) {
+      PK.trend = rows; PK.trendAt = Date.now();
+      renderLists();
+      var need = rows.filter(function (r) { return !r.jt; });
+      if (!need.length) return null;
+      return lookup(need.map(function (r) { return r.mint; })).then(function (by) {
+        need.forEach(function (r) {
+          var j = by[r.mint];
+          if (!j) return;
+          var x = fromJup(j);
+          r.name = x.name; r.dec = x.dec; r.mcap = x.mcap; r.price = x.price; r.verified = x.verified; r.jt = j;
+          if (x.chg != null) r.chg = x.chg;   // the move from the same source as the price beside it
+          if (!r.icon) r.icon = x.icon;
+        });
+        renderLists();
+      });
+    }).catch(function () { if (!PK.trend) PK.trend = []; renderLists(); })
+      .then(function () { PK.trendBusy = false; });
+  }
+
+  function loadMine() {
+    if (!ACCT || !S.hold) return;
+    var key = ACCT.address + '|' + S.holdAt;
+    if (PK.mineKey === key) return;
+    PK.mineKey = key;
+    var held = [];
+    Object.keys(S.hold).forEach(function (m) {
+      if (m === SOL || !isMint(m)) return;
+      var accts = Array.isArray(S.hold[m]) ? S.hold[m] : [];
+      if (accts.some(function (a) { return a && a.isFrozen; })) return;   // a frozen account cannot be sold
+      var sum = sumAmounts(accts), dec = accts[0] && accts[0].decimals != null ? Number(accts[0].decimals) : null;
+      if (sum > 0n && dec != null) held.push({ mint: m, raw: sum, dec: dec, ex: accts.some(function (a) { return a && a.excludeFromNetWorth; }) });
+    });
+    /* what Jupiter counts toward net worth first, in case there are more than one search holds */
+    held.sort(function (a, b) { return (a.ex ? 1 : 0) - (b.ex ? 1 : 0); });
+    held = held.slice(0, MANY);
+    if (!held.length) { PK.mine = []; renderLists(); return; }
+    lookup(held.map(function (h) { return h.mint; })).then(function (by) {
+      if (PK.mineKey !== key) return;
+      var rows = [];
+      held.forEach(function (h) {
+        var j = by[h.mint];
+        if (!j) return;
+        var r = fromJup(j);
+        r.dec = h.dec;
+        r.bal = fromUnits(h.raw, h.dec);
+        r.usd = r.price > 0 ? Number(r.bal) * r.price : null;
+        if (r.usd != null && r.usd < 0.01) return;
+        rows.push(r);
+      });
+      rows.sort(function (a, b) { return (b.usd || 0) - (a.usd || 0); });
+      PK.mine = rows.slice(0, 40);
+      renderLists();
+    }, function () { if (PK.mineKey === key) { PK.mineKey = ''; PK.mine = PK.mine || []; renderLists(); } });
+  }
+
+  function listHtml(label, icon, rows, empty) {
+    var h = '<div class="plab">' + ic(icon) + esc(label) + '</div>';
+    if (rows && rows.length) return h + rows.map(function (r) { return rowHtml(r, PK.rows.push(r) - 1); }).join('');
+    return empty ? h + '<p class="pnote">' + empty + '</p>' : '';
+  }
+  function renderPick() {
+    if ($('pk').hidden) return;
+    PK.rows = [];
+    var sell = S.side === 'sell', q = PK.q, html = '';
+    var chips = $('pkChips');
+    chips.hidden = !!q || sell || !(PK.pop && PK.pop.length);
+    if (!chips.hidden) {
+      chips.innerHTML = PK.pop.map(function (r) {
+        return '<button type="button" class="pchip" data-i="' + (PK.rows.push(r) - 1) + '">' + avatar(r.icon, initial(r.sym)) + '<span>' + esc(r.sym) + '</span></button>';
+      }).join('');
+    }
+    if (q) {
+      if (PK.msg) html = '<p class="pnote">' + esc(PK.msg) + '</p>';
+      else if (!PK.res) html = '<p class="pnote"><span class="spin"></span>Searching…</p>';
+      else html = PK.res.map(function (r) { return rowHtml(r, PK.rows.push(r) - 1); }).join('');
+    } else {
+      var mine = ACCT
+        ? listHtml('In your wallet', 'wallet', PK.mine, PK.mine ? 'No tokens in this wallet yet.' : '<span class="spin"></span>Reading your wallet…')
+        : sell ? '<div class="plab">' + ic('wallet') + 'In your wallet</div><button type="button" class="trow cta" data-act="connect">'
+          + '<span class="ti lg">' + ic('wallet') + '</span><span class="tm"><b><span class="sy">Connect a wallet</span></b>'
+          + '<small>to pick from the tokens you hold</small></span></button>' : '';
+      var trend = listHtml(PK.trendSrc === 'jup' ? 'Trending on Jupiter' : 'Trending on the map', 'flame', PK.trend,
+        PK.trend ? 'Nothing trending right now.' : '<span class="spin"></span>Loading…');
+      html = sell ? mine + trend : trend + mine;
+    }
+    $('pkList').innerHTML = html;
+  }
+  /* the same list under the swap, while nothing is picked */
+  function renderTrend() {
+    var on = S.view === 'swap' && !S.mint && !!(PK.trend && PK.trend.length);
+    $('trend').hidden = !on;
+    if (!on) return;
+    $('trLab').textContent = PK.trendSrc === 'jup' ? 'Trending on Jupiter' : 'Trending on the map';
+    setHtml($('trList'), PK.trend.slice(0, 8).map(function (r, i) { return rowHtml(r, i); }).join(''));
+  }
+  function renderLists() { renderPick(); renderTrend(); }
+
+  function openPicker() {
+    if (S.busy) return;
+    clearTimeout(PK.t);
+    PK.q = ''; PK.res = null; PK.msg = ''; PK.seq++;
+    $('pkIn').value = '';
+    $('pkTitle').textContent = S.side === 'sell' ? 'Choose a token to sell' : 'Choose a token to buy';
+    $('pk').hidden = false;
+    document.documentElement.classList.add('lock');
+    loadPopular(); loadTrend(); loadMine();
+    renderPick();
+    $('pkList').scrollTop = 0;
+    if (!isPhone()) setTimeout(function () { try { $('pkIn').focus(); } catch (e) { /* gone */ } }, 30);
+  }
+  function closePicker() {
+    if ($('pk').hidden) return;
+    $('pk').hidden = true;
+    document.documentElement.classList.remove('lock');
+    clearTimeout(PK.t); PK.seq++;
+  }
+
+  function search(q) {
+    var my = ++PK.seq;
+    jup('/ultra/v1/search?query=' + encodeURIComponent(q)).then(function (list) {
+      if (my !== PK.seq || PK.q !== q) return;
+      var rows = (Array.isArray(list) ? list : []).filter(function (j) { return j && isMint(j.id) && j.id !== SOL; }).slice(0, 30).map(fromJup);
+      /* an address Jupiter has not indexed yet (a coin minutes old) can still be traded */
+      if (isMint(q) && q !== SOL && !rows.some(function (r) { return r.mint === q; })) rows.unshift({ mint: q, raw: true });
+      PK.res = rows;
+      PK.msg = rows.length ? '' : q === SOL || /^(w?sol|solana)$/i.test(q)
+        ? 'SOL is what you pay with. Pick the token you want for it.'
+        : 'No token found for “' + q.slice(0, 44) + '”.';
+      renderPick();
+    }).catch(function () {
+      if (my !== PK.seq || PK.q !== q) return;
+      if (isMint(q) && q !== SOL) { PK.res = [{ mint: q, raw: true }]; PK.msg = ''; }
+      else { PK.res = []; PK.msg = 'Search is not answering right now. Paste the token’s address instead.'; }
+      renderPick();
+    });
+  }
+
+  function choose(r) {
+    if (!r || !isMint(r.mint) || r.mint === SOL) return;
+    closePicker();
+    if (r.mint === S.mint) return;
+    try { history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(r.mint) + (S.side === 'sell' ? '&side=sell' : '')); } catch (e) { /* a sandboxed frame */ }
+    start(r.mint, r.jt || null, r.raw ? null : r);
+  }
+
   /* --------------------------------------------------------- the trade */
   function sign(ord) {
     var bytes = b64ToBytes(ord.transaction);
@@ -946,6 +1355,7 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   }
 
   function trade() {
+    if (!S.mint) { openPicker(); return; }
     if (!ACCT || !W) { openSheet(); return; }
     var w = want(), o = S.order;
     if (S.busy || !w || !o || S.orderKey !== keyOf(w) || !o.transaction || S.err || insufficient(w)) return;
@@ -1044,7 +1454,9 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
     $('amt').value = '';
     S.order = null; S.orderKey = ''; S.err = ''; S.note = '';
     render();
-    if (S.tok || S.jt) renderHero();
+    if (!S.mint) return;
+    renderHero();
+    try { history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(S.mint) + (side === 'sell' ? '&side=sell' : '')); } catch (e) { /* a sandboxed frame */ }
     $('amt').focus();
   }
   $('tBuy').onclick = function () { setSide('buy'); };
@@ -1053,39 +1465,79 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   $('go').onclick = trade;
   $('wBtn').onclick = openSheet;
   $('sBg').onclick = closeSheet;
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet(); });
+  $('inTok').onclick = $('outTok').onclick = function () { if (!this.disabled && !S.busy) openPicker(); };
+  $('pkBg').onclick = closePicker;
+  $('pkX').onclick = closePicker;
+  function onRow(rows) {
+    return function (e) {
+      var b = e.target.closest && e.target.closest('button');
+      if (!b) return;
+      if (b.getAttribute('data-act') === 'connect') { closePicker(); openSheet(); return; }
+      var i = b.getAttribute('data-i');
+      if (i != null) choose(rows()[+i]);
+    };
+  }
+  $('pkList').addEventListener('click', onRow(function () { return PK.rows; }));
+  $('pkChips').addEventListener('click', onRow(function () { return PK.rows; }));
+  $('trList').addEventListener('click', onRow(function () { return PK.trend || []; }));
+  $('pkIn').addEventListener('input', function () {
+    var q = this.value.trim();
+    clearTimeout(PK.t);
+    PK.seq++;
+    PK.q = q; PK.res = null; PK.msg = '';
+    if (q && evmAddr(q)) { PK.res = []; PK.msg = 'That is an address on an EVM chain (Base, Ethereum, Robinhood). This swap trades Solana tokens.'; }
+    renderPick();
+    if (q && !PK.msg) PK.t = setTimeout(function () { search(q); }, isMint(q) ? 0 : 260);
+  });
+  $('pkIn').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var r = PK.q && PK.res ? PK.res[0] : null;
+    if (r) choose(r);
+    else if (isMint(PK.q)) choose({ mint: PK.q, raw: true });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('pk').hidden) closePicker();
+    else if (!$('sheet').hidden) closeSheet();
+  });
   $('dAgain').onclick = function () { $('amt').value = ''; S.order = null; S.orderKey = ''; S.note = ''; view('swap'); render(); };
   document.addEventListener('visibilitychange', function () { if (!document.hidden && S.view === 'swap') { loadBalances(); if (want()) quote(); } });
 
-  $('pickIn').addEventListener('input', function () {
-    var v = this.value.trim(), m = $('pickMsg');
-    m.hidden = true;
-    if (!v) return;
-    if (/^0x[0-9a-fA-F]{40}$/.test(v)) { m.textContent = 'This swap is for Solana tokens. That address is on an EVM chain.'; m.hidden = false; return; }
-    if (!isMint(v)) { if (v.length >= 32) { m.textContent = 'That is not a Solana token address.'; m.hidden = false; } return; }
-    history.replaceState(null, '', '/swap?mint=' + encodeURIComponent(v));
-    start(v);
-  });
-
   /* -------------------------------------------------------------- boot */
-  function start(mint) {
-    S.mint = mint;
-    S.dec = mint === SOL ? SOL_DEC : null;
+  var tokSeq = 0;
+  function start(mint, jt, row) {
+    var my = ++tokSeq;
+    S.mint = mint; S.tok = null; S.jt = jt || null; S.pre = row || null;
+    S.dec = mint === SOL ? SOL_DEC : jt && jt.decimals != null ? Number(jt.decimals) : row && row.dec != null ? row.dec : null;
+    S.tokBal = holdOf(mint);
+    var held = S.hold && S.hold[mint];
+    if (S.dec == null && held && held[0] && held[0].decimals != null) S.dec = Number(held[0].decimals);
+    S.order = null; S.orderKey = ''; S.err = ''; S.errKey = ''; S.note = '';
+    /* a sell amount was in the last token's units; a buy amount is SOL and stays */
+    if (S.side === 'sell') $('amt').value = '';
     view('swap');
     render();
     renderHero();
-    fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
-      if (j && j.ok && j.token) { S.tok = j.token; renderHero(); render(); }
-    }).catch(function () { /* Jupiter's record covers the header */ });
-    jup('/ultra/v1/search?query=' + encodeURIComponent(mint)).then(function (list) {
-      var j = Array.isArray(list) ? list.filter(function (x) { return x && x.id === mint; })[0] : null;
-      if (!j) return;
-      S.jt = j;
-      if (j.decimals != null) S.dec = Number(j.decimals);
-      renderHero(); render();
-      if (want()) quote();
-    }).catch(function () { /* holdings can still supply decimals */ });
-    if (want()) quote();
+    /* A token picked from a list already carries Jupiter's record, which is
+       everything the header shows. One that came by link gets both ours (the
+       signed art, the map's market cap) and Jupiter's (decimals, price). */
+    if (!jt) {
+      fetch('/api/token?mint=' + encodeURIComponent(mint)).then(function (r) { return r.json(); }).then(function (j) {
+        if (my !== tokSeq) return;
+        if (j && j.ok && j.token) { S.tok = j.token; renderHero(); render(); }
+      }).catch(function () { /* Jupiter's record covers the header */ });
+      jup('/ultra/v1/search?query=' + encodeURIComponent(mint)).then(function (list) {
+        if (my !== tokSeq) return;
+        var j = Array.isArray(list) ? list.filter(function (x) { return x && x.id === mint; })[0] : null;
+        if (!j) return;
+        S.jt = j;
+        if (j.decimals != null) S.dec = Number(j.decimals);
+        renderHero(); render();
+        if (want()) quote();
+      }).catch(function () { /* holdings can still supply decimals */ });
+    }
+    quote();
   }
 
   fetch('/api/swap-config').then(function (r) { return r.json(); }).then(function (c) {
@@ -1102,11 +1554,16 @@ span.av{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.55),rgba(
   if (q.get('side') === 'sell') S.side = 'sell';
   var pre = q.get('amount');
   if (pre && /^\d{0,6}(\.\d{1,9})?$/.test(pre) && Number(pre) > 0) $('amt').value = pre;
-  if (isMint(mint)) start(mint);
+  if (isMint(mint) && mint !== SOL) start(mint);
   else {
-    view('pick');
-    if (mint) { $('pickMsg').textContent = /^0x/i.test(mint) ? 'This swap is for Solana tokens. That address is on an EVM chain.' : 'That link does not carry a valid token address.'; $('pickMsg').hidden = false; }
+    view('swap');
+    if (mint) {
+      S.note = evmAddr(mint) ? 'That address is on an EVM chain. This swap trades Solana tokens — pick one instead.'
+        : 'That link does not carry a token address. Pick a token instead.';
+      S.noteBad = true;
+    }
     render();
+    loadTrend();
   }
 })();
 </script>

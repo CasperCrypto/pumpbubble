@@ -28,9 +28,17 @@ It is a payment-theft vector, not a defacement.
 
 **`/swap` talks to one more host: Jupiter's API.** The swap page is our own code — no widget, no
 wallet library — so its policy (`SWAP_CSP` in `src/refs.mjs`, set by `worker/index.js`) is the
-map's with `connect-src` extended to `lite-api.jup.ag` and `api.jup.ag`, where quotes come from
-and signed trades go. Scripts, styles and images stay `'self'` (wallet icons are `data:` URIs,
-token art is our signed `/api/img`). The page shows no payment address of ours and holds no keys:
+map's with `connect-src` extended to `lite-api.jup.ag` and `api.jup.ag`, where quotes, token search
+and signed trades go. Scripts and styles stay `'self'`. **Images are the one loosening: `https:`**,
+because the token picker shows each token's art wherever its creator put it (arweave, IPFS
+gateways, GitHub), and our signed proxy only covers tokens the map has already seen — proxying
+arbitrary search results would mean signing URLs on request, which is the open relay the signature
+exists to prevent. The cost is a beacon channel: an injected script could leak through an image
+URL. On this page that channel was never the lock — its script policy already carries
+`'unsafe-inline'` (the known weakness below) — so `esc()` on every token string stays the defence,
+and `scripts/swap-page.test.mjs` runs a token named `<img src=x onerror=…>` through a picker row.
+`iconSrc()` draws only `https:` (never `http:`, `javascript:` or `data:` — data URIs are for wallet
+icons alone) and refuses quotes and angle brackets. The page shows no payment address of ours and holds no keys:
 the visitor's own wallet signs a transaction Jupiter built, after the page has checked it is for
 the mints, amount and wallet that were asked for. If the page ever grows a treasury address or a
 boost box, it inherits the map's threat model in full. `scripts/check.mjs` checks both policies

@@ -87,17 +87,19 @@ export function pumpJoin(env = {}) {
    Jupiter takes 50-255 bps in the plugin and keeps a fifth of it. */
 export const SWAP_PATH = '/swap?mint=';
 /* The swap page's Content-Security-Policy (served by worker/index.js). It is
-   the map's, plus one thing: connect-src to Jupiter's API, where quotes come
-   from and signed trades go. No third-party script runs on the page — the
-   wallet connection is the Wallet Standard's events and the swap is our own
-   code — so scripts, images and styles stay 'self' (wallet icons are
-   data: URIs, token art is our signed /api/img). */
+   the map's, plus two things: connect-src to Jupiter's API, where quotes,
+   token search and signed trades go, and https: images, because the token
+   picker shows each token's own art wherever its creator put it (arweave,
+   IPFS gateways, GitHub) and our signed proxy only covers tokens we have
+   already seen. No third-party script runs on the page — the wallet
+   connection is the Wallet Standard's events and the swap is our own code —
+   so scripts, styles and network stay 'self' plus Jupiter. */
 export const JUP_HOSTS = ['https://lite-api.jup.ag', 'https://api.jup.ag'];
 export const SWAP_CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  "img-src 'self' data: https:",
   "connect-src 'self' " + JUP_HOSTS.join(' '),
   "font-src 'self'",
   "object-src 'none'",

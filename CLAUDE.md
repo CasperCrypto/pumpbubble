@@ -1085,10 +1085,33 @@ So the page is ours and the plumbing is theirs:
   old, measured from launch) beside Jupiter's $0.53.
 - Sign-and-send-only wallets are handled (the wallet lands it; base58 of the signature for Solscan).
 
+**The door and the picker** (2026-10-01, asked as "where is the swap button?" and "it can't be
+just paste a CA — it must be the whole swap UI with pick / paste"). The map's top bar has **SWAP**
+beside BOOST in the map's mint (on a phone a round icon like X and Telegram; the phone bar was
+tightened — one 8px gap, 32px circles, the wordmark giving ground last — so it fits from 320px with
+BOOST at the edge; it already overflowed at 360px before), and the toolbar has Swap too. `/swap`
+with no token opens on the swap itself: the token side says **Select token** and opens a picker —
+search by name or paste an address (Jupiter's `/ultra/v1/search` straight from the browser, so it
+costs the site no request; an address Jupiter has not indexed yet is still offered, since a coin
+minutes old can trade), a one-tap popular row, **the map's own Trending** (the rail's warm list
+from `/api/ads`, named and priced by one multi-mint Jupiter search — 100 mints answered 100), and
+**the wallet's own tokens** once connected (holdings priced by the same search, sorted by value;
+tokens Jupiter does not know and dust under a cent are left out — a public test wallet held 4,045
+tokens, nearly all airdropped junk). While nothing is picked, the trending list sits under the
+swap too.
+
+**Token art is the token's own URL here, so `img-src` allows `https:` on this page** — our signed
+proxy only covers tokens the map has already seen. A third of that art is IPFS, and the gateway is
+what fails, not the picture: WIF's icon on `nftstorage.link` redirects to `dweb.link`, which
+answered 429 like ipfs.io (one operator, one limiter), while filebase and pinata served it. So dead
+or limited gateways are read from filebase, a failed IPFS picture is asked of the next gateway
+(`nextSrc`, the server's `altGateways` order), and only then becomes a letter.
+
 **No third-party code runs on the page**, so its policy is the map's plus `connect-src` to
-Jupiter's two API hosts (`SWAP_CSP`, served by the Worker like `/embed`'s so `_headers` merge order
-never matters). `docs/security.md` has the reasoning. The page has a global `[hidden]` rule — a
-display rule beat the attribute twice on the map and once on the first version of this page.
+Jupiter's two API hosts and `https:` images (`SWAP_CSP`, served by the Worker like `/embed`'s so
+`_headers` merge order never matters). `docs/security.md` has the reasoning. The page has a global
+`[hidden]` rule — a display rule beat the attribute twice on the map and once on the first version
+of this page.
 
 Verified in a browser with a mock Wallet Standard wallet (the real handshake, a live Jupiter
 transaction for a funded public address, execute intercepted so nothing was sent): connect,

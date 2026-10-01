@@ -48,16 +48,19 @@ is('a set bps holds', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: '100' }).fee
 is('garbage bps is the floor', swapConfig({ JUP_REFERRAL: ACCT, JUP_FEE_BPS: 'lots' }).feeBps, 50);
 
 /* The policy the swap page is served with: the map's, plus Jupiter's API in
-   connect-src and nothing else. No third-party script, frame or image host. */
+   connect-src and https: images for token art. No third-party script or frame,
+   and no bare scheme anywhere but images. */
 const csp = Object.fromEntries(SWAP_CSP.split(/;\s*/).map(d => { const [k, ...v] = d.split(' '); return [k, v.join(' ')]; }));
 is('scripts: our own only', csp['script-src'], "'self' 'unsafe-inline'");
-is('images: ours and data: (wallet icons)', csp['img-src'], "'self' data:");
+is('images: ours, data: (wallet icons) and https: (token art)', csp['img-src'], "'self' data: https:");
 is('network: us and Jupiter\'s API', csp['connect-src'], "'self' https://lite-api.jup.ag https://api.jup.ag");
 is('never framed', csp['frame-ancestors'], "'none'");
 is('no forms', csp['form-action'], "'none'");
 is('no plugins', csp['object-src'], "'none'");
 is('no eval', /'unsafe-eval'/.test(SWAP_CSP), false);
-is('no bare scheme or wildcard source', /(^|\s)(https?:|wss?:|\*)(\s|;|$)/.test(SWAP_CSP), false);
+is('no bare scheme or wildcard source outside images', Object.entries(csp)
+  .filter(([k, v]) => k !== 'img-src' && /(^|\s)(https?:|wss?:|\*)(\s|$)/.test(v)).map(([k]) => k).join(','), '');
+is('and no http: images', /(^|\s)http:/.test(csp['img-src']), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
