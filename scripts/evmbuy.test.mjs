@@ -99,7 +99,7 @@ console.log('\npools');
 
 console.log('\nthe alert');
 {
-  const g = { chain: 'base', token: TOKEN, sym: 'TOK', emoji: '🔵', step: 10, socials: {} };
+  const g = { chain: 'base', token: TOKEN, sym: 'TOK', emoji: '🔵', step: 10, style: 'classic', socials: {} };
   const buy = { sol: 0.01, usd: 30, tokens: 1e6, buyer: '0x' + '1'.repeat(40), sig: '0x' + 'f'.repeat(64) };
   const { caption, keyboard } = formatBuy({ buy, token: { sym: 'TOK', mcap: 30000, addr: TOKEN }, group: g, solUsd: 3000, botName: 'pumpbubblebot' });
   is('paid in ETH, not SOL', caption.includes('<b>ETH</b> 0.0100'), true);
@@ -115,7 +115,7 @@ console.log('\nthe alert');
   const bad = formatBuy({ buy: { ...buy, sig: 'javascript:alert(1)', buyer: '<b>' }, token: { sym: '<i>X</i>' }, group: g, solUsd: 3000 }).caption;
   is('a malformed hash or wallet is not a link', bad.includes('javascript:') || bad.includes('address/<b>') || bad.includes('Buyer'), false);
   is('a hostile ticker is escaped', bad.includes('<i>X</i>'), false);
-  const sol = formatBuy({ buy: { sol: 1, tokens: 5, newHolder: true, buyer: '', sig: '' }, token: { mint: 'So11111111111111111111111111111111111111112' }, group: { mint: 'So11111111111111111111111111111111111111112', sym: 'S' }, solUsd: 100 }).caption;
+  const sol = formatBuy({ buy: { sol: 1, tokens: 5, newHolder: true, buyer: '', sig: '' }, token: { mint: 'So11111111111111111111111111111111111111112' }, group: { mint: 'So11111111111111111111111111111111111111112', sym: 'S', style: 'classic' }, solUsd: 100 }).caption;
   is('Solana alerts still say SOL and New Holder', sol.includes('<b>SOL</b>') && sol.includes('New Holder'), true);
 }
 

@@ -368,21 +368,45 @@ export function tokenLinks(env, g, token = {}) {
   };
 }
 
-export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null, caller = null }) {
+/* Buy size in the bubble style: a name and a ten-step meter on a log scale,
+   so a $20 buy and a $20,000 one both read at a glance — where a row of
+   emoji runs off the screen at the top and says almost nothing at the
+   bottom, and looks the same in every buy bot's alert. */
+export const TIERS = [[10000, '🐋', 'WHALE'], [2500, '🦈', 'SHARK'], [500, '🐬', 'DOLPHIN'], [100, '🐟', 'FISH'], [0, '🦐', 'SHRIMP']];
+export function buyTier(usd) { const u = num(usd); return TIERS.find(t => u >= t[0]) || TIERS[TIERS.length - 1]; }
+export function buyMeter(usd) {
+  const u = num(usd);
+  const n = u > 0 ? clamp(Math.round(Math.log10(u) * 2.2 - 0.6), 1, 10) : 0;
+  return '▰'.repeat(n) + '▱'.repeat(10 - n);
+}
+
+/* Two styles. `bubble` (the default since 2026-10-01): the size of the buy
+   by name and meter, the numbers in a quote block, the token's place on the
+   map. `classic`: the format the communities know from Bobby and the rest —
+   one emoji per $step — kept one tap away in ⚙️ Settings for groups that
+   want what they are used to. Both print the same facts and the same
+   escaped strings; only the layout differs. */
+export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null, caller = null, rank = null }) {
   const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
   const sym = clean(token.sym || group.sym || '?', 12);
-  const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
   const net = CHAINS[group.chain];
+  const native = net ? net.native : 'SOL';
   const links = tokenLinks(env, group, token);
+  const bubble = group.style !== 'classic';
 
-  const lines = [];
-  lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
-  if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
+  /* only a hash or an address of the chain's own shape becomes a link */
+  const sig = String(buy.sig || '');
+  const txUrl = net && /^0x[0-9a-fA-F]{64}$/.test(sig) ? `${net.explorer}/tx/${sig}`
+    : !net && /^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(sig) ? `https://solscan.io/tx/${sig}` : '';
+  const walletUrl = net && isEvmAddr(buy.buyer) ? `${net.explorer}/address/${buy.buyer}`
+    : !net && buy.buyer && isMint(buy.buyer) ? `https://solscan.io/account/${buy.buyer}` : '';
+
   /* The buyer is one of pump.fun's top traders by realized profit — the
      line no other buy bot can print (src/smartset.mjs). */
+  const tags = [];
   if (smart && smart.rank) {
     const who = smart.xh && /^\w{1,15}$/.test(smart.xh) ? '@' + smart.xh : clean(smart.name || '', 20);
-    lines.push(`🧠 <b>SMART BUY</b> — ${tgEsc(who)}, #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} by profit banked (+${fmtUsd(smart.realized)})`);
+    tags.push(`🧠 <b>SMART BUY</b> — ${tgEsc(who)}, #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} by profit banked (+${fmtUsd(smart.realized)})`);
   }
   /* The KOL line: the buyer is one of the week's top callers on pump.fun —
      the Calls tab's own ranking, whose calls reach 2× most reliably. Their
@@ -390,23 +414,39 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   if (caller && caller.rank) {
     const who = caller.xh && /^\w{1,15}$/.test(caller.xh) ? '@' + caller.xh : clean(caller.name || '', 20);
     const hit = caller.hit2 != null && isFinite(+caller.hit2) && caller.n > 0 ? ` — ${Math.round(+caller.hit2 * 100)}% of their ${Math.floor(caller.n)} calls hit 2×` : '';
-    lines.push(`📣 <b>TOP CALLER BUY</b> — ${tgEsc(who)}, #${Math.floor(caller.rank)} caller on pump.fun this week${tgEsc(hit)}`);
+    tags.push(`📣 <b>TOP CALLER BUY</b> — ${tgEsc(who)}, #${Math.floor(caller.rank)} caller on pump.fun this week${tgEsc(hit)}`);
   }
-  lines.push('');
-  lines.push(emojiRow(usd, group.emoji, group.step));
-  lines.push('');
-  lines.push(`🔷 <b>${net ? net.native : 'SOL'}</b> ${fmtSol(buy.sol)}${usd > 0 ? ` (${fmtUsd(usd)})` : ''}`);
-  /* only a hash of the chain's own shape becomes a link */
-  const sig = String(buy.sig || '');
-  const tx = net && /^0x[0-9a-fA-F]{64}$/.test(sig) ? ` (<a href="${net.explorer}/tx/${sig}">Tx</a>)`
-    : !net && /^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(sig) ? ` (<a href="https://solscan.io/tx/${sig}">Tx</a>)` : '';
-  lines.push(`🪙 <b>${tgEsc(sym)}</b> ${fmtQty(buy.tokens)}${tx}`);
-  const wallet = net && isEvmAddr(buy.buyer) ? ` (<a href="${net.explorer}/address/${buy.buyer}">Wallet</a>)`
-    : !net && buy.buyer && isMint(buy.buyer) ? ` (<a href="https://solscan.io/account/${buy.buyer}">Wallet</a>)` : '';
-  /* EVM buys do not know whether the wallet held before; say only what is known */
-  if (buy.newHolder === undefined) { if (wallet) lines.push(`🔎 <b>Buyer:</b>${wallet}`); }
-  else lines.push(`🔎 <b>Position:</b> ${buy.newHolder ? 'New Holder' : 'Holder'}${wallet}`);
-  if (num(token.mcap) > 0) lines.push(`📈 <b>MCap:</b> ${fmtUsd(token.mcap)}`);
+
+  const lines = [];
+  if (bubble) {
+    const [, te, tn] = buyTier(usd);
+    lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${te} <b>${tgEsc(sym)} BUY</b> · ${tn}${buy.newHolder ? ' · 🆕 NEW HOLDER' : ''}`);
+    if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
+    lines.push(...tags);
+    lines.push('');
+    lines.push(`${buyMeter(usd)}  <b>${usd > 0 ? fmtUsd(usd) : fmtSol(buy.sol) + ' ' + native}</b>`);
+    const facts = [`💰 ${fmtSol(buy.sol)} ${native} → ${fmtQty(buy.tokens)} ${tgEsc(sym)}`];
+    if (num(token.mcap) > 0) facts.push(`📈 MCap ${fmtUsd(token.mcap)}`);
+    const seen = [txUrl && `<a href="${txUrl}">Tx</a>`, walletUrl && `<a href="${walletUrl}">Buyer</a>`].filter(Boolean);
+    if (seen.length) facts.push('🔎 ' + seen.join(' · '));
+    lines.push('<blockquote>' + facts.join('\n') + '</blockquote>');
+  } else {
+    const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
+    lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
+    if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
+    lines.push(...tags);
+    lines.push('');
+    lines.push(emojiRow(usd, group.emoji, group.step));
+    lines.push('');
+    lines.push(`🔷 <b>${native}</b> ${fmtSol(buy.sol)}${usd > 0 ? ` (${fmtUsd(usd)})` : ''}`);
+    const tx = txUrl ? ` (<a href="${txUrl}">Tx</a>)` : '';
+    lines.push(`🪙 <b>${tgEsc(sym)}</b> ${fmtQty(buy.tokens)}${tx}`);
+    const wallet = walletUrl ? ` (<a href="${walletUrl}">Wallet</a>)` : '';
+    /* EVM buys do not know whether the wallet held before; say only what is known */
+    if (buy.newHolder === undefined) { if (wallet) lines.push(`🔎 <b>Buyer:</b>${wallet}`); }
+    else lines.push(`🔎 <b>Position:</b> ${buy.newHolder ? 'New Holder' : 'Holder'}${wallet}`);
+    if (num(token.mcap) > 0) lines.push(`📈 <b>MCap:</b> ${fmtUsd(token.mcap)}`);
+  }
 
   const soc = [];
   const s = group.socials || {};
@@ -424,7 +464,9 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   } else if (botName) {
     lines.push(`📣 <a href="https://t.me/${tgEsc(botName)}?start=ads">Your token here, under every buy</a>`);
   }
-  lines.push(`🫧 <a href="${links.bubble}">${tgEsc(sym)} on the bubble map</a>`);
+  /* where the token sits on the map right now, when it is on the trending tab */
+  const place = rank && rank.rank > 0 && rank.rank <= 50 ? `#${Math.floor(rank.rank)} trending on` : `${tgEsc(sym)} on`;
+  lines.push(`🫧 <a href="${links.bubble}">${place} the bubble map</a>`);
 
   /* Chart goes to a chart; Buy through the referral where one is configured
      and to our own swap page when not — a button that says Buy and does nothing
@@ -1392,19 +1434,35 @@ export function settingsView(g, page = 'main') {
       ],
     };
   }
+  if (page === 'style') {
+    const classic = g.style === 'classic';
+    return {
+      text: `🎨 <b>Buy style</b> for ${sym}\n\n`
+        + `<b>Bubble</b>${classic ? '' : ' ✅'} — how big the buy is, by name and a meter:\n`
+        + `🐬 ${sym} BUY · DOLPHIN\n${buyMeter(620)}  <b>$620</b>\n\n`
+        + `<b>Classic</b>${classic ? ' ✅' : ''} — one ${tgEsc(g.emoji || '🟢')} per $${step}, like other buy bots:\n`
+        + `${emojiRow(620, g.emoji, step)}`,
+      kb: [[{ text: (classic ? '' : '✅ ') + '🫧 Bubble', callback_data: 'cfg:style:bubble' },
+            { text: (classic ? '✅ ' : '') + '😀 Classic', callback_data: 'cfg:style:classic' }],
+           [{ text: '🧪 Test alert', callback_data: 'cfg:test' }], back],
+    };
+  }
   if (page === 'stop') return {
     text: `⏹ Stop posting ${sym} buys here?
 
 This also switches the 🛡 Guard off. To track a different token instead, just send <code>/setup &lt;new contract address&gt;</code> — the guard and your emoji stay.`,
     kb: [[{ text: 'Yes, stop', callback_data: 'cfg:stop:yes' }, { text: 'Cancel', callback_data: 'cfg:main' }]],
   };
+  const classic = g.style === 'classic';
   return {
     text: `⚙️ <b>${sym}</b> buy alerts\n\n`
-      + `Emoji ${tgEsc(g.emoji || '🟢')} · one per $${step}\n`
+      + `Style ${classic ? 'Classic — a row of emoji' : 'Bubble — buy size and a meter'}\n`
+      + `Emoji ${tgEsc(g.emoji || '🟢')} · one per $${step}${classic ? '' : ' (classic style)'}\n`
       + `Min buy ${minBuy ? '$' + minBuy : 'none — every buy'}\n`
       + `Media ${g.media ? g.media.kind : 'none'}\n`
       + `Links ${links.join(' · ') || 'none'}\n\nAdmins only.`,
     kb: [
+      [{ text: '🎨 Style: ' + (classic ? 'Classic' : 'Bubble'), callback_data: 'cfg:style' }],
       [{ text: '🖼 Media', callback_data: 'cfg:media' }, { text: 'Emoji ' + (g.emoji || '🟢'), callback_data: 'cfg:emoji' }],
       [{ text: '💵 Min buy', callback_data: 'cfg:min' }, { text: '📊 $ per emoji', callback_data: 'cfg:step' }],
       [{ text: '🧪 Test alert', callback_data: 'cfg:test' }, { text: '🔗 Links', callback_data: 'cfg:links' }],
@@ -1458,6 +1516,12 @@ async function onSettings(ctx, q, act) {
     await ack(note);
     return show(settingsView(g, 'guard'));
   }
+  if (what === 'style' && (val === 'bubble' || val === 'classic')) {
+    g = { ...g, style: val };
+    await putGroup(store, chat.id, g);
+    await ack(val === 'bubble' ? 'Bubble style — buy size and a meter' : 'Classic style — a row of emoji');
+    return show(settingsView(g, 'style'));
+  }
   if (what === 'emoji' && val != null && EMOJIS[i]) return save({ emoji: EMOJIS[i] }, 'Emoji ' + EMOJIS[i]);
   if (what === 'min' && val != null && MINBUYS[i] != null) return save({ minBuy: MINBUYS[i] }, MINBUYS[i] ? 'Hiding buys under $' + MINBUYS[i] : 'Showing every buy');
   if (what === 'step' && val != null && STEPS[i]) return save({ step: STEPS[i] }, 'One emoji per $' + STEPS[i]);
@@ -1480,7 +1544,7 @@ async function onSettings(ctx, q, act) {
       text: 'Stopped — no more buy alerts here, and the guard is off. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
   }
   await ack();
-  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard'].includes(what) ? what : 'main'));
+  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard', 'style'].includes(what) ? what : 'main'));
 }
 
 /* ================================================================= guard */
@@ -2178,7 +2242,8 @@ export async function onTrade(ctx, payload, solUsd) {
       if (!g || g.mint !== buy.mint) continue;
       if (num(g.minBuy) > 0 && usd < num(g.minBuy)) { skipped++; continue; }
       if (!allowed(chatId)) { skipped++; continue; }
-      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart, caller });
+      const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart, caller,
+        rank: ctx.mapRank ? ctx.mapRank(buy.mint) : null });
       if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides

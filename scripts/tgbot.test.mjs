@@ -12,7 +12,7 @@
    ========================================================================== */
 
 import { parseBuys, buysFromPayload, accountList, signers, MIN_SOL } from '../src/solbuy.mjs';
-import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS } from '../src/tgbot.mjs';
+import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS, buyTier, buyMeter } from '../src/tgbot.mjs';
 import { heliusKey } from '../src/helius.mjs';
 
 let pass = 0, fail = 0;
@@ -163,7 +163,7 @@ is('garbage payload is zero buys, not a throw', buysFromPayload([null, 42, 'x', 
 /* --------------------------------------------------------- the formatter */
 
 console.log('\nformatter — what reaches the group');
-const group = { chatId: -100, mint: MINT, sym: 'POK', emoji: '✔️', step: 20, socials: { web: 'https://pokmart.com/', x: 'https://x.com/pokmartcom' } };
+const group = { chatId: -100, mint: MINT, sym: 'POK', emoji: '✔️', step: 20, style: 'classic', socials: { web: 'https://pokmart.com/', x: 'https://x.com/pokmartcom' } };
 const token = { mint: MINT, sym: 'POK', name: 'Pokmart', mcap: 3917, grad: false, price: 0.00000034 };
 const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newHolder: true, sig: SIG };
 
@@ -231,6 +231,32 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
   is('test alerts say so', caption.startsWith('🧪 <b>TEST</b>'), true);
 }
 
+console.log('\nformatter — the bubble style (the default)');
+{
+  const bub = { ...group, style: undefined };
+  const { caption, keyboard } = formatBuy({ buy, token, group: bub, solUsd: 104, botName: 'pumpbubblebot', rank: { rank: 4 } });
+  ok('caption', '\n' + caption.split('\n').map(l => '        ' + l).join('\n'));
+  is('a $50 buy is a fish, and a new holder says so', caption.split('\n')[0], '🦐 <b>POK BUY</b> · SHRIMP · 🆕 NEW HOLDER'.replace('🦐', buyTier(50.93)[1]).replace('SHRIMP', buyTier(50.93)[2]));
+  is('the meter and the dollars', caption.includes(buyMeter(50.93) + '  <b>$50.93</b>'), true);
+  is('the numbers sit in a quote block', /<blockquote>💰 0\.4897 SOL → 11,453,237\.88 POK\n📈 MCap \$3,917\n🔎 <a href="https:\/\/solscan\.io\/tx\//.test(caption), true);
+  is('no row of emoji', caption.includes('✔️✔️'), false);
+  is('its place on the map', caption.includes('#4 trending on the bubble map'), true);
+  is('the same buttons', keyboard.inline_keyboard[1][0].url, 'https://pumpbubble.fun/swap?mint=' + MINT);
+  is('tiers by size', [5, 150, 900, 3000, 25000].map(u => buyTier(u)[2]).join(' '), 'SHRIMP FISH DOLPHIN SHARK WHALE');
+  is('the meter grows with the buy', [10, 100, 1000, 10000, 100000].map(u => buyMeter(u).split('▰').length - 1).join(' '), '2 4 6 8 10');
+  is('nothing bought, an empty meter', buyMeter(0), '▱'.repeat(10));
+  const evil = formatBuy({ buy, token: { ...token, sym: '<b>x</b>' }, group: { ...bub, sym: '<b>x</b>' }, solUsd: 104 }).caption;
+  is('a hostile ticker cannot inject markup here either', /<b>x<\/b>|<img/.test(evil), false);
+  is('a rank past fifty is not claimed', formatBuy({ buy, token, group: bub, solUsd: 104, rank: { rank: 80 } }).caption.includes('#80'), false);
+  const evm = formatBuy({ buy: { sol: 0.01, usd: 30, tokens: 1e6, buyer: '0x' + '1'.repeat(40), sig: '0x' + 'f'.repeat(64) },
+    token: { sym: 'TOK', mcap: 30000 }, group: { chain: 'base', token: '0x' + 'a'.repeat(40), sym: 'TOK' }, solUsd: 3000 }).caption;
+  is('an EVM buy pays in ETH and links Basescan', evm.includes('0.0100 ETH → 1,000,000 TOK') && evm.includes('basescan.org/tx/'), true);
+  is('and claims nothing about holding', evm.includes('NEW HOLDER'), false);
+  const sv = settingsView({ sym: 'POK', emoji: '🐸', step: 20 }, 'style');
+  is('the style page offers both, bubble ticked', sv.kb[0].map(b => b.text).join(' | '), '✅ 🫧 Bubble | 😀 Classic');
+  is('the main settings name the style', settingsView({ sym: 'POK', style: 'classic' }).text.includes('Style Classic'), true);
+}
+
 console.log('\nformatter — hostile input');
 {
   const evil = { ...token, sym: '<b>x</b>', name: '<img src=x onerror=alert(1)>' };
@@ -290,7 +316,7 @@ is('no key from a non-Helius RPC', heliusKey({ SOLANA_RPC: 'https://api.mainnet-
   is('every settings button fits Telegram’s 64-byte callback limit', all.every(b => enc.encode(b.callback_data).length <= 64), true);
   is('every settings button is a cfg: action', all.every(b => /^cfg:[a-z]+(:[a-z0-9]+)?$/.test(b.callback_data)), true);
   is('a hostile ticker is escaped on every page', pages.every(p => !settingsView(g, p).text.includes('<b>X&Y</b>')), true);
-  is('main page: media, emoji, min, step, test, links, guard, stop', settingsView(g).kb.flat().length, 8);
+  is('main page: style, media, emoji, min, step, test, links, guard, stop', settingsView(g).kb.flat().length, 9);
   is('the current emoji is ticked', settingsView(g, 'emoji').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:emoji:' + EMOJIS.indexOf('🔥'));
   is('the current minimum is ticked', settingsView(g, 'min').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:min:' + MINBUYS.indexOf(25));
   is('the current step is ticked', settingsView(g, 'step').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:step:' + STEPS.indexOf(50));

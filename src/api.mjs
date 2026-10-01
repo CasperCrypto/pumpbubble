@@ -189,6 +189,7 @@ const EMPTY_RETRY_MS = 20_000;
 const boostMkt = new Map();
 const BOOST_MKT_TTL = 60_000;
 
+const KV_SNAP_EVERY = 15 * 60_000;   // a shared feed's KV copy, at most this often (see snapshot())
 const cacheFor = mode => {
   if (!caches.has(mode)) caches.set(mode, { at: 0, data: null, inflight: null, err: null });
   return caches.get(mode);
@@ -518,6 +519,8 @@ async function snapshot(ctx, source, force = false) {
     if (src.shared && !force) {
       try {
         const saved = await ctx.store.get(kvKey);
+        /* how old the shared copy is, whoever wrote it — the write below waits on it */
+        cache.kvAt = saved && saved.ts ? saved.ts : 0;
         /* Same rule on the way in. A namespace written by an older build may
            still hold an empty snapshot, and reading it back would reinstate
            exactly the outage the write guard exists to prevent. */
@@ -646,8 +649,15 @@ async function snapshot(ctx, source, force = false) {
       cache.data = snap;
       cache.at = empty ? Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS) : Date.now();
       cache.err = null;
-      if (src.shared && !empty) {
-        try { await ctx.store.put(kvKey, snap); } catch { /* non-fatal */ }
+      /* The shared copy is refreshed at most every fifteen minutes, not on
+         every rebuild. Every rebuild used to write it — trending alone could
+         spend 1,440 writes a day — and the free plan's 1,000 KV writes a day
+         are also what records a paid boost: measured 933 writes on 2026-09-29
+         and 1,661 on 2026-09-30, so on a busy day a payment found after the cap
+         would have gone unrecorded, silently. The copy is a convenience for
+         other isolates; the boost is money. */
+      if (src.shared && !empty && Date.now() - (cache.kvAt || 0) >= KV_SNAP_EVERY) {
+        try { await ctx.store.put(kvKey, snap); cache.kvAt = Date.now(); } catch { /* non-fatal */ }
       }
       ctx.onSnapshot?.(snap);
       return snap;
@@ -745,8 +755,18 @@ async function tgEnsureAudience(ctx) {
   return heliusSync(ctx.env, ctx.store, (ctx.env.PUBLIC_ORIGIN || 'https://pumpbubble.fun').replace(/\/+$/, ''), await tgWatch(ctx.store, ctx.audience));
 }
 
+/* where a token sits on the Trending tab right now, from what this isolate
+   already holds — for the buy alert's "#4 trending on the bubble map" */
+function mapRank(key) {
+  const d = cacheFor('trending').data;
+  if (!key || !d || !Array.isArray(d.tokens)) return null;
+  const i = d.tokens.findIndex(t => t && (t.addr || t.mint) === key);
+  return i >= 0 ? { rank: i + 1 } : null;
+}
+
 export async function handle(req, ctx) {
   setCoingeckoKey(ctx.env.COINGECKO_KEY);
+  if (!ctx.mapRank) ctx.mapRank = mapRank;
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 

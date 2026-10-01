@@ -1291,6 +1291,14 @@ included. Names and @usernames are kept from 2026-10-01 (people who started earl
 their next message); control and direction-override characters are stripped, a username is kept
 only if it is a legal handle, and nothing else about a person is stored.
 
+**Measured 2026-10-01 from the account's KV analytics**: 933 writes on 2026-09-29, 1,661 on
+2026-09-30 (and 194,000 reads, past the 100,000 free — the Helius flood). Background jobs alone
+spent most of the 1,000: history saved every five minutes by the cron *and* by every isolate, and
+every shared feed's snapshot copied to KV on every rebuild. Both are cut — the snapshot copy at
+most every fifteen minutes per feed (`KV_SNAP_EVERY`, keyed on the copy's own `ts`, so isolates
+coordinate), history on the quarter hours — because the same budget records a paid boost.
+Workers Paid is still the real fix.
+
 **KV writes are over the free tier, and have been for a while.** Measured when the console's first
 save returned *"KV put() limit exceeded for the day"*: every `shared` source writes its snapshot on
 every rebuild (trending ≈1,440/day at a 60s lifetime, base ≈720, majors and robinhood ≈480, the four
@@ -1729,7 +1737,18 @@ our `/swap` page otherwise). Executing trades for users means holding their keys
 bug or breach empties every user at once, and the liability is the operator's. The trading bots
 that already do sniping and auto-copy are the execution layer, and they pay referral for the flow.
 
-**Standard format first; bubble posts later.** The buy alert is deliberately the format the
+**The alert has two styles, and Bubble is the default** (2026-10-01, asked as "make the buybot
+cooler — instead of emojis show something else"). *Bubble*: the size of the buy by name — 🦐
+SHRIMP under $100, 🐟 FISH, 🐬 DOLPHIN from $500, 🦈 SHARK from $2,500, 🐋 WHALE from $10,000 — and
+a ten-step meter on a log scale (`buyMeter`: $10 fills 2, $1,000 fills 6, $100,000 all 10), the
+numbers in a Telegram quote block, and the token's place on the Trending tab when it has one
+("#4 trending on the bubble map", `ctx.mapRank`, from what the isolate already holds — Solana
+alerts only, since EVM alerts are posted from the chain watchers). A row of one emoji per $20 runs
+off the screen on a whale and says nothing on a shrimp, and every buy bot prints it. *Classic* is
+that format, kept one tap away in ⚙️ Settings → 🎨 Style for groups that want what they know.
+Both carry the same facts, the same escaped strings and the same buttons.
+
+**Standard format first; bubble posts later.** The buy alert's facts are deliberately the ones the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate
 posts so the buy feed stays clean and the bubble posts read as events. Not built yet.

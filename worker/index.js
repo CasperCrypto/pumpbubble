@@ -353,7 +353,11 @@ function arenaClient(env) {
    never the source of truth — KV holds anything that must survive. */
 let HIST = null;
 let histDirtyAt = 0;
-const HIST_SAVE_EVERY = 5 * 60 * 1000;
+/* Fifteen minutes, not five: history was saved by the cron every tick and by
+   every isolate every five minutes, ~600+ of the free plan's 1,000 KV writes
+   a day on its own — the same budget a paid boost is recorded from. A lost
+   quarter of an hour only dulls the colours. */
+const HIST_SAVE_EVERY = 15 * 60 * 1000;
 
 function makeStore(env) {
   const kv = env.BUBBLE_KV;
@@ -489,7 +493,7 @@ async function makeCtx(env, execCtx) {
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),
     onSnapshot() {
-      /* Persist history occasionally: ~288 KV writes/day, inside the free tier. */
+      /* Persist history occasionally — at most every fifteen minutes per isolate. */
       if (Date.now() - histDirtyAt > HIST_SAVE_EVERY) {
         histDirtyAt = Date.now();
         execCtx.waitUntil(saveHist(env));
@@ -654,7 +658,8 @@ export default {
             [feed('pumpfun'), feed('majors'), feed('stocks')]);
           return { pumpfun, majors, stocks };
         });
-        await saveHist(env);
+        /* history on the quarter hours only (see HIST_SAVE_EVERY) */
+        if (new Date(event.scheduledTime || Date.now()).getUTCMinutes() % 15 < 5) await saveHist(env);
         await flushStats(makeStore(env));
       } catch { /* next tick will retry */ }
     })());
