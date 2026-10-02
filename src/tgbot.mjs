@@ -33,7 +33,8 @@ import { resolveAnyToken, pumpCoin, isCA, isMint, isEvmAddr, clean } from './cor
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
 import { buyOrSwap, pumpJoin, swapPath } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
-import { syncWebhook, webhookInfo, KEY as HELIUS_KEY } from './helius.mjs';
+import { syncWebhook, webhookInfo, addrHash, KEY as HELIUS_KEY } from './helius.mjs';
+import { solPolling } from './solwatch.mjs';
 import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS, welcomeGold } from './boosts.mjs';
 import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
@@ -154,19 +155,10 @@ export async function ensureWebhook(env, store, audience = null) {
   }
   try { out.profile = await ensureProfile(env, store); }
   catch (e) { out.profile = { ok: false, error: String(e && e.message || e) }; }
-  /* A group whose /setup could not register the buy feed (the first real one
-     hit a wrong Helius host) has its mint tracked and no webhook. Heal it here,
-     on the cron, instead of asking the group to run /setup again. */
-  try {
-    let saved = null;
-    try { saved = await store.get(HELIUS_KEY); } catch {}
-    const addrs = await watchAddresses(store, audience);
-    /* no webhook yet: create it. With followers of the top traders, re-sync
-       hourly anyway — the boards turn over and the watched set with them. */
-    let smartOn = false;
-    if (audience) { try { smartOn = ((await audience('smartFans')).list || []).length > 0 || !!(await store.get(K.channel)); } catch {} }
-    if (addrs.length && (!(saved && saved.id) || smartOn)) out.helius = await syncWebhook(env, store, site(env), addrs);
-  } catch (e) { out.helius = { ok: false, error: String(e && e.message || e) }; }
+  /* Keep Helius's watched set right, on the cron: a webhook that is missing,
+     or watching a set other than today's (the top traders turn over), is
+     synced; an unchanged one is left alone — every edit is 100 credits. */
+  out.helius = await syncHelius(env, store, audience);
   return out;
 }
 
@@ -589,32 +581,71 @@ export async function removeGroup(store, chatId) {
   if (next.length !== ids.length) await store.put(K.groups, next);
 }
 
+/* The tokens groups follow ([{mint, pool}]), kept half a minute per isolate.
+   A failed read is not an empty list: it keeps the last good one, or says
+   `failed` — an empty list that was really a KV error is how a sync could
+   strip every group's token from the feed. `fresh` skips the half minute
+   (the Solana watcher, poked by /setup). */
 let mintsMem = { at: 0, v: null };
-export async function tracked(store) {
-  if (mintsMem.v && Date.now() - mintsMem.at < 30_000) return mintsMem.v;
-  let list = [];
-  try { list = (await store.get(K.mints)) || []; } catch {}
+export async function tracked(store, fresh = false) {
+  if (!fresh && mintsMem.v && Date.now() - mintsMem.at < 30_000) return mintsMem.v;
+  let list;
+  try { list = (await store.get(K.mints)) || []; }
+  catch {
+    if (mintsMem.v) { mintsMem.at = Date.now() - 25_000; return mintsMem.v; }
+    return { list: [], set: new Set(), failed: true };
+  }
   const v = { list, set: new Set(list.map(r => r.mint)) };
   mintsMem = { at: Date.now(), v };
   return v;
 }
 
-export async function watchAddresses(store, audience = null) {
-  const { list } = await tracked(store);
+/* What Helius should watch, and whether every read behind it worked. The
+   groups' tokens only when Helius delivers the buys (SOL_BUYS=helius) — by
+   default the Solana watcher polls them (src/solwatch.mjs), and Helius
+   delivering them too would post every buy twice and spend credits on the
+   busiest addresses there are. */
+async function watchSet(store, audience = null, env = {}) {
   const out = [];
-  for (const r of list) { out.push(r.mint); if (r.pool) out.push(r.pool); }
+  let partial = false;
+  if (!solPolling(env)) {
+    const t = await tracked(store);
+    if (t.failed) partial = true;
+    for (const r of t.list) { out.push(r.mint); if (r.pool) out.push(r.pool); }
+  }
   /* the wallet tracker: every wallet somebody follows, and pump.fun's top
      traders while anyone follows them as a group or a channel posts them */
   if (audience) {
-    try { out.push(...((await audience('wallets')).list || [])); } catch {}
+    try { out.push(...((await audience('wallets')).list || [])); } catch { partial = true; }
     try {
       const fans = (await audience('smartFans')).list || [];
       let channel = null;
-      try { channel = await store.get(K.channel); } catch {}
+      try { channel = await store.get(K.channel); } catch { partial = true; }
       if (fans.length || channel) out.push(...topSmart(await smartWallets()).keys());
-    } catch {}
+    } catch { partial = true; }
   }
-  return [...new Set(out)];
+  return { addrs: [...new Set(out)], partial };
+}
+
+export async function watchAddresses(store, audience = null, env = {}) {
+  return (await watchSet(store, audience, env)).addrs;
+}
+
+/* The one way the Helius webhook changes: from a complete read only (a
+   failed read must never strip or delete it), and only when the set differs
+   from the one it was last given — the hash is kept with its id — or when
+   there is nothing left to watch and a webhook still exists. */
+export async function syncHelius(env, store, audience = null) {
+  try {
+    const { addrs, partial } = await watchSet(store, audience, env);
+    if (partial) return { ok: false, error: 'watch list read failed — left as it was' };
+    let saved = null;
+    try { saved = await store.get(HELIUS_KEY); } catch { return { ok: false, error: 'could not read the webhook record' }; }
+    const has = !!(saved && saved.id);
+    if (!addrs.length && !has) return { ok: true, addresses: 0 };
+    if (addrs.length && has && saved.h === addrHash(addrs)) return { ok: true, addresses: addrs.length, unchanged: true };
+    return await syncWebhook(env, store, site(env), addrs);
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 }
 
 /* The pool and the socials. Some routers list only the pool in a swap's
@@ -870,7 +901,11 @@ async function onGroup(ctx, msg) {
     };
     await putGroup(store, chatId, cfg);
     await addTracking(store, addr, pool, chatId);
-    const sync = await resync(ctx);
+    /* polled (the default): wake the Solana watcher so the first buy lands in
+       seconds, not on its next read of the list; Helius has nothing to do */
+    const polled = solPolling(env);
+    if (polled && ctx.sol) await ctx.sol('track').catch(() => null);
+    const sync = polled ? { ok: true } : await resync(ctx);
     const head = await tapHeadStart(ctx, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 })
       + await welcomeLine(ctx, cfg, { mint: addr, chain: 'solana', sym: cfg.sym, name: cfg.name, img: t.img || '', mcap: t.mcap || 0 });
     const warn = sync && sync.ok ? '' : `\n\n⚠️ Saved, but the buy feed could not be registered: ${tgEsc(sync && sync.error || 'unknown')}`;
@@ -2235,9 +2270,7 @@ async function forgetUser(store, uid) {
 }
 
 async function resync(ctx) {
-  try {
-    return await syncWebhook(ctx.env, ctx.store, site(ctx.env), await watchAddresses(ctx.store, ctx.audience));
-  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  return syncHelius(ctx.env, ctx.store, ctx.audience);
 }
 
 /* ================================================================= trades */
@@ -2329,17 +2362,20 @@ export async function topCallers(ctx, now = Date.now()) {
   return callerMem.v;
 }
 
-export async function onTrade(ctx, payload, solUsd) {
+/* `wallets` and `buys` say which half to do: a Helius delivery is the wallet
+   tracker's, plus the buys only when Helius delivers those (SOL_BUYS=helius);
+   the Solana watcher's poll is buys only. */
+export async function onTrade(ctx, payload, solUsd, { wallets = true, buys: withBuys = true } = {}) {
   const { env, store } = ctx;
-  const w = await onWalletTrades(ctx, payload, solUsd).catch(() => ({ swaps: 0, dms: 0 }));
+  const w = wallets ? await onWalletTrades(ctx, payload, solUsd).catch(() => ({ swaps: 0, dms: 0 })) : { swaps: 0, dms: 0 };
   const { set } = await tracked(store);
-  const buys = set.size ? buysFromPayload(payload, set) : [];
+  const buys = withBuys && set.size ? buysFromPayload(payload, set) : [];
   /* Every Helius delivery is a Worker request — 371,067 of them in six hours
      on 2026-09-30, which is what took the site past the free plan's 100,000 a
      day. One line per delivery says what it was for (a group's buy, a watched
      wallet's swap, or nothing we use), sampled into the dashboard's Logs by
      [observability]. */
-  console.log(JSON.stringify({ ev: 'tg-trade', txs: Array.isArray(payload) ? payload.length : 1, buys: buys.length, swaps: w.swaps || 0 }));
+  console.log(JSON.stringify({ ev: wallets ? 'tg-trade' : 'sol-poll', txs: Array.isArray(payload) ? payload.length : 1, buys: buys.length, swaps: w.swaps || 0 }));
   if (!set.size) return { buys: 0, sent: 0, wallets: w };
   let sent = 0, skipped = 0;
   const bot = await me(env, store).catch(() => ({ username: '' }));

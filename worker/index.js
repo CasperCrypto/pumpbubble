@@ -10,13 +10,14 @@
    ========================================================================== */
 
 import { Guard, runGuard } from '../src/guard.mjs';
-import { guardExpire, onEvmBuys, sendDm, formatCallAlert } from '../src/tgbot.mjs';
+import { guardExpire, onEvmBuys, sendDm, formatCallAlert, onTrade as solTrade, tracked as solTracked } from '../src/tgbot.mjs';
+import { Endpoints, rpcList as solRpcs, watchList as solWatchList, poll as solPoll, solPolling, EVERY as SOL_EVERY, IDLE_EVERY as SOL_IDLE, QUIET_MS as SOL_QUIET } from '../src/solwatch.mjs';
 import { CallerBook, pollOnce, WINDOWS as CALL_WINDOWS } from '../src/callers.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
 import { SWAP_CSP } from '../src/refs.mjs';
-import { histToJSON, histFromJSON, pruneHistory, altGateways } from '../src/core.mjs';
+import { histToJSON, histFromJSON, pruneHistory, altGateways, fetchSolPrice } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
@@ -141,6 +142,90 @@ export class EvmWatch {
   }
 }
 
+/* Solana buys, polled from free public RPCs — src/solwatch.mjs has the why
+   (Helius's free credits ran out and took every Solana alert with them).
+   One object for every followed token. The list is tg:mints, re-read every
+   half minute, so /setup and /stop need no message of their own; /setup
+   pokes it only so a new group's first buy lands in seconds. Cursors (the
+   newest signature seen per address) live in memory and are saved at most
+   once a minute, at once after a poll that read anything — a restart then
+   resumes where it was, and pickNew's age limit keeps a long sleep from
+   posting history. Quiet tokens are read every 8 s, busy ones every 4. */
+export class SolWatch {
+  constructor(state, env) {
+    this.state = state; this.env = env;
+    this.cur = null; this.savedAt = 0; this.back = 0; this.movedAt = 0; this.fresh = false;
+    this.eps = new Endpoints(solRpcs(env));
+    this.seen = new Set(); this.retry = [];
+    this.sol = { v: 0, at: 0 };
+    this.stat = { okAt: 0, err: '', errAt: 0, polls: 0, txs: 0, buys: 0, sent: 0, skipped: 0, rpc: '', tokens: 0 };
+  }
+  async load() {
+    if (this.cur) return;
+    const s = (await this.state.storage.get('s')) || {};
+    this.cur = s.cur || {};
+  }
+  async save(force) {
+    if (!force && Date.now() - this.savedAt < 60_000) return;
+    this.savedAt = Date.now();
+    await this.state.storage.put('s', { cur: this.cur });
+  }
+  async fetch(req) {
+    await this.load();
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    let out = { ok: true };
+    if (b.op === 'status') out = { ok: true, ...this.stat, backoffMs: this.back };
+    if (b.op === 'track') this.fresh = true;
+    if (solPolling(this.env) && !(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 500);
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  /* SOL in dollars for the alert: the site's own saved price while it is
+     fresh, else pump.fun's, at most once a minute. */
+  async solUsd(store) {
+    if (this.sol.v > 0 && Date.now() - this.sol.at < 60_000) return this.sol.v;
+    let v = 0;
+    try { const s = await store.get('sol:price'); if (s && s.price > 0 && Date.now() - s.at < 600_000) v = s.price; } catch {}
+    if (!(v > 0)) v = await fetchSolPrice().catch(() => 0);
+    if (v > 0) this.sol = { v, at: Date.now() };
+    return this.sol.v;
+  }
+  async alarm() {
+    await this.load();
+    if (!solPolling(this.env) || !this.env.TG_BOT_TOKEN) return;
+    const env = { ...this.env, IMG_SECRET: await imgSecret(this.env) };
+    const store = makeStore(env);
+    const { list } = await solTracked(store, this.fresh);
+    this.fresh = false;
+    this.stat.tokens = list.length;
+    if (!list.length) return;               // nobody follows a token: no next alarm until /setup or the cron
+    const now = Date.now();
+    try {
+      const r = await solPoll(solWatchList(list), this.cur, this.eps, { now, seen: this.seen, retry: this.retry });
+      this.cur = r.next; this.retry = r.again;
+      this.stat.rpc = r.rpc; this.stat.okAt = Date.now(); this.stat.polls++; this.stat.skipped += r.skipped;
+      this.back = 0;
+      for (const tx of r.txs) {
+        const sig = tx && tx.transaction && tx.transaction.signatures && tx.transaction.signatures[0];
+        if (sig) { this.seen.add(sig); if (this.seen.size > 3000) { const it = this.seen.values(); for (let i = 0; i < 1000; i++) this.seen.delete(it.next().value); } }
+      }
+      if (r.txs.length) {
+        this.movedAt = now; this.stat.txs += r.txs.length;
+        /* saved before posting: a restart mid-send must not post twice */
+        await this.save(true);
+        const res = await solTrade({ env, store, callers: callersClient(env) }, r.txs, await this.solUsd(store), { wallets: false });
+        this.stat.buys += res.buys || 0; this.stat.sent += res.sent || 0;
+      } else await this.save(false);
+    } catch (e) {
+      this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
+      /* every endpoint refused: back off, doubling to a minute */
+      this.back = Math.min(60_000, Math.max(SOL_EVERY, this.back) * 2);
+    }
+    const every = now - this.movedAt > SOL_QUIET ? SOL_IDLE : SOL_EVERY;
+    await this.state.storage.setAlarm(Date.now() + (this.back || every));
+  }
+}
+
 /* The bot's list and the mass DM (src/audience.mjs). One object; its alarm
    paces a send at Telegram's rate, whether or not the console is open. */
 export class AudienceDO {
@@ -211,6 +296,18 @@ function evmClient(env) {
     const r = await stub.fetch('https://evm/', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ op, chain, ...body }),
+    });
+    return r.json();
+  };
+}
+
+function solClient(env) {
+  if (!env.SOL) return null;
+  const stub = () => env.SOL.get(env.SOL.idFromName('solana'));
+  return async (op, body = {}) => {
+    const r = await stub().fetch('https://sol/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, ...body }),
     });
     return r.json();
   };
@@ -487,6 +584,7 @@ async function makeCtx(env, execCtx) {
     arena: arenaClient(env),
     guard: guardClient(env),
     evm: evmClient(env),
+    sol: solClient(env),
     audience: audienceClient(env),
     callers: callersClient(env),
     fetchImage: imageFetcher(execCtx),
@@ -641,6 +739,9 @@ export default {
         /* The callers' watcher runs on its own alarm; this only restarts it if
            a deploy or an error ever lost it. */
         if (ctx.callers) await ctx.callers('tick').catch(() => null);
+        /* the Solana buy watcher, likewise: a deploy restarts it, this only
+           makes sure it is running while groups follow a token */
+        if (ctx.sol) await ctx.sol('tick').catch(() => null);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {

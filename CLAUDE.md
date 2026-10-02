@@ -1522,6 +1522,31 @@ token has no pool yet and its mint is in every one of its trades. The webhook id
 redeploy updates it rather than creating a second one, and an empty list deletes it — Helius
 rejects a webhook watching nothing.
 
+**Solana buys are polled now, not delivered (2026-10-02).** Helius's free plan is 1,000,000
+credits a month and every delivered transaction costs one; the top traders' wallets spent them
+(the 371,067 deliveries above), the plan showed *"Service halted. Upgrade plan to restore"* on
+2026-10-02 with 18 days to its reset, and from 2026-10-01 ~13:00 UTC no group got a Solana buy.
+**Rotating free accounts was asked for and refused** — it is evading the provider's limit, they
+link accounts, and the same wallets would drain a second one in days. Instead the `SolWatch`
+Durable Object (`src/solwatch.mjs`, `env.SOL`) does for Solana what `EvmWatch` does for EVM: every
+4 s (8 s after two quiet minutes) one batched `getSignaturesForAddress` over every followed mint
+and pool since the last signature seen at each, then `getTransaction` for the new ones — the same
+raw shape Helius delivered, so `parseBuys()` and the alert are unchanged (`onTrade(..., {wallets:
+false})`). A first look at an address only stores its cursor, anything older than three minutes
+is history, twenty transactions a poll at most (eight where an endpoint refuses batches — the free
+plan's fifty subrequests also carry the alerts). Free endpoints in order, a failing one benched a
+minute: `api.mainnet-beta.solana.com`, `solana-rpc.publicnode.com` (one getTransaction per batch),
+`public.rpc.solanavibestation.com` (one method per batch); dRPC, Ankr, BlockPI, OnFinality, Omnia
+and LeoRPC refused without a key. **Probed from a laptop only** — a throwaway probe Worker was not
+allowed — so `/api/tg/status` → `sol` (`rpc`, `lastReadS`, `error`) is where Cloudflare's egress
+shows. `SOL_POLL_RPC` (secret) puts a keyed URL first; Helius's own RPC is never polled, its
+credits are the payments'. `SOL_BUYS = "helius"` in wrangler.toml switches back to the webhook —
+exactly one source at a time, or every buy posts twice. In poll mode Helius watches only the
+wallet tracker's wallets and the top traders; `syncHelius()` is the one way the webhook changes,
+only from a complete read (a failed KV read used to look like an empty list, which deletes the
+webhook) and only when the set's hash differs from the one stored with its id — each edit is 100
+credits, and the cron used to re-PUT hourly whatever happened.
+
 **Every string a token controls is escaped before it reaches a caption** — ticker, name, the
 group's chosen emoji, every social link. The caption is HTML and it is posted into somebody
 else's group. `clean()` strips the brackets server-side and `tgEsc()` escapes what is left; links

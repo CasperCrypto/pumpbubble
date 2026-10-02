@@ -58,6 +58,11 @@ crons = ["*/5 * * * *"]
 # so it lives here rather than in a secret. Changing it is a code change, which
 # is what you want for the one value that decides where money goes.
 TREASURY_WALLET = "6k8T4fXq5vt3asVnywaHgfw4ApRexGHupbUU8e3TsW1C"
+# Who delivers Solana buy alerts: "poll" — the SolWatch Durable Object on free
+# public RPCs (src/solwatch.mjs) — or "helius", the webhook, which is faster
+# by a few seconds and spends a credit per transaction. Never both: every buy
+# would post twice. SOL_POLL_RPC (a secret) puts your own RPC URL first.
+SOL_BUYS = "poll"
 AD_CONTACT = "https://t.me/casper_crypto"
 # The operator's pump.fun invite link: shown to new traders on Solana token
 # cards and in the bot's Start menu (src/refs.mjs pumpJoin). Public by nature.
@@ -153,6 +158,18 @@ class_name = "CallersDO"
 [[migrations]]
 tag = "v5-callers"
 new_sqlite_classes = ["CallersDO"]
+
+# Solana buy alerts (src/solwatch.mjs): one watcher polling the followed
+# tokens on free public RPCs every 4–8 seconds, because Helius's free credits
+# ran out on 2026-10-01 and a halted plan delivers nothing. SOL_BUYS below
+# switches it back to the Helius webhook.
+[[durable_objects.bindings]]
+name = "SOL"
+class_name = "SolWatch"
+
+[[migrations]]
+tag = "v6-sol"
+new_sqlite_classes = ["SolWatch"]
 
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]

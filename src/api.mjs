@@ -17,10 +17,11 @@ import { svgToPng } from './png.mjs';
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
-  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks, setChannel as tgSetChannel, watchAddresses as tgWatch,
-  groupList as tgGroups, sendDm as tgSendDm,
+  onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks, setChannel as tgSetChannel,
+  syncHelius as tgSyncHelius, groupList as tgGroups, sendDm as tgSendDm,
 } from './tgbot.mjs';
-import { deliveryAuth as heliusAuth, syncWebhook as heliusSync } from './helius.mjs';
+import { deliveryAuth as heliusAuth } from './helius.mjs';
+import { solPolling } from './solwatch.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
 import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
@@ -752,7 +753,7 @@ let tgStatusMem = { at: 0, v: null };
 
 /* after a tracker-wide change made from the console */
 async function tgEnsureAudience(ctx) {
-  return heliusSync(ctx.env, ctx.store, (ctx.env.PUBLIC_ORIGIN || 'https://pumpbubble.fun').replace(/\/+$/, ''), await tgWatch(ctx.store, ctx.audience));
+  return tgSyncHelius(ctx.env, ctx.store, ctx.audience);
 }
 
 /* where a token sits on the Trending tab right now, from what this isolate
@@ -2445,7 +2446,9 @@ export async function handle(req, ctx) {
       let payload = null;
       try { payload = await req.json(); } catch { return json({ ok: true }); }
       const solUsd = await solPriceNow(ctx).catch(() => 0);
-      const work = tgTrade(ctx, payload, solUsd).catch(() => {});
+      /* the buys come from the Solana watcher unless SOL_BUYS=helius; a
+         delivery is then only the wallet tracker's */
+      const work = tgTrade(ctx, payload, solUsd, { buys: !solPolling(ctx.env) }).catch(() => {});
       if (ctx.waitUntil) ctx.waitUntil(work); else await work;
       return json({ ok: true });
     }
@@ -2475,7 +2478,16 @@ export async function handle(req, ctx) {
             polls: s.polls, buys: s.buys, sent: s.sent, error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
         }
       }
-      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, evm,
+      /* the Solana watcher the same way: which free RPC it is getting, and
+         its last error if that is newer than its last good read */
+      let sol = null;
+      if (ctx.sol && st.enabled && solPolling(ctx.env)) {
+        const s = await ctx.sol('status').catch(() => null);
+        if (s && s.ok) sol = { tokens: s.tokens || 0, lastReadS: s.okAt ? Math.round((Date.now() - s.okAt) / 1000) : null,
+          rpc: s.rpc || '', polls: s.polls, txs: s.txs, buys: s.buys, sent: s.sent, skipped: s.skipped,
+          error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
+      }
+      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, sol, evm,
         profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null } };
       return json(tgStatusMem.v);
     }

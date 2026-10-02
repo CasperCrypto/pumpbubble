@@ -59,6 +59,18 @@ async function call(env, method, path = '', body) {
   return j;
 }
 
+/* A short fingerprint of an address set, kept beside the webhook's id: every
+   create or edit costs a hundred credits, so a sync whose set is the one
+   Helius already has is skipped (src/tgbot.mjs, syncHelius). */
+export function addrHash(addresses) {
+  let h = 0x811c9dc5;
+  for (const c of [...new Set(addresses)].filter(Boolean).sort().join(',')) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
 /* Point the webhook at this deployment's /tg/trade with the set of addresses
    it should watch. Creates the webhook the first time, updates it after, and
    remembers its id in KV so a redeploy does not create a second one. */
@@ -79,15 +91,22 @@ export async function syncWebhook(env, store, origin, addresses) {
 
   if (!want.accountAddresses.length) {
     if (saved && saved.id) {
-      try { await call(env, 'DELETE', '/' + saved.id); } catch { /* already gone */ }
+      /* forget the id only once the webhook is really gone: a refused delete
+         (a halted plan refuses everything) that cleared it anyway left a
+         webhook nobody could find again, delivering into credits after the
+         reset */
+      try { await call(env, 'DELETE', '/' + saved.id); }
+      catch (e) { if (!/404|not found/i.test(String(e && e.message))) return { ok: false, error: String(e && e.message || e) }; }
       try { await store.put(KEY, null); } catch {}
     }
     return { ok: true, addresses: 0, deleted: !!(saved && saved.id) };
   }
 
+  const h = addrHash(want.accountAddresses);
   if (saved && saved.id) {
     try {
       const j = await call(env, 'PUT', '/' + saved.id, want);
+      try { await store.put(KEY, { ...saved, at: Date.now(), url: want.webhookURL, h }); } catch {}
       return { ok: true, id: saved.id, addresses: want.accountAddresses.length, updated: true, raw: j && j.webhookID };
     } catch (e) {
       /* The saved id may belong to a webhook that was deleted from the Helius
@@ -98,7 +117,7 @@ export async function syncWebhook(env, store, origin, addresses) {
   const j = await call(env, 'POST', '', want);
   const id = j && (j.webhookID || j.id);
   if (!id) throw new Error('helius returned no webhook id');
-  try { await store.put(KEY, { id, at: Date.now(), url: want.webhookURL }); } catch {}
+  try { await store.put(KEY, { id, at: Date.now(), url: want.webhookURL, h }); } catch {}
   return { ok: true, id, addresses: want.accountAddresses.length, created: true };
 }
 
