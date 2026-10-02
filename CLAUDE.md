@@ -1740,8 +1740,13 @@ that already do sniping and auto-copy are the execution layer, and they pay refe
 **The alert has two styles, and Bubble is the default** (2026-10-01, asked as "make the buybot
 cooler — instead of emojis show something else"). *Bubble*: the size of the buy by name — 🦐
 SHRIMP under $100, 🐟 FISH, 🐬 DOLPHIN from $500, 🦈 SHARK from $2,500, 🐋 WHALE from $10,000 — and
-a ten-step meter on a log scale (`buyMeter`: $10 fills 2, $1,000 fills 6, $100,000 all 10), the
-numbers in a Telegram quote block, and the token's place on the Trending tab when it has one
+a ten-step meter on a log scale (`buyMeter`: $10 fills 2, $1,000 fills 6, $100,000 all 10 — in
+full-height `█░`, which takes the text's own colour on both themes; the first `▰▱` drew small and
+faint on desktop), the receipt in a Telegram quote block in short numbers (`solShort` 0.5 SOL,
+`qtyShort` 11.45M), links on one line, no "by @bot" line (Telegram shows the sender) and no blank
+lines — six lines where classic takes twelve, which also matters because most groups post with a
+GIF or video and a media caption is capped at 1,024 characters — and the token's place on the
+Trending tab when it has one
 ("#4 trending on the bubble map", `ctx.mapRank`, from what the isolate already holds — Solana
 alerts only, since EVM alerts are posted from the chain watchers). A row of one emoji per $20 runs
 off the screen on a whale and says nothing on a shrimp, and every buy bot prints it. *Classic* is

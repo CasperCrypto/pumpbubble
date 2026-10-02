@@ -12,7 +12,7 @@
    ========================================================================== */
 
 import { parseBuys, buysFromPayload, accountList, signers, MIN_SOL } from '../src/solbuy.mjs';
-import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS, buyTier, buyMeter } from '../src/tgbot.mjs';
+import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS, buyTier, buyMeter, solShort, qtyShort } from '../src/tgbot.mjs';
 import { heliusKey } from '../src/helius.mjs';
 
 let pass = 0, fail = 0;
@@ -184,24 +184,24 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
   is('the unsold sponsor line sells itself', caption.includes('t.me/pumpbubblebot?start=ads'), true);
   const nameless = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1 });
   is('without the bot’s name, boost falls back to the site', nameless.keyboard.inline_keyboard[1][1].url, 'https://pumpbubble.fun/?boost=' + MINT);
-  const paid = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+  const paid = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X', style: 'classic' }, solUsd: 1,
     botName: 'pumpbubblebot', ad: { title: '$<b>ZCAT</b>', name: 'Anon <i>Cat</i>', url: 'https://pumpbubble.fun/s/' + MINT } });
   is('a paid sponsor line links the token', paid.caption.includes('📣 <b>Ad:</b> <a href="https://pumpbubble.fun/s/' + MINT + '">'), true);
   is('its ticker and name are escaped', paid.caption.includes('<b>ZCAT</b>') || paid.caption.includes('<i>Cat</i>'), false);
-  const sm = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+  const sm = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X', style: 'classic' }, solUsd: 1,
     smart: { rank: 3, when: 'this week', realized: 74400, xh: 'CookerFlips', name: 'cooker' } }).caption;
   is('a top trader’s buy is tagged', sm.includes('🧠 <b>SMART BUY</b> — @CookerFlips, #3 on pump.fun this week by profit banked (+$74,400)'), true);
   const sm2 = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
     smart: { rank: 7, when: 'today', realized: 1000, xh: 'not a handle!', name: '<b>x</b>' } }).caption;
   is('no @ on an illegal handle, and the name is escaped', sm2.includes('@not') || sm2.includes('<b>x</b>'), false);
   is('no tag for an ordinary buyer', formatBuy({ buy: { sol: 1, tokens: 1 }, token: { mint: MINT }, group: { mint: MINT }, solUsd: 1 }).caption.includes('SMART'), false);
-  const kol = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+  const kol = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X', style: 'classic' }, solUsd: 1,
     caller: { rank: 2, xh: 'BeanCalls', name: 'bean', hit2: 0.625, n: 16 } }).caption;
   is('a top caller’s buy is tagged, with their record', kol.includes('📣 <b>TOP CALLER BUY</b> — @BeanCalls, #2 caller on pump.fun this week — 63% of their 16 calls hit 2×'), true);
   const kol2 = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
     caller: { rank: 9, xh: '', name: '<i>sneaky</i>', hit2: null, n: 0 } }).caption;
   is('a caller with no handle is named, escaped, and no record is invented', kol2.includes('<i>sneaky</i>') || kol2.includes('% of'), false);
-  const both = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
+  const both = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X', style: 'classic' }, solUsd: 1,
     smart: { rank: 3, when: 'this week', realized: 74400, xh: 'CookerFlips' }, caller: { rank: 2, xh: 'CookerFlips', hit2: 0.5, n: 10 } }).caption;
   is('a wallet that is both says both', both.includes('SMART BUY') && both.includes('TOP CALLER BUY'), true);
   const bad = formatBuy({ buy: { sol: 1, tokens: 1, newHolder: false }, token: { mint: MINT, sym: 'X' }, group: { mint: MINT, sym: 'X' }, solUsd: 1,
@@ -236,22 +236,40 @@ console.log('\nformatter — the bubble style (the default)');
   const bub = { ...group, style: undefined };
   const { caption, keyboard } = formatBuy({ buy, token, group: bub, solUsd: 104, botName: 'pumpbubblebot', rank: { rank: 4 } });
   ok('caption', '\n' + caption.split('\n').map(l => '        ' + l).join('\n'));
-  is('a $50 buy is a fish, and a new holder says so', caption.split('\n')[0], '🦐 <b>POK BUY</b> · SHRIMP · 🆕 NEW HOLDER'.replace('🦐', buyTier(50.93)[1]).replace('SHRIMP', buyTier(50.93)[2]));
-  is('the meter and the dollars', caption.includes(buyMeter(50.93) + '  <b>$50.93</b>'), true);
-  is('the numbers sit in a quote block', /<blockquote>💰 0\.4897 SOL → 11,453,237\.88 POK\n📈 MCap \$3,917\n🔎 <a href="https:\/\/solscan\.io\/tx\//.test(caption), true);
-  is('no row of emoji', caption.includes('✔️✔️'), false);
-  is('its place on the map', caption.includes('#4 trending on the bubble map'), true);
+  const [t50] = [buyTier(50.93)];
+  is('the title: tier, token and the dollars', caption.split('\n')[0], t50[1] + ' <b>POK BUY</b> · <b>$50.93</b>');
+  is('the meter and the tier', caption.split('\n')[1], '<b>' + buyMeter(50.93) + '</b> ' + t50[2]);
+  is('the receipt: short numbers, then market cap and new holder, then the links',
+    /<blockquote>0\.4897 SOL → <b>11\.45M POK<\/b>\nMCap <b>\$3,917<\/b> · 🆕 New holder\n<a href="https:\/\/solscan\.io\/tx\/[^"]+">Tx<\/a> · <a href="https:\/\/solscan\.io\/account\/[^"]+">Buyer<\/a> · <a href="https:\/\/pokmart\.com\/">Web<\/a> · <a href="https:\/\/x\.com\/pokmartcom">𝕏<\/a><\/blockquote>/.test(caption), true);
+  is('no row of emoji, no "by @bot" line, no blank lines', caption.includes('✔️✔️') || caption.includes('by @') || caption.includes('\n\n'), false);
+  is('its place on the map and the open ad slot, on one line', caption.split('\n').pop(),
+    '🫧 <a href="https://pumpbubble.fun/s/' + MINT + '">#4 trending on pumpbubble</a> · <a href="https://t.me/pumpbubblebot?start=ads">📢 Your token here</a>');
+  is('six lines when nobody notable bought', caption.split('\n').length, 6);
   is('the same buttons', keyboard.inline_keyboard[1][0].url, 'https://pumpbubble.fun/swap?mint=' + MINT);
   is('tiers by size', [5, 150, 900, 3000, 25000].map(u => buyTier(u)[2]).join(' '), 'SHRIMP FISH DOLPHIN SHARK WHALE');
-  is('the meter grows with the buy', [10, 100, 1000, 10000, 100000].map(u => buyMeter(u).split('▰').length - 1).join(' '), '2 4 6 8 10');
-  is('nothing bought, an empty meter', buyMeter(0), '▱'.repeat(10));
+  is('the meter grows with the buy', [10, 100, 1000, 10000, 100000].map(u => buyMeter(u).split('█').length - 1).join(' '), '2 4 6 8 10');
+  is('nothing bought, an empty meter', buyMeter(0), '░'.repeat(10));
+  is('half a SOL reads 0.5', solShort(0.5), '0.5');
+  is('and 12.3456 reads 12.35', solShort(12.3456), '12.35');
+  is('and 250 reads 250', solShort(250), '250');
+  is('a token amount in millions', qtyShort(11453237.88), '11.45M');
+  is('in thousands, whole', qtyShort(10455.88), '10,456');
+  is('in billions', qtyShort(2.5e9), '2.5B');
+  const tagged = formatBuy({ buy, token, group: bub, solUsd: 104,
+    smart: { rank: 3, when: 'this week', realized: 74400, xh: 'CookerFlips' }, caller: { rank: 2, xh: 'BeanCalls', hit2: 0.625, n: 16 } }).caption;
+  is('a top trader, said short', tagged.includes('🧠 <b>Smart buy</b> · @CookerFlips · #3 on pump.fun this week · +$74,400 banked'), true);
+  is('a top caller, said short', tagged.includes('📣 <b>Top caller</b> · @BeanCalls · #2 this week · 63% of 16 calls hit 2×'), true);
+  is('a test says so, quietly', formatBuy({ buy, token, group: bub, solUsd: 104, test: true }).caption.split('\n')[0].endsWith('· <i>test</i>'), true);
+  const paidAd = formatBuy({ buy, token, group: bub, solUsd: 104, botName: 'pumpbubblebot', ad: { title: '$ZCAT', name: 'Anon Cat', url: 'https://pumpbubble.fun/s/' + MINT } }).caption;
+  is('a paid ad gets its own line', paidAd.includes('📢 <b>Ad</b> · <a href="https://pumpbubble.fun/s/' + MINT + '">$ZCAT</a> — Anon Cat'), true);
+  is('and the open-slot pitch steps aside', paidAd.includes('Your token here'), false);
   const evil = formatBuy({ buy, token: { ...token, sym: '<b>x</b>' }, group: { ...bub, sym: '<b>x</b>' }, solUsd: 104 }).caption;
   is('a hostile ticker cannot inject markup here either', /<b>x<\/b>|<img/.test(evil), false);
   is('a rank past fifty is not claimed', formatBuy({ buy, token, group: bub, solUsd: 104, rank: { rank: 80 } }).caption.includes('#80'), false);
   const evm = formatBuy({ buy: { sol: 0.01, usd: 30, tokens: 1e6, buyer: '0x' + '1'.repeat(40), sig: '0x' + 'f'.repeat(64) },
     token: { sym: 'TOK', mcap: 30000 }, group: { chain: 'base', token: '0x' + 'a'.repeat(40), sym: 'TOK' }, solUsd: 3000 }).caption;
-  is('an EVM buy pays in ETH and links Basescan', evm.includes('0.0100 ETH → 1,000,000 TOK') && evm.includes('basescan.org/tx/'), true);
-  is('and claims nothing about holding', evm.includes('NEW HOLDER'), false);
+  is('an EVM buy pays in ETH and links Basescan', evm.includes('0.01 ETH → <b>1M TOK</b>') && evm.includes('basescan.org/tx/'), true);
+  is('and claims nothing about holding', evm.includes('New holder'), false);
   const sv = settingsView({ sym: 'POK', emoji: '🐸', step: 20 }, 'style');
   is('the style page offers both, bubble ticked', sv.kb[0].map(b => b.text).join(' | '), '✅ 🫧 Bubble | 😀 Classic');
   is('the main settings name the style', settingsView({ sym: 'POK', style: 'classic' }).text.includes('Style Classic'), true);

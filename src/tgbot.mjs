@@ -377,7 +377,24 @@ export function buyTier(usd) { const u = num(usd); return TIERS.find(t => u >= t
 export function buyMeter(usd) {
   const u = num(usd);
   const n = u > 0 ? clamp(Math.round(Math.log10(u) * 2.2 - 0.6), 1, 10) : 0;
-  return '▰'.repeat(n) + '▱'.repeat(10 - n);
+  /* full-height blocks: they take the text's own colour on light and dark
+     themes alike, where the thinner ▰▱ drew small and faint on desktop */
+  return '█'.repeat(n) + '░'.repeat(10 - n);
+}
+/* numbers as people say them: 0.5 SOL, not 0.5000; 11.45M tokens, not
+   11,453,237.88 */
+const trimZ = s => s.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+export function solShort(n) {
+  n = num(n);
+  return trimZ(n >= 100 ? n.toFixed(1) : n >= 10 ? n.toFixed(2) : n >= 1 ? n.toFixed(3) : n.toFixed(4));
+}
+export function qtyShort(n) {
+  n = num(n);
+  if (n >= 1e9) return trimZ((n / 1e9).toFixed(2)) + 'B';
+  if (n >= 1e6) return trimZ((n / 1e6).toFixed(2)) + 'M';
+  if (n >= 1e3) return Math.round(n).toLocaleString('en-US');
+  if (n >= 1) return trimZ(n.toFixed(2));
+  return n > 0 ? n.toLocaleString('en-US', { maximumSignificantDigits: 4 }) : '0';
 }
 
 /* Two styles. `bubble` (the default since 2026-10-01): the size of the buy
@@ -403,10 +420,11 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
 
   /* The buyer is one of pump.fun's top traders by realized profit — the
      line no other buy bot can print (src/smartset.mjs). */
-  const tags = [];
+  const tags = [], short = [];
   if (smart && smart.rank) {
     const who = smart.xh && /^\w{1,15}$/.test(smart.xh) ? '@' + smart.xh : clean(smart.name || '', 20);
     tags.push(`🧠 <b>SMART BUY</b> — ${tgEsc(who)}, #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} by profit banked (+${fmtUsd(smart.realized)})`);
+    short.push(`🧠 <b>Smart buy</b> · ${tgEsc(who)} · #${Math.floor(smart.rank)} on pump.fun ${tgEsc(smart.when || '')} · +${fmtUsd(smart.realized)} banked`);
   }
   /* The KOL line: the buyer is one of the week's top callers on pump.fun —
      the Calls tab's own ranking, whose calls reach 2× most reliably. Their
@@ -415,21 +433,36 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
     const who = caller.xh && /^\w{1,15}$/.test(caller.xh) ? '@' + caller.xh : clean(caller.name || '', 20);
     const hit = caller.hit2 != null && isFinite(+caller.hit2) && caller.n > 0 ? ` — ${Math.round(+caller.hit2 * 100)}% of their ${Math.floor(caller.n)} calls hit 2×` : '';
     tags.push(`📣 <b>TOP CALLER BUY</b> — ${tgEsc(who)}, #${Math.floor(caller.rank)} caller on pump.fun this week${tgEsc(hit)}`);
+    const rec = caller.hit2 != null && isFinite(+caller.hit2) && caller.n > 0 ? ` · ${Math.round(+caller.hit2 * 100)}% of ${Math.floor(caller.n)} calls hit 2×` : '';
+    short.push(`📣 <b>Top caller</b> · ${tgEsc(who)} · #${Math.floor(caller.rank)} this week${tgEsc(rec)}`);
   }
 
+  const s = group.socials || {};
+  const socials = [okUrl(s.web) && `<a href="${attr(s.web)}">Web</a>`, okUrl(s.x) && `<a href="${attr(s.x)}">𝕏</a>`,
+    okUrl(s.tg) && `<a href="${attr(s.tg)}">TG</a>`].filter(Boolean);
+  const paid = ad && okUrl(ad.url);
   const lines = [];
   if (bubble) {
+    /* Seven lines where the classic alert takes twelve: what was bought and
+       for how much on top, how big that is on the meter, who bought it when
+       it matters, the receipt in a quote block, and the map. No "by @bot"
+       line — Telegram already shows who posted it. */
     const [, te, tn] = buyTier(usd);
-    lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${te} <b>${tgEsc(sym)} BUY</b> · ${tn}${buy.newHolder ? ' · 🆕 NEW HOLDER' : ''}`);
-    if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
-    lines.push(...tags);
-    lines.push('');
-    lines.push(`${buyMeter(usd)}  <b>${usd > 0 ? fmtUsd(usd) : fmtSol(buy.sol) + ' ' + native}</b>`);
-    const facts = [`💰 ${fmtSol(buy.sol)} ${native} → ${fmtQty(buy.tokens)} ${tgEsc(sym)}`];
-    if (num(token.mcap) > 0) facts.push(`📈 MCap ${fmtUsd(token.mcap)}`);
-    const seen = [txUrl && `<a href="${txUrl}">Tx</a>`, walletUrl && `<a href="${walletUrl}">Buyer</a>`].filter(Boolean);
-    if (seen.length) facts.push('🔎 ' + seen.join(' · '));
+    const amount = usd > 0 ? fmtUsd(usd) : solShort(buy.sol) + ' ' + native;
+    lines.push(`${te} <b>${tgEsc(sym)} BUY</b> · <b>${amount}</b>${test ? ' · <i>test</i>' : ''}`);
+    lines.push(`<b>${buyMeter(usd)}</b> ${tn}`);
+    lines.push(...short);
+    const facts = [`${solShort(buy.sol)} ${native} → <b>${qtyShort(buy.tokens)} ${tgEsc(sym)}</b>`];
+    const more = [num(token.mcap) > 0 && `MCap <b>${fmtUsd(token.mcap)}</b>`, buy.newHolder && '🆕 New holder'].filter(Boolean);
+    if (more.length) facts.push(more.join(' · '));
+    const refs = [txUrl && `<a href="${txUrl}">Tx</a>`, walletUrl && `<a href="${walletUrl}">Buyer</a>`, ...socials];
+    if (refs.length) facts.push(refs.join(' · '));
     lines.push('<blockquote>' + facts.join('\n') + '</blockquote>');
+    if (paid) lines.push(`📢 <b>Ad</b> · <a href="${attr(ad.url)}">${tgEsc(clean(ad.title || '', 22))}</a>${ad.name ? ' — ' + tgEsc(clean(ad.name, 32)) : ''}`);
+    const place = rank && rank.rank > 0 && rank.rank <= 50 ? `#${Math.floor(rank.rank)} trending on pumpbubble` : `${tgEsc(sym)} on pumpbubble`;
+    const foot = [`🫧 <a href="${links.bubble}">${place}</a>`];
+    if (!paid && botName) foot.push(`<a href="https://t.me/${tgEsc(botName)}?start=ads">📢 Your token here</a>`);
+    lines.push(foot.join(' · '));
   } else {
     const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
     lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
@@ -448,25 +481,21 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
     if (num(token.mcap) > 0) lines.push(`📈 <b>MCap:</b> ${fmtUsd(token.mcap)}`);
   }
 
-  const soc = [];
-  const s = group.socials || {};
-  if (okUrl(s.web)) soc.push(`<a href="${attr(s.web)}">Web</a>`);
-  if (okUrl(s.x)) soc.push(`<a href="${attr(s.x)}">𝕏</a>`);
-  if (okUrl(s.tg)) soc.push(`<a href="${attr(s.tg)}">TG</a>`);
-  if (soc.length) lines.push(`📣 <b>Socials:</b> ${soc.join(' | ')}`);
-
-  lines.push('');
-  /* The sponsored line: a paid token (its ticker, its own page — never text
-     or a link somebody typed), or, while the slot is unsold, the slot selling
-     itself — the same idea as the rail's empty pitch. */
-  if (ad && okUrl(ad.url)) {
-    lines.push(`📣 <b>Ad:</b> <a href="${attr(ad.url)}">${tgEsc(clean(ad.title || '', 22))}</a>${ad.name ? ' — ' + tgEsc(clean(ad.name, 32)) : ''}`);
-  } else if (botName) {
-    lines.push(`📣 <a href="https://t.me/${tgEsc(botName)}?start=ads">Your token here, under every buy</a>`);
+  if (!bubble) {
+    if (socials.length) lines.push(`📣 <b>Socials:</b> ${socials.join(' | ')}`);
+    lines.push('');
+    /* The sponsored line: a paid token (its ticker, its own page — never text
+       or a link somebody typed), or, while the slot is unsold, the slot selling
+       itself — the same idea as the rail's empty pitch. */
+    if (paid) {
+      lines.push(`📣 <b>Ad:</b> <a href="${attr(ad.url)}">${tgEsc(clean(ad.title || '', 22))}</a>${ad.name ? ' — ' + tgEsc(clean(ad.name, 32)) : ''}`);
+    } else if (botName) {
+      lines.push(`📣 <a href="https://t.me/${tgEsc(botName)}?start=ads">Your token here, under every buy</a>`);
+    }
+    /* where the token sits on the map right now, when it is on the trending tab */
+    const place = rank && rank.rank > 0 && rank.rank <= 50 ? `#${Math.floor(rank.rank)} trending on` : `${tgEsc(sym)} on`;
+    lines.push(`🫧 <a href="${links.bubble}">${place} the bubble map</a>`);
   }
-  /* where the token sits on the map right now, when it is on the trending tab */
-  const place = rank && rank.rank > 0 && rank.rank <= 50 ? `#${Math.floor(rank.rank)} trending on` : `${tgEsc(sym)} on`;
-  lines.push(`🫧 <a href="${links.bubble}">${place} the bubble map</a>`);
 
   /* Chart goes to a chart; Buy through the referral where one is configured
      and to our own swap page when not — a button that says Buy and does nothing
@@ -1439,7 +1468,7 @@ export function settingsView(g, page = 'main') {
     return {
       text: `🎨 <b>Buy style</b> for ${sym}\n\n`
         + `<b>Bubble</b>${classic ? '' : ' ✅'} — how big the buy is, by name and a meter:\n`
-        + `🐬 ${sym} BUY · DOLPHIN\n${buyMeter(620)}  <b>$620</b>\n\n`
+        + `🐬 <b>${sym} BUY</b> · <b>$620</b>\n<b>${buyMeter(620)}</b> DOLPHIN\n\n`
         + `<b>Classic</b>${classic ? ' ✅' : ''} — one ${tgEsc(g.emoji || '🟢')} per $${step}, like other buy bots:\n`
         + `${emojiRow(620, g.emoji, step)}`,
       kb: [[{ text: (classic ? '' : '✅ ') + '🫧 Bubble', callback_data: 'cfg:style:bubble' },
