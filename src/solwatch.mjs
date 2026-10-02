@@ -31,7 +31,8 @@
    | Omnia, LeoRPC                     |                                    |
 
    Every batch here is one method, which all three accept; a refused
-   getTransaction batch falls back to single calls for that endpoint.
+   getTransaction batch falls back to single calls for that endpoint, and a
+   poll's transactions are spread across every endpoint not sitting out.
    SOL_POLL_RPC (a secret: any provider's own free-key URL) goes first when
    set. Helius's RPC (SOLANA_RPC) is never polled: what it has left is for
    payments.
@@ -50,9 +51,16 @@ export const EVERY = 4000;          // between polls while something moved latel
 export const IDLE_EVERY = 8000;     // after QUIET_MS with nothing new anywhere
 export const QUIET_MS = 120_000;
 export const SIG_LIMIT = 25;        // signatures per address per poll
-export const TX_MAX = 20;           // transactions read per poll, newest first
+/* Transactions read per poll. At twenty, PUMP (several trades a second) had
+   all three free endpoints answering 429 within two minutes of going live on
+   2026-10-02 — their limits are per IP, and Cloudflare's egress shares its
+   IPs with every other Worker. Ten, spread across the endpoints, is a few
+   calls per endpoint per poll; a token that trades faster than that is
+   sampled, newest and pool-side first, and `skipped` says how much. */
+export const TX_MAX = 10;
 export const MAX_AGE_S = 180;       // a buy older than this is history, not an alert
-export const BENCH_MS = 60_000;     // a failing endpoint sits out this long
+export const BENCH_MS = 60_000;     // a failing endpoint sits out this long…
+export const LIMIT_BENCH_MS = 15_000; // …and a rate-limited one this long
 const TX_OPTS = { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' };
 
 /* Who delivers Solana buys: this watcher, unless SOL_BUYS is "helius" — the
@@ -86,9 +94,11 @@ export function watchList(list) {
    address only remembers where it is: a group that just ran /setup must not
    get the last hour's buys. Failed transactions, ones older than MAX_AGE_S
    (a cursor from before a long sleep) and ones already read are dropped; the
-   rest are taken newest first, TX_MAX at most, and `skipped` counts what a
-   burst left out. */
-export function pickNew(rows, cursors = {}, { now = Date.now(), seen = null, max = TX_MAX } = {}) {
+   rest are taken TX_MAX at most and `skipped` counts what a burst left out:
+   the `prefer` addresses' first (the pools — nearly every one of their
+   transactions is a swap, while a mint's include every transfer), then the
+   newest. */
+export function pickNew(rows, cursors = {}, { now = Date.now(), seen = null, max = TX_MAX, prefer = null } = {}) {
   const next = { ...cursors };
   const found = new Map();
   for (const [addr, list] of Object.entries(rows || {})) {
@@ -96,15 +106,18 @@ export function pickNew(rows, cursors = {}, { now = Date.now(), seen = null, max
     const first = !cursors[addr];
     next[addr] = list[0].signature;
     if (first) continue;
+    const pref = !!(prefer && prefer.has(addr));
     for (const r of list) {
       if (!r || !r.signature || r.err) continue;
       if (r.blockTime && now / 1000 - r.blockTime > MAX_AGE_S) continue;
       if (seen && seen.has(r.signature)) continue;
-      if (!found.has(r.signature)) found.set(r.signature, r);
+      const had = found.get(r.signature);
+      if (!had) found.set(r.signature, { r, pref });
+      else if (pref) had.pref = true;
     }
   }
-  const all = [...found.values()].sort((a, b) => (b.slot || 0) - (a.slot || 0));
-  return { sigs: all.slice(0, max).map(r => r.signature), next, skipped: Math.max(0, all.length - max) };
+  const all = [...found.values()].sort((a, b) => (b.pref - a.pref) || ((b.r.slot || 0) - (a.r.slot || 0)));
+  return { sigs: all.slice(0, max).map(x => x.r.signature), next, skipped: Math.max(0, all.length - max) };
 }
 
 /* One JSON-RPC request (single or batch) to one endpoint. A rate limit throws
@@ -149,12 +162,25 @@ export async function rpcCall(url, body, fetcher = fetch, ms = 8000) {
 /* The endpoints and what each has shown it can do. Lives as long as the
    Durable Object's isolate; nothing about it needs saving. */
 export class Endpoints {
-  constructor(urls) { this.urls = urls.slice(); this.bench = new Map(); this.single = new Set(); }
+  constructor(urls) { this.urls = urls.slice(); this.bench = new Map(); this.single = new Set(); this.errs = new Map(); }
   live(now = Date.now()) {
     const up = this.urls.filter(u => !(this.bench.get(u) > now));
     return up.length ? up : this.urls.slice();          // everyone benched: try them all anyway
   }
-  sit(url, now = Date.now()) { this.bench.set(url, now + BENCH_MS); }
+  sit(url, now = Date.now(), e = null) {
+    this.bench.set(url, now + (e && e.limited ? LIMIT_BENCH_MS : BENCH_MS));
+    if (e) this.errs.set(url, { err: String(e.message || e).slice(0, 120), at: now });
+  }
+  /* For /api/tg/status: each endpoint's last error and whether it is sitting
+     out, by host — never a path, which is where a key would be. */
+  report(now = Date.now()) {
+    const out = {};
+    for (const u of this.urls) {
+      const e = this.errs.get(u), benched = this.bench.get(u) > now;
+      if (e || benched) out[host(u)] = { benched, err: e ? e.err : '', agoS: e ? Math.round((now - e.at) / 1000) : null };
+    }
+    return out;
+  }
 }
 
 /* The first endpoint that answers the batch, benching the ones that do not. */
@@ -162,7 +188,7 @@ async function firstAnswer(eps, body, fetcher, now) {
   let last = null;
   for (const url of eps.live(now)) {
     try { return { url, res: await rpcCall(url, body, fetcher) }; }
-    catch (e) { last = e; eps.sit(url, now); }
+    catch (e) { last = e; eps.sit(url, now, e); }
   }
   throw last || new Error('no rpc');
 }
@@ -172,7 +198,7 @@ async function firstAnswer(eps, body, fetcher, now) {
    them, because every call is a subrequest and the free plan allows fifty
    per alarm, alerts included. A null is a transaction that endpoint has not
    caught up with yet (or one left for the next poll). */
-export const SINGLE_MAX = 8;
+export const SINGLE_MAX = 5;
 export async function readTxs(eps, url, sigs, fetcher = fetch) {
   const reqs = sigs.map((s, i) => ({ jsonrpc: '2.0', id: 100 + i, method: 'getTransaction', params: [s, TX_OPTS] }));
   if (!eps.single.has(url)) {
@@ -183,21 +209,31 @@ export async function readTxs(eps, url, sigs, fetcher = fetch) {
     : rpcCall(url, q, fetcher).catch(e => { if (e.limited) throw e; return null; })));
 }
 
-/* The endpoint that listed the signatures first (its view of the chain is
-   the one they came from), then the others; one that fails sits out. */
-async function readTxsAny(eps, url, sigs, fetcher, now) {
-  let last = null;
-  for (const u of [url, ...eps.live(now).filter(x => x !== url)]) {
-    try { return await readTxs(eps, u, sigs, fetcher); }
-    catch (e) { last = e; eps.sit(u, now); }
-  }
-  throw last || new Error('no rpc');
+/* getTransaction for every signature, spread over the endpoints that are not
+   sitting out — the listing one first, its view of the chain being the one
+   they came from — so no one endpoint carries a burst alone. A share that
+   fails benches its endpoint and comes back as nulls, retried next poll;
+   only when every share failed is the poll a failure. */
+export async function readSpread(eps, url, sigs, fetcher = fetch, now = Date.now()) {
+  const live = [url, ...eps.live(now).filter(u => u !== url)];
+  const parts = live.map(() => []);
+  sigs.forEach((s, i) => parts[i % live.length].push(s));
+  let failed = 0, last = null;
+  const res = await Promise.all(live.map(async (u, k) => {
+    if (!parts[k].length) return [];
+    try { return await readTxs(eps, u, parts[k], fetcher); }
+    catch (e) { failed++; last = e; eps.sit(u, now, e); return parts[k].map(() => null); }
+  }));
+  if (failed && failed === parts.filter(x => x.length).length) throw last;
+  const got = sigs.map((_, i) => res[i % live.length][Math.floor(i / live.length)] || null);
+  got.errors = res.flatMap(r => (r && r.errors) || []);
+  return got;
 }
 
 /* One poll, apart from posting: the signatures since each cursor, then the
    transactions behind the new ones. `retry` carries signatures whose
    transaction was not there yet last time (each gets one more try). */
-export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null, retry = [], fetcher = fetch } = {}) {
+export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null, retry = [], prefer = null, fetcher = fetch } = {}) {
   if (!addrs.length) return { txs: [], next: {}, skipped: 0, again: [], rpc: '', diag: { rows: [], warn: '' } };
   const reqs = addrs.map((a, i) => ({
     jsonrpc: '2.0', id: i + 1, method: 'getSignaturesForAddress',
@@ -212,14 +248,14 @@ export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null,
   const diag = { rows: addrs.map(a => Array.isArray(rows[a]) ? rows[a].length : 'x'), warn: (res.errors || [])[0] || '' };
   const keep = {};
   for (const a of addrs) if (cursors[a]) keep[a] = cursors[a];       // addresses nobody follows any more fall away
-  const picked = pickNew(rows, keep, { now, seen });
+  const picked = pickNew(rows, keep, { now, seen, prefer });
   const { sigs, next } = picked;
   let skipped = picked.skipped;
   const all = [...new Set(retry.concat(sigs))];
   const want = all.slice(0, TX_MAX + 5);
   skipped += all.length - want.length;
   if (!want.length) return { txs: [], next, skipped, again: [], rpc: host(url), diag };
-  const got = await readTxsAny(eps, url, want, fetcher, now);
+  const got = await readSpread(eps, url, want, fetcher, now);
   const txs = [], again = [];
   want.forEach((s, i) => {
     if (got[i]) txs.push(got[i]);

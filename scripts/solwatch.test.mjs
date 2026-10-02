@@ -12,7 +12,7 @@
    per-batch refusal, word for word.
    ========================================================================== */
 
-import { watchList, pickNew, rpcCall, Endpoints, readTxs, poll, rpcList, solPolling, host,
+import { watchList, pickNew, rpcCall, Endpoints, readTxs, readSpread, poll, rpcList, solPolling, host, LIMIT_BENCH_MS,
   RPCS, MAX_AGE_S, TX_MAX, SINGLE_MAX } from '../src/solwatch.mjs';
 import { buysFromPayload } from '../src/solbuy.mjs';
 import { addrHash } from '../src/helius.mjs';
@@ -192,6 +192,35 @@ console.log('\none poll, end to end');
   is('nothing followed: no calls, cursors dropped', [p4.txs.length, Object.keys(p4.next).length], [0, 0]);
   const p5 = await poll([POOL], { [MINT]: 's4', [POOL]: 's0' }, eps, { now: NOW + 12000, fetcher: net.fetcher });
   is('an unfollowed address\'s cursor falls away', Object.keys(p5.next), [POOL]);
+}
+
+console.log('\nbursts and spreading');
+{
+  /* a capped burst reads the pool's signatures first: they are swaps */
+  const mintRows = Array.from({ length: 15 }, (_, i) => sig(300 + i, 3000 + i)).reverse();
+  const poolRows = [sig(250, 2500)];                                  // older than every mint one
+  const h = pickNew({ [MINT]: mintRows, [POOL]: poolRows }, { [MINT]: 's1', [POOL]: 's1' }, { now: NOW, prefer: new Set([POOL]) });
+  is('a capped burst takes the pool\'s first', [h.sigs[0], h.sigs.length, h.skipped], ['s250', TX_MAX, 16 - TX_MAX]);
+
+  const net = fakeNet({
+    'https://a.test': { handlers: { getTransaction: ([s]) => txOf(+s.slice(1)) } },
+    'https://b.test': { status429: true },
+    'https://c.test': { handlers: { getTransaction: ([s]) => txOf(+s.slice(1)) } },
+  });
+  const eps = new Endpoints(['https://a.test', 'https://b.test', 'https://c.test']);
+  const sigs = ['s1', 's2', 's3', 's4', 's5', 's6'];
+  const got = await readSpread(eps, 'https://a.test', sigs, net.fetcher, NOW);
+  const hosts = [...new Set(net.asked.map(x => x.url))].sort();
+  is('a poll\'s reads are spread over every endpoint', hosts, ['https://a.test', 'https://b.test', 'https://c.test']);
+  is('…the rate-limited share comes back empty for a retry', got.map(t => t ? t.transaction.signatures[0] : null), ['s1', null, 's3', 's4', null, 's6']);
+  is('…and that endpoint sits out fifteen seconds, not a minute', [eps.live(NOW + 1000).includes('https://b.test'), eps.live(NOW + LIMIT_BENCH_MS + 1).includes('https://b.test')], [false, true]);
+  const rep = eps.report(NOW + 2000);
+  is('status names the host and its error, nothing else', [Object.keys(rep), rep['b.test'].benched, /429/.test(rep['b.test'].err)], [['b.test'], true, true]);
+
+  const dead = fakeNet({ 'https://a.test': { status429: true }, 'https://c.test': { html: true } });
+  const eps2 = new Endpoints(['https://a.test', 'https://c.test']);
+  try { await readSpread(eps2, 'https://a.test', ['s1', 's2'], dead.fetcher, NOW); no('every share failing throws'); }
+  catch { ok('every share failing is a failed poll'); }
 }
 
 console.log('\nsubrequests');

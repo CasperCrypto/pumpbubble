@@ -201,7 +201,8 @@ export class SolWatch {
     if (!list.length) return;               // nobody follows a token: no next alarm until /setup or the cron
     const now = Date.now();
     try {
-      const r = await solPoll(solWatchList(list), this.cur, this.eps, { now, seen: this.seen, retry: this.retry });
+      const prefer = new Set(list.map(t => t && t.pool).filter(Boolean));
+      const r = await solPoll(solWatchList(list), this.cur, this.eps, { now, seen: this.seen, retry: this.retry, prefer });
       this.cur = r.next; this.retry = r.again;
       this.stat.rpc = r.rpc; this.stat.okAt = Date.now(); this.stat.polls++; this.stat.skipped += r.skipped;
       this.stat.last = r.diag; this.stat.cursors = Object.keys(this.cur).length;
@@ -222,8 +223,9 @@ export class SolWatch {
       this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
       console.log(JSON.stringify({ ev: 'sol-poll-error', err: this.stat.err }));
       /* every endpoint refused: back off, doubling to a minute */
-      this.back = Math.min(60_000, Math.max(SOL_EVERY, this.back) * 2);
+      this.back = Math.min(30_000, Math.max(SOL_EVERY, this.back) * 2);
     }
+    this.stat.eps = this.eps.report();
     const every = now - this.movedAt > SOL_QUIET ? SOL_IDLE : SOL_EVERY;
     await this.state.storage.setAlarm(Date.now() + (this.back || every));
   }
