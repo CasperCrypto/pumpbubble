@@ -129,7 +129,18 @@ export async function rpcCall(url, body, fetcher = fetch, ms = 8000) {
       throw e;
     }
     const by = new Map(j.map(x => [x && x.id, x]));
-    return body.map(b => { const x = by.get(b.id); return x && !x.error && x.result !== undefined ? x.result : null; });
+    const out = body.map(b => { const x = by.get(b.id); return x && !x.error && x.result !== undefined ? x.result : null; });
+    /* per-item errors are kept on the answer (a batch can half-work), and a
+       batch where every item failed is the endpoint failing — thrown, so the
+       next one is tried instead of reading as a quiet market */
+    out.errors = body.map(b => by.get(b.id)).filter(x => !x || x.error)
+      .map(x => String(x ? (x.error.message || JSON.stringify(x.error)) : 'no answer for an item').slice(0, 120));
+    if (out.errors.length === body.length && body.length) {
+      const e = new Error(host(url) + ' ' + out.errors[0]);
+      if (/too many|rate limit|429/i.test(out.errors[0])) e.limited = true;
+      throw e;
+    }
+    return out;
   }
   if (!j || j.error) throw new Error(host(url) + ' ' + r.status + ' ' + String(msg).slice(0, 120));
   return j.result;
@@ -187,7 +198,7 @@ async function readTxsAny(eps, url, sigs, fetcher, now) {
    transactions behind the new ones. `retry` carries signatures whose
    transaction was not there yet last time (each gets one more try). */
 export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null, retry = [], fetcher = fetch } = {}) {
-  if (!addrs.length) return { txs: [], next: {}, skipped: 0, again: [], rpc: '' };
+  if (!addrs.length) return { txs: [], next: {}, skipped: 0, again: [], rpc: '', diag: { rows: [], warn: '' } };
   const reqs = addrs.map((a, i) => ({
     jsonrpc: '2.0', id: i + 1, method: 'getSignaturesForAddress',
     params: [a, cursors[a] ? { limit: SIG_LIMIT, until: cursors[a], commitment: 'confirmed' } : { limit: 1, commitment: 'confirmed' }],
@@ -195,6 +206,10 @@ export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null,
   const { url, res } = await firstAnswer(eps, reqs, fetcher, now);
   const rows = {};
   addrs.forEach((a, i) => { rows[a] = Array.isArray(res[i]) ? res[i] : null; });
+  /* what each address answered (a count, or x for a failed item), and the
+     first item error — for /api/tg/status, because a quiet poll and a broken
+     one otherwise look the same */
+  const diag = { rows: addrs.map(a => Array.isArray(rows[a]) ? rows[a].length : 'x'), warn: (res.errors || [])[0] || '' };
   const keep = {};
   for (const a of addrs) if (cursors[a]) keep[a] = cursors[a];       // addresses nobody follows any more fall away
   const picked = pickNew(rows, keep, { now, seen });
@@ -203,12 +218,14 @@ export async function poll(addrs, cursors, eps, { now = Date.now(), seen = null,
   const all = [...new Set(retry.concat(sigs))];
   const want = all.slice(0, TX_MAX + 5);
   skipped += all.length - want.length;
-  if (!want.length) return { txs: [], next, skipped, again: [], rpc: host(url) };
+  if (!want.length) return { txs: [], next, skipped, again: [], rpc: host(url), diag };
   const got = await readTxsAny(eps, url, want, fetcher, now);
   const txs = [], again = [];
   want.forEach((s, i) => {
     if (got[i]) txs.push(got[i]);
     else if (!retry.includes(s)) again.push(s);
   });
-  return { txs, next, skipped, again, rpc: host(url) };
+  diag.txs = want.length + ':' + txs.length;
+  if (!diag.warn && got.errors && got.errors.length) diag.warn = got.errors[0];
+  return { txs, next, skipped, again, rpc: host(url), diag };
 }

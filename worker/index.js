@@ -204,6 +204,8 @@ export class SolWatch {
       const r = await solPoll(solWatchList(list), this.cur, this.eps, { now, seen: this.seen, retry: this.retry });
       this.cur = r.next; this.retry = r.again;
       this.stat.rpc = r.rpc; this.stat.okAt = Date.now(); this.stat.polls++; this.stat.skipped += r.skipped;
+      this.stat.last = r.diag; this.stat.cursors = Object.keys(this.cur).length;
+      if (r.diag && r.diag.warn) { this.stat.warn = r.diag.warn; this.stat.warnAt = Date.now(); }
       this.back = 0;
       for (const tx of r.txs) {
         const sig = tx && tx.transaction && tx.transaction.signatures && tx.transaction.signatures[0];
@@ -218,6 +220,7 @@ export class SolWatch {
       } else await this.save(false);
     } catch (e) {
       this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
+      console.log(JSON.stringify({ ev: 'sol-poll-error', err: this.stat.err }));
       /* every endpoint refused: back off, doubling to a minute */
       this.back = Math.min(60_000, Math.max(SOL_EVERY, this.back) * 2);
     }

@@ -112,6 +112,12 @@ console.log('\nRPC answers');
   const r = await rpcCall('https://a.test', [{ jsonrpc: '2.0', id: 1, method: 'getSlot', params: [] }, { jsonrpc: '2.0', id: 2, method: 'nope', params: [] }, { jsonrpc: '2.0', id: 3, method: 'getBalance', params: [] }], net.fetcher);
   is('a batch answers in request order, null where an item failed', r, [7, null, { value: 1 }]);
 
+  try { await rpcCall('https://a.test', [{ jsonrpc: '2.0', id: 1, method: 'nope' }, { jsonrpc: '2.0', id: 2, method: 'nope' }], net.fetcher); no('every item failing throws'); }
+  catch (e) { /a\.test/.test(e.message) ? ok('every item failing is the endpoint failing — thrown, not a quiet market') : no('every item failing', e.message); }
+  const late = fakeNet({ 'https://a.test': { handlers: { getTransaction: () => null } } });
+  const nulls = await rpcCall('https://a.test', [{ jsonrpc: '2.0', id: 1, method: 'getTransaction' }, { jsonrpc: '2.0', id: 2, method: 'getTransaction' }], late.fetcher);
+  is('…but transactions not served yet are nulls, not a failure', [nulls, nulls.errors.length], [[null, null], 0]);
+
   const lim = fakeNet({ 'https://b.test': { status429: true } });
   try { await rpcCall('https://b.test', { jsonrpc: '2.0', id: 1, method: 'getSlot' }, lim.fetcher); no('429 throws'); }
   catch (e) { e.limited ? ok('429 throws as a rate limit') : no('429 throws as a rate limit', e.message); }

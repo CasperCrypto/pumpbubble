@@ -2485,7 +2485,9 @@ export async function handle(req, ctx) {
         const s = await ctx.sol('status').catch(() => null);
         if (s && s.ok) sol = { tokens: s.tokens || 0, lastReadS: s.okAt ? Math.round((Date.now() - s.okAt) / 1000) : null,
           rpc: s.rpc || '', polls: s.polls, txs: s.txs, buys: s.buys, sent: s.sent, skipped: s.skipped,
-          error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '' };
+          error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '',
+          last: s.last || null, cursors: s.cursors || 0,
+          warn: s.warnAt && Date.now() - s.warnAt < 600_000 ? s.warn : '' };
       }
       tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, sol, evm,
         profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null } };
