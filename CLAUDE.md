@@ -1737,21 +1737,30 @@ our `/swap` page otherwise). Executing trades for users means holding their keys
 bug or breach empties every user at once, and the liability is the operator's. The trading bots
 that already do sniping and auto-copy are the execution layer, and they pay referral for the flow.
 
-**The alert has two styles, and Bubble is the default** (2026-10-01, asked as "make the buybot
-cooler — instead of emojis show something else"). *Bubble*: the size of the buy by name — 🦐
-SHRIMP under $100, 🐟 FISH, 🐬 DOLPHIN from $500, 🦈 SHARK from $2,500, 🐋 WHALE from $10,000 — and
-a ten-step meter on a log scale (`buyMeter`: $10 fills 2, $1,000 fills 6, $100,000 all 10 — in
-full-height `█░`, which takes the text's own colour on both themes; the first `▰▱` drew small and
-faint on desktop), the receipt in a Telegram quote block in short numbers (`solShort` 0.5 SOL,
-`qtyShort` 11.45M), links on one line, no "by @bot" line (Telegram shows the sender) and no blank
-lines — six lines where classic takes twelve, which also matters because most groups post with a
-GIF or video and a media caption is capped at 1,024 characters — and the token's place on the
-Trending tab when it has one
-("#4 trending on the bubble map", `ctx.mapRank`, from what the isolate already holds — Solana
-alerts only, since EVM alerts are posted from the chain watchers). A row of one emoji per $20 runs
-off the screen on a whale and says nothing on a shrimp, and every buy bot prints it. *Classic* is
-that format, kept one tap away in ⚙️ Settings → 🎨 Style for groups that want what they know.
-Both carry the same facts, the same escaped strings and the same buttons.
+**Classic is the alert, with the "wow" on top** (2026-10-02). A cleaner *Bubble* style was built
+and made the default for a day — the size of the buy by name (🦐 SHRIMP, 🐟 FISH from $100, 🐬
+DOLPHIN from $500, 🦈 SHARK from $2,500, 🐋 WHALE from $10,000), a ten-step `█░` meter on a log
+scale, the receipt in a quote block in short numbers, six lines where classic takes twelve — and
+the operator's verdict on seeing both in his group was "I like the old look, it's classic, but we
+need something wow". So *Classic* — the format the communities know from Bobby, one of the group's
+emoji per $step — is the default again, Bubble stays one tap away in ⚙️ Settings → 🎨 Style, and
+the wow is what Telegram itself can do that other buy bots do not use:
+
+- **The bot reacts to its own alert with Telegram's big animated reaction** (`setMessageReaction`,
+  `is_big`), which plays full size for everyone watching the chat: 🐳 for a whale, 💯 when a top
+  trader or a top caller bought, 🔥 from $1,000, nothing below that so it stays an event
+  (`buyReaction`). A group that limits its reactions simply refuses the call; groups can switch it
+  off. (Full-screen *message effects* exist too but Telegram allows them in private chats only.)
+- **Whales by the group's own line** ($1K–$25K, default $5,000, `whaleAt`): the headline reads
+  `🐳 | SYM WHALE BUY!`, and the alert carries the group's **whale media** — a second GIF or video
+  for big buys, set by replying to the bot's 🐳 prompt or with a `/whalemedia` caption, because
+  most groups already post with a GIF and want a bigger one for whales. A dead whale-media file
+  drops only itself.
+- **🐳 Whale test** in the whale page sends a whale-sized test, so a group sees the headline, the
+  media and the reaction before a real whale arrives.
+
+Both styles carry the same facts, the same escaped strings and the same buttons; Bubble keeps the
+trending rank and short numbers, and a media caption is capped at 1,024 characters either way.
 
 **Standard format first; bubble posts later.** The buy alert's facts are deliberately the ones the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank

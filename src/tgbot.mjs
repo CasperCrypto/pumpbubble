@@ -397,11 +397,30 @@ export function qtyShort(n) {
   return n > 0 ? n.toLocaleString('en-US', { maximumSignificantDigits: 4 }) : '0';
 }
 
-/* Two styles. `bubble` (the default since 2026-10-01): the size of the buy
+/* A whale, by the group's own measure ($5,000 unless it picked another in
+   ⚙️ Settings → 🐋 Whale buys): the headline says so, the alert carries the
+   group's whale media when it set one, and the bot reacts with 🐳. */
+export const WHALES = [1000, 2500, 5000, 10000, 25000];
+export const whaleAt = (g = {}) => (WHALES.includes(num(g.whaleMin)) ? num(g.whaleMin) : 5000);
+
+/* The bot reacts to its own alert on the buys worth looking up for, with
+   Telegram's big animation — it plays full size for everyone watching the
+   chat (setMessageReaction, is_big). A whale gets 🐳, a top trader or a top
+   caller 💯, four figures 🔥; everything else nothing, so it stays an event.
+   Groups can switch it off. */
+export function buyReaction({ usd, smart = null, caller = null, group = {} }) {
+  if (group.react === false) return '';
+  if (num(usd) >= whaleAt(group)) return '🐳';
+  if ((smart && smart.rank) || (caller && caller.rank)) return '💯';
+  if (num(usd) >= 1000) return '🔥';
+  return '';
+}
+
+/* Two styles. `classic` (the default — "I like the old look", 2026-10-02): the size of the buy
    by name and meter, the numbers in a quote block, the token's place on the
-   map. `classic`: the format the communities know from Bobby and the rest —
-   one emoji per $step — kept one tap away in ⚙️ Settings for groups that
-   want what they are used to. Both print the same facts and the same
+   map — kept one tap away in ⚙️ Settings → 🎨 Style. `classic`: the format
+   the communities know from Bobby and the rest, one emoji per $step, with
+   the whale headline, whale media and the reaction on top. Both print the same facts and the same
    escaped strings; only the layout differs. */
 export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test = false, ad = null, smart = null, caller = null, rank = null }) {
   const usd = buy.usd != null ? num(buy.usd) : num(buy.sol) * num(solUsd);
@@ -409,7 +428,7 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
   const net = CHAINS[group.chain];
   const native = net ? net.native : 'SOL';
   const links = tokenLinks(env, group, token);
-  const bubble = group.style !== 'classic';
+  const bubble = group.style === 'bubble';
 
   /* only a hash or an address of the chain's own shape becomes a link */
   const sig = String(buy.sig || '');
@@ -464,8 +483,9 @@ export function formatBuy({ buy, token, group, solUsd, botName, env = {}, test =
     if (!paid && botName) foot.push(`<a href="https://t.me/${tgEsc(botName)}?start=ads">📢 Your token here</a>`);
     lines.push(foot.join(' · '));
   } else {
-    const hdr = usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
-    lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} BUY!</b>`);
+    const whale = usd >= whaleAt(group);
+    const hdr = whale ? '🐳' : usd >= 1000 ? '🐋' : buy.newHolder ? '🆕' : '🟢';
+    lines.push(`${test ? '🧪 <b>TEST</b> · ' : ''}${hdr} | <b>${tgEsc(sym)} ${whale ? 'WHALE BUY' : 'BUY'}!</b>`);
     if (botName) lines.push(`<i>by @${tgEsc(botName)}</i>`);
     lines.push(...tags);
     lines.push('');
@@ -775,6 +795,17 @@ async function onGroup(ctx, msg) {
   const rt = msg.reply_to_message;
   const toPrompt = hasMedia && !c && rt && rt.from && rt.from.is_bot
     && String(rt.text || '').startsWith(MEDIA_PROMPT);
+  const toWhale = hasMedia && !c && rt && rt.from && rt.from.is_bot
+    && String(rt.text || '').startsWith(WHALE_PROMPT);
+  if (hasMedia && ((c && c.cmd === 'whalemedia') || toWhale)) {
+    if (!await isAdmin(env, msg)) return;
+    const bot = await me(env, store).catch(() => null);
+    if (toWhale && bot && bot.id && rt.from.id !== bot.id) return;
+    const g = await getGroup(store, chatId);
+    if (!g) return say(env, chatId, 'Run /setup first, then send the media.');
+    await putGroup(store, chatId, { ...g, whaleMedia: mediaOf(msg) });
+    return say(env, chatId, `🐳 Saved. Every buy of ${fmtUsd(whaleAt(g))} or more will carry this.`, settingsMarkup());
+  }
   if (hasMedia && ((c && c.cmd === 'media') || toPrompt)) {
     if (!await isAdmin(env, msg)) return;
     const bot = await me(env, store).catch(() => null);
@@ -786,7 +817,7 @@ async function onGroup(ctx, msg) {
   }
   if (!c) return;
 
-  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'settings', 'welcome']);
+  const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'whalemedia', 'settings', 'welcome']);
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
   /* anyone may buy for the token; the purchase itself happens in private */
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') {
@@ -903,28 +934,34 @@ async function onGroup(ctx, msg) {
   if (c.cmd === 'test') return sendTest(ctx, chatId, g);
 }
 
-async function sendTest(ctx, chatId, g) {
+async function sendTest(ctx, chatId, g, { whale = false } = {}) {
   const { env, store } = ctx;
+  /* a whale test is a buy a fifth over the group's whale line, so the
+     headline, the whale media and the 🐳 reaction all show */
+  const wantUsd = whale ? whaleAt(g) * 1.2 : 0;
+  const opts = usd => ({ whale: usd >= whaleAt(g), react: buyReaction({ usd, group: g }) });
   if (isChain(g.chain)) {
     const eth = await evmEthUsd();
     const t = await tokenInfo(env, g.token);
     const price = num(t && t.price);
-    const buy = { sol: 0.05, usd: 0.05 * eth, tokens: price > 0 && eth > 0 ? (0.05 * eth) / price : 1_000_000, buyer: '', sig: '' };
+    const amt = whale && eth > 0 ? wantUsd / eth : 0.05;
+    const buy = { sol: amt, usd: amt * eth, tokens: price > 0 && eth > 0 ? (amt * eth) / price : 1_000_000, buyer: '', sig: '' };
     const bot = await me(env, store).catch(() => ({ username: '' }));
     const token = { sym: g.sym, mcap: t && t.mcap, addr: g.token };
     const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: eth, botName: bot.username, env, test: true, ad: await alertAd(store) });
-    return sendAlert(env, store, chatId, g, caption, keyboard);
+    return sendAlert(env, store, chatId, g, caption, keyboard, opts(buy.usd));
   }
   const t = await tokenInfo(env, g.mint);
   const solUsd = num(ctx.solUsd);
   const price = num(t && t.price);
+  const sol = whale && solUsd > 0 ? wantUsd / solUsd : 0.5;
   const buy = {
-    sol: 0.5, tokens: price > 0 && solUsd > 0 ? (0.5 * solUsd) / price : 1_000_000,
+    sol, tokens: price > 0 && solUsd > 0 ? (sol * solUsd) / price : 1_000_000,
     buyer: '', sig: '', newHolder: true,
   };
   const bot = await me(env, store).catch(() => ({ username: '' }));
   const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true, ad: await alertAd(store) });
-  return sendAlert(env, store, chatId, g, caption, keyboard);
+  return sendAlert(env, store, chatId, g, caption, keyboard, opts(sol * solUsd));
 }
 
 /* ================================================================ EVM */
@@ -1051,7 +1088,8 @@ export async function onEvmBuys(ctx, chain, buys, chatsByToken, ethPrice) {
       const buy = { sol: b.eth, usd: b.usd, tokens: b.tokens, buyer: b.buyer || '', sig: b.tx };
       const token = { sym: g.sym, mcap: b.mcap, addr: b.token };
       const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: ethPrice, botName: bot.username, env, ad: await alertAd(store) });
-      if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
+      if (await sendAlert(env, store, chatId, g, caption, keyboard,
+        { whale: num(b.usd) >= whaleAt(g), react: buyReaction({ usd: b.usd, group: g }) })) {
         sent++;
         if (b.ts) {
           const lat = Date.now() / 1000 - b.ts;
@@ -1401,6 +1439,7 @@ export const EMOJIS = ['🟢', '🔥', '🚀', '💎', '🐸', '🫧', '⚡', '�
 export const MINBUYS = [0, 10, 25, 50, 100, 250, 500, 1000];
 export const STEPS = [5, 10, 20, 50, 100, 250];
 export const MEDIA_PROMPT = '🖼 Reply to this message with a photo, GIF or video';
+export const WHALE_PROMPT = '🐳 Reply to this message with the photo, GIF or video for whale buys';
 
 const settingsMarkup = () => ({ reply_markup: { inline_keyboard: [[{ text: '⚙️ Settings', callback_data: 'cfg:main' }]] } });
 
@@ -1463,8 +1502,21 @@ export function settingsView(g, page = 'main') {
       ],
     };
   }
+  if (page === 'whale') {
+    const at = whaleAt(g), react = g.react !== false;
+    return {
+      text: `🐳 <b>Whale buys</b> for ${sym}\n\n`
+        + `A buy of <b>${fmtUsd(at)}</b> or more gets the 🐳 WHALE BUY headline${react ? ', a big 🐳 reaction' : ''}`
+        + ` and its own media.\nWhale media: ${g.whaleMedia ? g.whaleMedia.kind : 'none — the usual media is used'}\n\n`
+        + `Reactions ${react ? '✅ on' : '⬜ off'} — 🔥 from $1,000, 💯 when a top trader or top caller buys, 🐳 for a whale.`,
+      kb: [[{ text: '📤 Upload whale media', callback_data: 'cfg:wmedia:new' }, ...(g.whaleMedia ? [{ text: '🗑 Remove', callback_data: 'cfg:wmedia:off' }] : [])],
+           WHALES.map((v, i) => ({ text: (v === at ? '✅ ' : '') + fmtUsd(v).replace(',000', 'K').replace(',500', '.5K'), callback_data: 'cfg:wmin:' + i })),
+           [{ text: (react ? '✅' : '⬜') + ' Reactions', callback_data: 'cfg:react' }, { text: '🐳 Whale test', callback_data: 'cfg:wtest' }],
+           back],
+    };
+  }
   if (page === 'style') {
-    const classic = g.style === 'classic';
+    const classic = g.style !== 'bubble';
     return {
       text: `🎨 <b>Buy style</b> for ${sym}\n\n`
         + `<b>Bubble</b>${classic ? '' : ' ✅'} — how big the buy is, by name and a meter:\n`
@@ -1482,16 +1534,17 @@ export function settingsView(g, page = 'main') {
 This also switches the 🛡 Guard off. To track a different token instead, just send <code>/setup &lt;new contract address&gt;</code> — the guard and your emoji stay.`,
     kb: [[{ text: 'Yes, stop', callback_data: 'cfg:stop:yes' }, { text: 'Cancel', callback_data: 'cfg:main' }]],
   };
-  const classic = g.style === 'classic';
+  const classic = g.style !== 'bubble';
   return {
     text: `⚙️ <b>${sym}</b> buy alerts\n\n`
       + `Style ${classic ? 'Classic — a row of emoji' : 'Bubble — buy size and a meter'}\n`
       + `Emoji ${tgEsc(g.emoji || '🟢')} · one per $${step}${classic ? '' : ' (classic style)'}\n`
+      + `Whales from ${fmtUsd(whaleAt(g))} · reactions ${g.react !== false ? 'on' : 'off'}${g.whaleMedia ? ' · own media' : ''}\n`
       + `Min buy ${minBuy ? '$' + minBuy : 'none — every buy'}\n`
       + `Media ${g.media ? g.media.kind : 'none'}\n`
       + `Links ${links.join(' · ') || 'none'}\n\nAdmins only.`,
     kb: [
-      [{ text: '🎨 Style: ' + (classic ? 'Classic' : 'Bubble'), callback_data: 'cfg:style' }],
+      [{ text: '🐳 Whale buys', callback_data: 'cfg:whale' }, { text: '🎨 Style: ' + (classic ? 'Classic' : 'Bubble'), callback_data: 'cfg:style' }],
       [{ text: '🖼 Media', callback_data: 'cfg:media' }, { text: 'Emoji ' + (g.emoji || '🟢'), callback_data: 'cfg:emoji' }],
       [{ text: '💵 Min buy', callback_data: 'cfg:min' }, { text: '📊 $ per emoji', callback_data: 'cfg:step' }],
       [{ text: '🧪 Test alert', callback_data: 'cfg:test' }, { text: '🔗 Links', callback_data: 'cfg:links' }],
@@ -1545,6 +1598,31 @@ async function onSettings(ctx, q, act) {
     await ack(note);
     return show(settingsView(g, 'guard'));
   }
+  if (what === 'wmin' && val != null && WHALES[i]) {
+    g = { ...g, whaleMin: WHALES[i] };
+    await putGroup(store, chat.id, g);
+    await ack('Whales from ' + fmtUsd(WHALES[i]));
+    return show(settingsView(g, 'whale'));
+  }
+  if (what === 'react') {
+    g = { ...g, react: g.react === false };
+    await putGroup(store, chat.id, g);
+    await ack(g.react ? 'Reactions on' : 'Reactions off');
+    return show(settingsView(g, 'whale'));
+  }
+  if (what === 'wmedia' && val === 'off') {
+    g = { ...g, whaleMedia: null };
+    await putGroup(store, chat.id, g);
+    await ack('Whale media removed');
+    return show(settingsView(g, 'whale'));
+  }
+  if (what === 'wmedia' && val === 'new') {
+    await ack();
+    const who = q.from ? `<a href="tg://user?id=${num(q.from.id)}">${tgEsc(q.from.first_name || 'admin')}</a>` : '';
+    return say(env, chat.id, `${WHALE_PROMPT} — it goes on every buy of ${fmtUsd(whaleAt(g))} or more. ${who}`,
+      { reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'Attach a photo, GIF or video' } });
+  }
+  if (what === 'wtest') { await ack('Sending a whale test'); return sendTest(ctx, chat.id, g, { whale: true }); }
   if (what === 'style' && (val === 'bubble' || val === 'classic')) {
     g = { ...g, style: val };
     await putGroup(store, chat.id, g);
@@ -1573,7 +1651,7 @@ async function onSettings(ctx, q, act) {
       text: 'Stopped — no more buy alerts here, and the guard is off. /setup <code>&lt;contract address&gt;</code> to start again.', parse_mode: 'HTML' }).catch(() => null);
   }
   await ack();
-  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard', 'style'].includes(what) ? what : 'main'));
+  return show(settingsView(g, ['emoji', 'min', 'step', 'media', 'links', 'stop', 'guard', 'style', 'whale'].includes(what) ? what : 'main'));
 }
 
 /* ================================================================= guard */
@@ -2198,14 +2276,16 @@ function fresh(sig) {
   return true;
 }
 
-async function sendAlert(env, store, chatId, g, caption, keyboard) {
+async function sendAlert(env, store, chatId, g, caption, keyboard, { whale = false, react = '' } = {}) {
   const base = { chat_id: chatId, caption, parse_mode: 'HTML', reply_markup: keyboard };
-  const m = g.media;
+  const useWhale = !!(whale && g.whaleMedia);
+  const m = useWhale ? g.whaleMedia : g.media;
+  let sent = null;
   try {
-    if (m && m.kind === 'photo') return await tg(env, 'sendPhoto', { ...base, photo: m.id });
-    if (m && m.kind === 'animation') return await tg(env, 'sendAnimation', { ...base, animation: m.id });
-    if (m && m.kind === 'video') return await tg(env, 'sendVideo', { ...base, video: m.id });
-    return await tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } });
+    if (m && m.kind === 'photo') sent = await tg(env, 'sendPhoto', { ...base, photo: m.id });
+    else if (m && m.kind === 'animation') sent = await tg(env, 'sendAnimation', { ...base, animation: m.id });
+    else if (m && m.kind === 'video') sent = await tg(env, 'sendVideo', { ...base, video: m.id });
+    else sent = await tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } });
   } catch (e) {
     const d = String(e.description || e.message || '');
     /* The group is gone or we were removed: stop trying. */
@@ -2213,13 +2293,19 @@ async function sendAlert(env, store, chatId, g, caption, keyboard) {
       await removeGroup(store, chatId).catch(() => {});
       return null;
     }
-    /* A media file id that stopped working: post the text and drop the media. */
+    /* A media file id that stopped working: post the text and drop that media. */
     if (m && /wrong file identifier|failed to get HTTP URL|file is too big|WEBPAGE_MEDIA_EMPTY/i.test(d)) {
-      await putGroup(store, chatId, { ...g, media: null }).catch(() => {});
-      return tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } }).catch(() => null);
-    }
-    return null;
+      await putGroup(store, chatId, { ...g, ...(useWhale ? { whaleMedia: null } : { media: null }) }).catch(() => {});
+      sent = await tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } }).catch(() => null);
+    } else return null;
   }
+  /* the big animated reaction, on the buys that earn one; a group that
+     limits its reactions simply refuses it, which costs nothing */
+  if (sent && sent.message_id && react) {
+    await tg(env, 'setMessageReaction', { chat_id: chatId, message_id: sent.message_id,
+      reaction: [{ type: 'emoji', emoji: react }], is_big: true }).catch(() => null);
+  }
+  return sent;
 }
 
 /* A Helius delivery: every buy of a tracked mint, fanned out to every group
@@ -2273,7 +2359,8 @@ export async function onTrade(ctx, payload, solUsd) {
       if (!allowed(chatId)) { skipped++; continue; }
       const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart, caller,
         rank: ctx.mapRank ? ctx.mapRank(buy.mint) : null });
-      if (await sendAlert(env, store, chatId, g, caption, keyboard)) {
+      if (await sendAlert(env, store, chatId, g, caption, keyboard,
+        { whale: usd >= whaleAt(g), react: buyReaction({ usd, smart, caller, group: g }) })) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides
            whether this feels live next to Bobby; read with wrangler tail */

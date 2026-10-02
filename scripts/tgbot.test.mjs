@@ -12,7 +12,7 @@
    ========================================================================== */
 
 import { parseBuys, buysFromPayload, accountList, signers, MIN_SOL } from '../src/solbuy.mjs';
-import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS, buyTier, buyMeter, solShort, qtyShort } from '../src/tgbot.mjs';
+import { formatBuy, emojiRow, tgEsc, fmtQty, fmtUsd, command, settingsView, EMOJIS, MINBUYS, STEPS, buyTier, buyMeter, solShort, qtyShort, buyReaction, whaleAt, WHALES } from '../src/tgbot.mjs';
 import { heliusKey } from '../src/helius.mjs';
 
 let pass = 0, fail = 0;
@@ -233,7 +233,7 @@ const buy = { mint: MINT, buyer: BUYER, sol: 0.4897, tokens: 11_453_237.88, newH
 
 console.log('\nformatter — the bubble style (the default)');
 {
-  const bub = { ...group, style: undefined };
+  const bub = { ...group, style: 'bubble' };
   const { caption, keyboard } = formatBuy({ buy, token, group: bub, solUsd: 104, botName: 'pumpbubblebot', rank: { rank: 4 } });
   ok('caption', '\n' + caption.split('\n').map(l => '        ' + l).join('\n'));
   const [t50] = [buyTier(50.93)];
@@ -267,12 +267,36 @@ console.log('\nformatter — the bubble style (the default)');
   is('a hostile ticker cannot inject markup here either', /<b>x<\/b>|<img/.test(evil), false);
   is('a rank past fifty is not claimed', formatBuy({ buy, token, group: bub, solUsd: 104, rank: { rank: 80 } }).caption.includes('#80'), false);
   const evm = formatBuy({ buy: { sol: 0.01, usd: 30, tokens: 1e6, buyer: '0x' + '1'.repeat(40), sig: '0x' + 'f'.repeat(64) },
-    token: { sym: 'TOK', mcap: 30000 }, group: { chain: 'base', token: '0x' + 'a'.repeat(40), sym: 'TOK' }, solUsd: 3000 }).caption;
+    token: { sym: 'TOK', mcap: 30000 }, group: { chain: 'base', token: '0x' + 'a'.repeat(40), sym: 'TOK', style: 'bubble' }, solUsd: 3000 }).caption;
   is('an EVM buy pays in ETH and links Basescan', evm.includes('0.01 ETH → <b>1M TOK</b>') && evm.includes('basescan.org/tx/'), true);
   is('and claims nothing about holding', evm.includes('New holder'), false);
-  const sv = settingsView({ sym: 'POK', emoji: '🐸', step: 20 }, 'style');
+  const sv = settingsView({ sym: 'POK', emoji: '🐸', step: 20, style: 'bubble' }, 'style');
   is('the style page offers both, bubble ticked', sv.kb[0].map(b => b.text).join(' | '), '✅ 🫧 Bubble | 😀 Classic');
+  is('and classic is ticked by default', settingsView({ sym: 'POK' }, 'style').kb[0].map(b => b.text).join(' | '), '🫧 Bubble | ✅ 😀 Classic');
   is('the main settings name the style', settingsView({ sym: 'POK', style: 'classic' }).text.includes('Style Classic'), true);
+}
+
+console.log('\nformatter — whales and reactions');
+{
+  const plain = { mint: MINT, sym: 'POK', emoji: '🟢', step: 20 };
+  is('classic is the default style', formatBuy({ buy, token, group: plain, solUsd: 104 }).caption.split('\n')[0].endsWith('| <b>POK BUY!</b>'), true);
+  const big = formatBuy({ buy: { ...buy, sol: 60, newHolder: false }, token, group: plain, solUsd: 104 }).caption;
+  is('a whale says so in the headline', big.split('\n')[0], '🐳 | <b>POK WHALE BUY!</b>');
+  is('four figures under the whale line stays 🐋', formatBuy({ buy: { ...buy, sol: 12 }, token, group: plain, solUsd: 104 }).caption.startsWith('🐋'), true);
+  is('a group can set its own whale line', formatBuy({ buy: { ...buy, sol: 12 }, token, group: { ...plain, whaleMin: 1000 }, solUsd: 104 }).caption.split('\n')[0], '🐳 | <b>POK WHALE BUY!</b>');
+  is('an odd whale line falls back to $5,000', whaleAt({ whaleMin: 7 }), 5000);
+  is('the lines on offer', WHALES.join(','), '1000,2500,5000,10000,25000');
+  is('a whale gets 🐳', buyReaction({ usd: 6000 }), '🐳');
+  is('a top trader gets 💯', buyReaction({ usd: 40, smart: { rank: 3 } }), '💯');
+  is('so does a top caller', buyReaction({ usd: 40, caller: { rank: 9 } }), '💯');
+  is('four figures gets 🔥', buyReaction({ usd: 1500 }), '🔥');
+  is('an ordinary buy gets nothing, so it stays an event', buyReaction({ usd: 300 }), '');
+  is('a group that switched reactions off gets none', buyReaction({ usd: 99999, group: { react: false } }), '');
+  const wp = settingsView({ sym: 'POK', whaleMin: 10000 }, 'whale');
+  is('the whale page: upload, the lines, reactions and a whale test', wp.kb.map(r => r.map(b => b.callback_data).join(',')).join(' / '),
+    'cfg:wmedia:new / cfg:wmin:0,cfg:wmin:1,cfg:wmin:2,cfg:wmin:3,cfg:wmin:4 / cfg:react,cfg:wtest / cfg:main');
+  is('the chosen line is ticked', wp.kb[1][3].text.startsWith('✅'), true);
+  is('remove appears once whale media is set', settingsView({ sym: 'POK', whaleMedia: { kind: 'animation', id: 'x' } }, 'whale').kb[0].length, 2);
 }
 
 console.log('\nformatter — hostile input');
@@ -334,7 +358,7 @@ is('no key from a non-Helius RPC', heliusKey({ SOLANA_RPC: 'https://api.mainnet-
   is('every settings button fits Telegram’s 64-byte callback limit', all.every(b => enc.encode(b.callback_data).length <= 64), true);
   is('every settings button is a cfg: action', all.every(b => /^cfg:[a-z]+(:[a-z0-9]+)?$/.test(b.callback_data)), true);
   is('a hostile ticker is escaped on every page', pages.every(p => !settingsView(g, p).text.includes('<b>X&Y</b>')), true);
-  is('main page: style, media, emoji, min, step, test, links, guard, stop', settingsView(g).kb.flat().length, 9);
+  is('main page: whale, style, media, emoji, min, step, test, links, guard, stop', settingsView(g).kb.flat().length, 10);
   is('the current emoji is ticked', settingsView(g, 'emoji').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:emoji:' + EMOJIS.indexOf('🔥'));
   is('the current minimum is ticked', settingsView(g, 'min').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:min:' + MINBUYS.indexOf(25));
   is('the current step is ticked', settingsView(g, 'step').kb.flat().find(b => b.text.startsWith('✅')).callback_data, 'cfg:step:' + STEPS.indexOf(50));
