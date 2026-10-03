@@ -289,7 +289,7 @@ export class InsidersDO {
     const w = this.w, f = this.f, c = this.c;
     const whRows = Object.values(w.rows).reduce((n, r) => n + r.length, 0);
     return {
-      congress: { rows: c.rows.length, at: c.at, err: c.errAt && c.errAt >= c.at ? c.err : '', sweeping: !!this.sweep },
+      congress: { rows: c.rows.length, at: c.at, err: c.errAt && c.errAt >= c.at ? c.err : '', page: c.page || 0 },
       whitehouse: { rows: whRows, officials: w.offs.length, read: Object.keys(w.seen).length, queue: w.queue.length, at: w.at, err: w.errAt && w.errAt >= w.at ? w.err : '' },
       ceo: { rows: f.rows.length, companies: INS_ISSUERS.length, queue: f.queue.length, at: f.at, err: f.errAt && f.errAt >= f.at ? f.err : '', paused: f.pause > Date.now() },
     };
@@ -329,35 +329,29 @@ export class InsidersDO {
   }
   /* Congress, every four hours: the feed holds a year of trades (5,374 on
      2026-10-03) in pages of 500 that are not in date order, so a sweep reads
-     one page a tick to the end, then keeps the last 150 days, newest filing
-     first. The pages in progress live in memory only — a restart mid-sweep
-     starts the sweep again rather than writing a megabyte a minute. */
+     the pages in turn and merges each into the rows as it lands, keeping the
+     last 150 days, newest filing first. The page reached is saved, so a
+     restart (every deploy is one) resumes the sweep instead of starting it
+     over — the feed allows 100 calls a day, and restarts were spending them.
+     Until the first sweep has finished, four pages a tick. */
   async readCongress(now) {
     const c = this.c;
-    /* the first sweep (nothing to show yet) reads four pages a tick and shows
-       what it has after each, so the table fills in minutes, not ten */
-    const sw = this.sweep || (this.sweep = { page: 0, rows: [], first: !c.rows.length });
     const since = isoAgo(150);
-    const sorted = () => insDedupe(sw.rows, congressKey).filter(r => (r.filed || '') >= since)
-      .sort((a, b) => (b.filed || '').localeCompare(a.filed || '') || (b.traded || '').localeCompare(a.traded || '')).slice(0, 3000);
     try {
-      for (let n = 0; n < (sw.first ? 4 : 1); n++) {
-        const j = await (await this.get(CONGRESS + '&offset=' + sw.page * 500, {}, 30_000)).json();
-        sw.rows.push(...congressRows(j, sw.page * 500));
-        if (j && j.has_more && sw.page < 20) { sw.page++; continue; }
-        const rows = sorted();
-        if (rows.length) c.rows = rows;
-        c.at = now;
-        this.sweep = null;
+      for (let n = 0; n < (c.at ? 1 : 4); n++) {
+        const page = c.page || 0;
+        const j = await (await this.get(CONGRESS + '&offset=' + page * 500, {}, 30_000)).json();
+        c.rows = insDedupe(congressRows(j, page * 500).concat(c.rows), congressKey).filter(r => (r.filed || '') >= since)
+          .sort((a, b) => (b.filed || '').localeCompare(a.filed || '') || (b.traded || '').localeCompare(a.traded || '')).slice(0, 3000);
         this.dirty.add('congress');
+        if (j && j.has_more && page < 20) { c.page = page + 1; continue; }
+        c.page = 0; c.at = now;
         return;
       }
-      if (sw.first) { c.rows = sorted(); this.dirty.add('congress'); }
     } catch (e) {
       c.err = String(e && e.message || e).slice(0, 120); c.errAt = now;
-      this.sweep = null;
-      /* a refusal waits the full four hours; anything else tries again in ten minutes */
-      c.at = e && e.status === 429 ? now : now - 3.8 * 3600_000;
+      /* a refusal waits the full four hours (the page reached is kept); anything else tries again in ten minutes */
+      if (e && e.status === 429) c.wait = now + 4 * 3600_000; else c.wait = now + 10 * 60_000;
       this.dirty.add('congress');
     }
   }
@@ -481,7 +475,7 @@ export class InsidersDO {
     const now = Date.now();
     /* every source moves on every tick — the White House used to wait for a
        Congress sweep to finish, and a deploy mid-sweep made it wait again */
-    try { if (now - this.c.at > 4 * 3600_000 || this.sweep) await this.readCongress(now); } catch { /* kept in c.err */ }
+    try { if (now >= (this.c.wait || 0) && (now - this.c.at > 4 * 3600_000 || this.c.page)) await this.readCongress(now); } catch { /* kept in c.err */ }
     try {
       if (now - this.w.at > 6 * 3600_000) await this.readOfficials(now);
       /* three officials a tick: the first pass reads forty files, most of them small */
