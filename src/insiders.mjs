@@ -5,8 +5,8 @@
 
    | who                              | source                                   | how fresh                   | amounts          |
    |----------------------------------|------------------------------------------|-----------------------------|------------------|
-   | Congress, House and Senate       | Bargo's free API over the STOCK Act      | filed up to 45 days after   | ranges           |
-   |                                  | filings (House Clerk, Senate eFD)        | the trade, by law           |                  |
+   | Congress, House and Senate       | CongressInvests' free API over the STOCK | filed up to 45 days after   | ranges           |
+   |                                  | Act filings (House Clerk, Senate eFD)    | the trade, by law           |                  |
    | Trump and ~40 cabinet officials  | Open Cabinet's parse of the OGE 278-T    | weeks late, in batches      | ranges           |
    |                                  | reports (github.com/tbrown034/open-      | (73% of Trump's are filed   |                  |
    |                                  | cabinet, MIT; the filings are public     | late)                       |                  |
@@ -15,11 +15,14 @@
    | of the companies in ISSUERS      |                                          |                             | they hold after  |
 
    The rules that come with the data, each one checked on 2026-10-03:
-   - **Bargo**: free with "a visible, above-the-fold credit linking back" to
-     bargo.ai wherever the data is shown, and "redistributing the raw records
-     is not allowed" — the tab carries the credit and offers no download.
-     Keyless is 30 calls a day per IP, 100 rows a call; BARGO_KEY (a free key,
-     sent as a Bearer token) raises it to 100.
+   - **CongressInvests**: 100 calls a day keyless, no attribution asked;
+     "for informational and research purposes", and no use of the records
+     for commercial solicitation or advertising — the table informs, and
+     nothing is sold off it. Bargo was the first Congress source and was
+     dropped on 2026-10-03: its free terms require a visible credit link on
+     the page, the operator wants the page clean, and from the Worker it
+     answered 429 on the first call anyway. Sources are listed in
+     docs/sources.md, not on the page.
    - **SEC**: a declared User-Agent and no more than ten requests a second.
      This asks a few a minute.
    - **Congress reports**: federal law bars using them for a commercial
@@ -34,7 +37,9 @@
    ========================================================================== */
 
 export const SEC_UA = 'pumpbubble.fun insiders table (+https://pumpbubble.fun)';
-export const BARGO = 'https://www.bargo.ai/free-apis/congress/v1';
+/* CongressInvests: the House Clerk's and the Senate eFD's trade reports,
+   parsed, refreshed every six hours; up to 500 rows a call. */
+export const CONGRESS = 'https://congressinfor-production.up.railway.app/trades?limit=500';
 export const OC = 'https://raw.githubusercontent.com/tbrown034/open-cabinet/main';
 
 /* Companies whose insiders are followed, by SEC CIK — every one read off the
@@ -57,7 +62,7 @@ export const ISSUERS = [
   { t: 'CRM', cik: 1108524, co: 'Salesforce' },
   { t: 'DELL', cik: 1571996, co: 'Dell' },
   { t: 'JPM', cik: 19617, co: 'JPMorgan' },
-  { t: 'BRK', cik: 1067983, co: 'Berkshire Hathaway' },
+  { t: 'BRK', cik: 1067983, co: 'Berkshire Hathaway', yh: '' },
   { t: 'MSTR', cik: 1050446, co: 'Strategy' },
   { t: 'COIN', cik: 1679788, co: 'Coinbase' },
   { t: 'HOOD', cik: 1783879, co: 'Robinhood' },
@@ -68,6 +73,44 @@ export const ISSUERS = [
   { t: 'SBET', cik: 1981535, co: 'SharpLink' },
   { t: 'DJT', cik: 1849635, co: 'Trump Media' },
   { t: 'GME', cik: 1326380, co: 'GameStop' },
+  { t: 'MARA', cik: 1507605, co: 'MARA' },
+  { t: 'RIOT', cik: 1167419, co: 'Riot Platforms' },
+  { t: 'CRWV', cik: 1769628, co: 'CoreWeave' },
+  { t: 'SOFI', cik: 1818874, co: 'SoFi' },
+  { t: 'HIMS', cik: 1773751, co: 'Hims & Hers' },
+  { t: 'RDDT', cik: 1713445, co: 'Reddit' },
+  { t: 'RBLX', cik: 1315098, co: 'Roblox' },
+  { t: 'UBER', cik: 1543151, co: 'Uber' },
+  { t: 'ABNB', cik: 1559720, co: 'Airbnb' },
+  { t: 'RIVN', cik: 1874178, co: 'Rivian' },
+  { t: 'SNOW', cik: 1640147, co: 'Snowflake' },
+  { t: 'CRWD', cik: 1535527, co: 'CrowdStrike' },
+  { t: 'PANW', cik: 1327567, co: 'Palo Alto Networks' },
+  { t: 'NOW', cik: 1373715, co: 'ServiceNow' },
+  { t: 'ADBE', cik: 796343, co: 'Adobe' },
+  { t: 'MU', cik: 723125, co: 'Micron' },
+  { t: 'SMCI', cik: 1375365, co: 'Super Micro' },
+  { t: 'INTC', cik: 50863, co: 'Intel' },
+  { t: 'QCOM', cik: 804328, co: 'Qualcomm' },
+  { t: 'IBM', cik: 51143, co: 'IBM' },
+  { t: 'WMT', cik: 104169, co: 'Walmart' },
+  { t: 'COST', cik: 909832, co: 'Costco' },
+  { t: 'DIS', cik: 1744489, co: 'Disney' },
+  { t: 'NKE', cik: 320187, co: 'Nike' },
+  { t: 'SBUX', cik: 829224, co: 'Starbucks' },
+  { t: 'KO', cik: 21344, co: 'Coca-Cola' },
+  { t: 'BA', cik: 12927, co: 'Boeing' },
+  { t: 'LLY', cik: 59478, co: 'Eli Lilly' },
+  { t: 'UNH', cik: 731766, co: 'UnitedHealth' },
+  { t: 'JNJ', cik: 200406, co: 'Johnson & Johnson' },
+  { t: 'XOM', cik: 2115436, co: 'ExxonMobil' },
+  { t: 'V', cik: 1403161, co: 'Visa' },
+  { t: 'MA', cik: 1141391, co: 'Mastercard' },
+  { t: 'GS', cik: 886982, co: 'Goldman Sachs' },
+  { t: 'MS', cik: 895421, co: 'Morgan Stanley' },
+  { t: 'BAC', cik: 70858, co: 'Bank of America' },
+  { t: 'WFC', cik: 72971, co: 'Wells Fargo' },
+  { t: 'BLK', cik: 2012383, co: 'BlackRock' },
 ];
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
@@ -125,23 +168,68 @@ export function commaName(s) {
 
 /* ============================================================== Congress */
 
-/* One Bargo row. Its types are purchase, sale, sale_partial, sale_full and
-   exchange; an exchange is neither side and is left out. */
-export function fromBargo(t, i = 0) {
+/* An asset name the way a PTR prints it, without the PTR's furniture: the
+   parser that read the PDF sometimes runs the next columns into the name
+   ("Sony Group Corporation American P 12/26/2026 01/21/2026 $1,001 - …"),
+   and the House adds an asset-type tag ("[ST]") and the ticker in brackets. */
+export function cleanAsset(s, ticker = '') {
+  let v = text(s, 160);
+  v = v.replace(/\s+(?:SP|JT|DC)?\s*[PSE](?:\s*\(partial\))?\s+\d{2}\/\d{2}\/\d{4}[\s\S]*$/i, '');
+  v = v.replace(/\s+\d{2}\/\d{2}\/\d{4}[\s\S]*$/, '').replace(/\s*\$[\d,]+[\s\S]*$/, '');
+  v = v.replace(/^(?:SP|JT|DC)\s+/, '').replace(/\s*\[[A-Z]{2}\]\s*/g, ' ');
+  if (ticker) v = v.replace(new RegExp('\\s*\\(' + ticker.replace(/[.\-]/g, '\\$&') + '\\)\\s*', 'i'), ' ');
+  return v.replace(/\s+/g, ' ').replace(/[\s\-–]+$/, '').trim().slice(0, 80);
+}
+
+/* The trade date must come before the filing. The PTR reader sometimes
+   takes the year from the wrong cell (a trade "on 2026-12-26" disclosed
+   2026-02-09): one year back is tried, and a date that still makes no sense
+   is dropped rather than shown. */
+export function tradeDate(traded, filed) {
+  const t = day(traded), f = day(filed);
+  if (!t || !f) return t;
+  if (t <= f) return t;
+  const back = String(+t.slice(0, 4) - 1) + t.slice(4);
+  return back <= f && Date.parse(f) - Date.parse(back) <= 120 * 864e5 ? back : '';
+}
+
+/* One CongressInvests row: member, chamber, buy or sell, the band, the trade
+   and disclosure dates, the asset, its ticker, and the official PDF. */
+export function fromCongress(t, i = 0) {
   if (!t || !t.member) return null;
-  const ty = String(t.type || '').toLowerCase();
-  const side = /^(purchase|buy)/.test(ty) ? 'buy' : /^(sale|sell)/.test(ty) ? 'sell' : '';
+  const ty = String(t.trade_type || t.type || '').toLowerCase();
+  const side = /^(buy|purchase)/.test(ty) ? 'buy' : /^(sell|sale)/.test(ty) ? 'sell' : '';
   if (!side) return null;
-  const perf = t.perf_pct === null || t.perf_pct === undefined || !Number.isFinite(+t.perf_pct) ? null : +(+t.perf_pct).toFixed(2);
+  const [lo, hi] = amountRange(t.amount);
+  const ticker = tick(t.ticker);
+  const filed = day(t.disclosed);
+  const traded = tradeDate(t.tx_date, filed);
+  const who = text(t.member, 60);
   return {
-    id: 'c:' + i + ':' + text(t.member_slug || t.member, 40) + ':' + tick(t.ticker) + ':' + day(t.transaction_date),
-    src: 'congress', who: text(t.member, 60),
-    role: (String(t.chamber || '').toLowerCase() === 'senate' ? 'Senate' : 'House') + (t.state ? ' · ' + text(t.state, 6) : ''),
-    side, ticker: tick(t.ticker), asset: text(t.asset, 80),
-    lo: num(t.amount_low), hi: num(t.amount_high), usd: 0,
-    traded: day(t.transaction_date), filed: day(t.disclosure_date), perf,
-    link: okUrl(t.filing_portal),
+    id: 'c:' + fp([who, ticker, traded, t.amount, side, t.link, i].join('|')),
+    src: 'congress', who, role: /senate/i.test(t.chamber || '') ? 'Senate' : 'House',
+    side, ticker, asset: cleanAsset(t.asset, ticker) || ticker,
+    lo, hi, usd: 0, traded, filed, perf: null,
+    link: okUrl(t.link),
   };
+}
+
+/* The feed lists some trades twice — the same member, asset, day, band and
+   report, sometimes on two of its pages. One row each. */
+export const congressKey = r => [r.who, r.ticker || r.asset, r.traded, r.lo, r.hi, r.side, r.link].join('|');
+export function dedupe(rows, key = congressKey) {
+  const seen = new Set(), out = [];
+  for (const r of rows || []) {
+    const k = key(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+export function congressRows(list, offset = 0) {
+  const all = Array.isArray(list) ? list : (list && (list.trades || list.data)) || [];
+  return dedupe(all.map((t, i) => fromCongress(t, offset + i)).filter(Boolean));
 }
 
 /* ============================================================ White House */
@@ -189,10 +277,14 @@ export function officialsFrom(csv) {
    only and silently dropped every trade after June 2026). A cheap look at
    its date skips the old ones before any JSON.parse; annual-report rows are
    a year of history rather than news and are left out; a trade listed twice
-   (the file repeats its latest batch) counts once. */
+   (the file repeats its latest batch) counts once. Every trade opens with
+   its "description"; matching only objects that do is what keeps the file's
+   own top-level object from matching as one giant "trade" — which it did in
+   every file whose trades carry no nested object (all but Trump's), and the
+   lot was thrown away. */
 export function recentTrades(src, { since = '', max = 60 } = {}) {
   const out = [], seen = new Set();
-  const re = /\{(?:[^{}]|\{[^{}]*\})*\}/g;
+  const re = /\{\s*"description"\s*:(?:[^{}]|\{[^{}]*\})*\}/g;
   let m;
   while ((m = re.exec(src))) {
     const raw = m[0];
@@ -328,6 +420,117 @@ export function fromForm4(f, filing, issuer = {}) {
     });
   }
   return out;
+}
+
+/* ============================================================ portfolios */
+
+/* Today's price, from Yahoo's chart endpoint — keyless, one symbol a call,
+   and it answers the Worker (src/stockwin.mjs reads it the same way). An
+   issuer whose shares Yahoo names differently says so in `yh`; '' means it
+   is not priced (Berkshire's insiders hold A and B shares, and a Form 4 does
+   not say which in a way worth guessing at). */
+export const yahooSym = iss => (iss && iss.yh !== undefined ? iss.yh : (iss && iss.t) || '');
+export const priceUrl = sym => 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1d&interval=1d';
+export const chartUrl = sym => 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1y&interval=1d';
+
+/* The close on each of `dates` (or the last trading day before it) from a
+   year of Yahoo's daily bars, and the price now. */
+export function closesOn(j, dates) {
+  const r = j && j.chart && j.chart.result && j.chart.result[0];
+  const ts = (r && r.timestamp) || [];
+  const cl = (r && r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close) || [];
+  const days = ts.map(x => new Date(x * 1000).toISOString().slice(0, 10));
+  const out = {};
+  for (const d of dates || []) {
+    let v = 0;
+    for (let i = 0; i < days.length; i++) {
+      if (days[i] > d) break;
+      if (cl[i] > 0) v = cl[i];
+    }
+    if (v > 0) out[d] = +v.toFixed(4);
+  }
+  return { now: priceFrom(j), on: out };
+}
+export function priceFrom(j) {
+  const m = j && j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta;
+  const p = m ? +m.regularMarketPrice : 0;
+  return Number.isFinite(p) && p > 0 ? p : 0;
+}
+
+/* What one Form 4 says its owner holds directly once it settled. Every
+   filing counts here — a grant or an option exercise changes a holding as
+   much as a sale — and the last line on the latest date is the position. */
+export function holdingFrom(f, filing, issuer = {}) {
+  if (!f || !f.lines || !f.lines.length) return null;
+  const direct = f.lines.filter(l => l.direct);
+  const pool = (direct.length ? direct : f.lines).slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const last = pool[pool.length - 1];
+  const t = f.ticker || tick(issuer.t);
+  if (!t || !(last.after >= 0)) return null;
+  return { who: personName(f.owner), role: roleOf(f, issuer.co || f.issuer), t, shares: Math.round(last.after), date: last.date || (filing && filing.date) || '' };
+}
+
+/* Company insiders' rows with today's price: what the holding is worth now,
+   and how the stock has moved since the trade. Other rows pass through —
+   Congress rows already carry the move since, and the White House reports
+   names, not tickers. */
+export function withPrices(rows, px = {}, pxAt = {}) {
+  return rows.map(r => {
+    const p = r && r.ticker && px[r.ticker] ? +px[r.ticker].p : 0;
+    if (!(p > 0)) return r;
+    if (r.src === 'ceo') {
+      return { ...r, now: +p.toFixed(2), afterNow: Math.round((r.after || 0) * p),
+        perf: r.price > 0 ? +(((p - r.price) / r.price) * 100).toFixed(2) : null };
+    }
+    const p0 = r.traded ? +pxAt[r.ticker + '|' + r.traded] || 0 : 0;
+    if (r.src === 'congress' && p0 > 0) return { ...r, now: +p.toFixed(2), perf: +(((p - p0) / p0) * 100).toFixed(2) };
+    return r;
+  });
+}
+
+/* One row per person. From their trades: how many, how much bought and how
+   much sold (exact for a Form 4, the sum of the bands otherwise), what they
+   traded most, how those trades have done since, and the latest filing.
+   From their holdings (company insiders only — Congress and the White House
+   report trades, not positions): every stake, at today's price where there
+   is one, and the total. People who hold but did not trade in the window
+   are listed too: a CEO's stake is the point even in a quiet month. */
+export function peopleFrom(rows, holdings = [], px = {}) {
+  const by = new Map();
+  const get = (src, who, role) => {
+    const key = src + ':' + who;
+    let p = by.get(key);
+    if (!p) by.set(key, p = { key, src, who, role, n: 0, buys: 0, sells: 0, bLo: 0, bHi: 0, sLo: 0, sHi: 0, last: '', vol: {}, perfSum: 0, perfN: 0, hold: [], holdUsd: 0 });
+    return p;
+  };
+  for (const r of rows || []) {
+    if (!r || !r.who) continue;
+    const p = get(r.src, r.who, r.role);
+    const lo = r.usd || r.lo || 0, hi = r.usd || r.hi || r.lo || 0;
+    p.n++;
+    if (r.side === 'buy') { p.buys++; p.bLo += lo; p.bHi += hi; } else { p.sells++; p.sLo += lo; p.sHi += hi; }
+    if ((r.filed || '') > p.last) p.last = r.filed;
+    const name = r.ticker || r.asset || '';
+    if (name) p.vol[name] = (p.vol[name] || 0) + (lo + hi) / 2;
+    if (r.perf !== null && r.perf !== undefined && Number.isFinite(+r.perf)) { p.perfSum += +r.perf; p.perfN++; }
+  }
+  for (const h of holdings || []) {
+    if (!h || !h.who || !h.t) continue;
+    const p = get('ceo', h.who, h.role);
+    const price = px[h.t] ? +px[h.t].p || 0 : 0;
+    const usd = price > 0 ? Math.round(h.shares * price) : 0;
+    p.hold.push({ t: h.t, shares: h.shares, usd, date: h.date });
+    p.holdUsd += usd;
+    if ((h.date || '') > p.last && !p.n) p.last = h.date;
+  }
+  return [...by.values()].map(p => ({
+    key: p.key, src: p.src, who: p.who, role: p.role, n: p.n, buys: p.buys, sells: p.sells,
+    bought: [Math.round(p.bLo), Math.round(p.bHi)], sold: [Math.round(p.sLo), Math.round(p.sHi)], last: p.last,
+    top: Object.entries(p.vol).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
+    perf: p.perfN ? +(p.perfSum / p.perfN).toFixed(2) : null,
+    hold: p.hold.sort((a, b) => b.usd - a.usd).slice(0, 6), holdUsd: p.holdUsd,
+  })).sort((a, b) => (b.holdUsd - a.holdUsd) || ((b.bought[1] + b.sold[1]) - (a.bought[1] + a.sold[1])));
 }
 
 /* ================================================================= table */

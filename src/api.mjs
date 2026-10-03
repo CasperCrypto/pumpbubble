@@ -513,7 +513,7 @@ async function insidersSnapshot(ctx) {
   return {
     ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: 0,
     sampleArt: '', solid: tokens.length, signed: true, source: 'insiders', sourceLabel: 'Insiders', boostable: false,
-    tokens, insiders: d ? d.status || null : null,
+    tokens, insiders: d ? { ...(d.status || {}), people: d.people || [] } : null,
   };
 }
 /* feeds whose empty answer is a state (nothing yet), not an outage */

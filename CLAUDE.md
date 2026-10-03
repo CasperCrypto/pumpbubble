@@ -780,25 +780,28 @@ past hour.
 Insiders tab — a table, never bubbles (he asked for a table). Asked for as "what politicians and
 CEOs hold and buy — Trump bought X, Elon sold this — free data only".
 
-**Where it comes from, each checked live on 2026-10-03:**
+**Where it comes from** — the full list, with each source's terms, is `docs/sources.md`. **No
+source line on the page**: the operator wants the main UI clean, so a source whose free terms
+require an on-page credit is not used (Bargo was, for a day, and was dropped for exactly that).
 
 | who | source | freshness | amounts |
 |---|---|---|---|
-| Congress (House, Senate) | Bargo's free API, `bargo.ai/free-apis/congress/v1/trades` — built from the House Clerk and Senate eFD filings | filed up to 45 days after a trade (the law) | ranges |
-| Trump and ~40 officials | Open Cabinet's parse of OGE 278-T reports, `raw.githubusercontent.com/tbrown034/open-cabinet` (MIT; filings are public domain) | weeks late, in batches; 73% of Trump's flagged late | ranges |
-| insiders of 27 companies (`ISSUERS`, CIKs from the SEC's own `company_tickers.json`) | SEC Form 4 from EDGAR | within two business days | exact, plus shares held after |
+| Congress (House, Senate) | CongressInvests' free API over the House Clerk and Senate eFD reports — 5,374 trades on 2026-10-03, pages of 500 *not in date order*, so a sweep reads every page (one a tick, every four hours) and keeps 150 days | filed up to 45 days after a trade (the law) | ranges |
+| Trump and ~40 officials | Open Cabinet's parse of OGE 278-T reports (`raw.githubusercontent.com/tbrown034/open-cabinet`) | weeks late, in batches; 73% of Trump's flagged late | ranges |
+| insiders of 65 companies (`ISSUERS`, CIKs from the SEC's `company_tickers.json`) | SEC Form 4 from EDGAR | within two business days | exact, plus shares held after |
 
-**The terms that come with it**: Bargo is free with a *visible, above-the-fold credit link* wherever
-the data is shown and no redistribution of raw records — the credit line is the first thing in the
-table on every screen, and there is no download. Keyless Bargo is 30 calls a day per IP (Cloudflare's
-egress shares IPs, so `BARGO_KEY` — a free key, secret, sent as a Bearer token — is the fix if the
-Congress rows stop). The SEC asks for a declared User-Agent (`SEC_UA`) and ≤10 requests a second.
-Congress disclosure reports may not be used commercially except by media publishing to the public
-(5 U.S.C. 13107): the tab is free to view and nothing paid hangs off it — keep it that way.
+CongressInvests' rows need cleaning: its PDF reader sometimes runs the next columns into the asset
+name ("Sony Group Corporation American P 12/26/2026 01/21/2026 $1,001 - …" — `cleanAsset`), takes the
+year from the wrong cell (a trade "on 2026-12-26" disclosed 2026-02-09 — `tradeDate` tries a year back
+and drops what still makes no sense), and lists some trades twice across pages (`dedupe`). Congress
+reports may not be used commercially except by media publishing to the public (5 U.S.C. 13107): the
+tab is free to view and nothing paid hangs off it — keep it that way. The SEC asks for a declared
+User-Agent (`SEC_UA`) and ≤10 requests a second.
 
 **What did not work, so it is not done that way**: Quiver Quant and Unusual Whales sell this data
 (scraping them breaks their terms); OpenInsider and SECForm4 are front-ends over the same SEC filings
-read here directly. EDGAR's company feed with `type=4` is a prefix match — JPMorgan's newest "type 4"
+read here directly; the House Clerk's PTR PDFs are encrypted with CID fonts (readable later, not
+needed now). EDGAR's company feed with `type=4` is a prefix match — JPMorgan's newest "type 4"
 filings were all 424B2 prospectuses — so it is read with `owner=only`. A byte-range read of an
 official's file from GitHub returns a range of the *gzipped* body (undecodable), so the whole file is
 fetched (Trump's is 15 MB, 612 KB on the wire) and read without `JSON.parse`: every trade is an object
@@ -806,15 +809,25 @@ at most one level deep, matched by pattern, dated before it is parsed. The first
 nesting and silently dropped every trade after June 2026 (they carry a `read` object). This works only
 because a Durable Object has 30 s of CPU per request on the free plan, where a Worker has 10 ms.
 
+**Portfolios** (the Trades / Portfolios switch): one row per person, built in the object
+(`peopleFrom`) from every row it holds, not just the table's. Company insiders' stakes are exact —
+every Form 4 (grants and exercises included) updates the person's latest direct holding per company
+(`holdingFrom`), valued at today's price (Yahoo, one company per tick); Congress and the White House
+disclose trades, not positions, so theirs is what they bought and sold (summed bands) and how it has
+done since — the close on the trade day from a year of Yahoo's daily bars (`closesOn`, three tickers a
+tick, twice a day). A person's row opens their trades, headed by what they hold.
+
 **Rows**: open-market purchases (P) and sales (S) only for Form 4s — grants, exercises, tax
 withholding and gifts are paperwork — summed per filing per side (a planned sale is often forty fills),
 with what the owner holds directly afterwards and its value at the average price; `plan` marks a
-10b5-1 sale. Congress rows carry Bargo's performance since the trade. Newest filing first: that is
+10b5-1 sale. Congress rows carry the move since the trade (Yahoo, see Portfolios). Newest filing first: that is
 when anyone could have known. A row opens the filing.
 
-**Clock**: one tick a minute — Congress hourly, Open Cabinet's index every six hours, then one official
-whose filing date moved (biggest books first, so Trump is read on the first pass), plus one company's
-insider feed and up to eight new Form 4s. A 403/429 from the SEC pauses the SEC side ten minutes.
+**Clock**: one tick a minute — a Congress sweep every four hours (one page a tick until the last),
+Open Cabinet's index every six hours, then one official whose filing date moved (biggest books first,
+so Trump is read on the first pass), plus one company's insider feed and price, up to ten new Form 4s,
+and three Congress tickers' daily closes. The table shows each source's newest (Congress 350, White
+House 200, companies 250) so a year of Congress cannot crowd out the rest. A 403/429 from the SEC pauses the SEC side ten minutes.
 `/api/tokens?source=insiders` → `insiders` shows each source's rows, last read and error.
 
 ## The generative card

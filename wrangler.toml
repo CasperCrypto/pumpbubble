@@ -172,8 +172,8 @@ tag = "v6-sol"
 new_sqlite_classes = ["SolWatch"]
 
 # Insiders (src/insiders.mjs): what Congress, the White House and CEOs trade,
-# from free public data, read a little each minute by one object. BARGO_KEY
-# (a free key, secret) raises the Congress feed's 30 calls a day.
+# from free public data, read a little each minute by one object. No keys;
+# the sources are listed in docs/sources.md.
 [[durable_objects.bindings]]
 name = "INSIDERS"
 class_name = "InsidersDO"

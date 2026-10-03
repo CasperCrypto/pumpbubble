@@ -4,7 +4,9 @@
        node scripts/insiders.test.mjs
 
    Every fixture below is shaped like the real thing as it was read on
-   2026-10-03: a Bargo row, a line of Open Cabinet's officials index, a slice
+   2026-10-03: CongressInvests rows (one with the PDF reader's columns run
+   into the asset name, one with the year in the wrong cell — both real), a
+   line of Open Cabinet's officials index, a slice
    of an official's file (with the nested `read` object the newer trades
    carry — the first parser skipped all of them), an EDGAR company feed with
    a prospectus mixed in, and a Form 4 cut down from Tesla's CFO's filing of
@@ -14,8 +16,9 @@
    ========================================================================== */
 
 import {
-  amountRange, personName, commaName, daysLate, fromBargo, parseCsv, officialsFrom, recentTrades, fromCabinet,
-  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, ISSUERS, fp,
+  amountRange, personName, commaName, daysLate, fromCongress, congressRows, cleanAsset, tradeDate, parseCsv, officialsFrom,
+  recentTrades, fromCabinet, form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, ISSUERS, fp,
+  holdingFrom, withPrices, peopleFrom, closesOn, priceFrom, yahooSym,
 } from '../src/insiders.mjs';
 
 let pass = 0, fail = 0;
@@ -41,21 +44,30 @@ console.log('\nsmall readers');
   is('a fingerprint is stable', fp('a|b'), fp('a|b'));
 }
 
-console.log('\nCongress (Bargo)');
+console.log('\nCongress (CongressInvests)');
 {
-  const t = { member: 'David J. Taylor', member_slug: 'david-j-taylor', chamber: 'house', state: 'OH02', ticker: 'MPC',
-    asset: 'Marathon Petroleum Corporation Common Stock', type: 'sale', amount_low: 1001, amount_high: 15000,
-    transaction_date: '2026-09-22', disclosure_date: '2026-10-01', perf_pct: 8.38, filing_portal: 'https://disclosures-clerk.house.gov/FinancialDisclosure' };
-  const r = fromBargo(t, 0);
-  is('a sale is a sale', [r.side, r.who, r.role, r.ticker], ['sell', 'David J. Taylor', 'House · OH02', 'MPC']);
-  is('the range and the dates', [r.lo, r.hi, r.traded, r.filed, r.perf], [1001, 15000, '2026-09-22', '2026-10-01', 8.38]);
-  is('a purchase is a buy', fromBargo({ ...t, type: 'purchase' }).side, 'buy');
-  is('a partial sale is a sale', fromBargo({ ...t, type: 'sale_partial' }).side, 'sell');
-  is('an exchange is neither, and left out', fromBargo({ ...t, type: 'exchange' }), null);
-  is('a senator says Senate', fromBargo({ ...t, chamber: 'senate', state: 'MA' }).role, 'Senate · MA');
-  is('no performance is null, not zero', fromBargo({ ...t, perf_pct: null }).perf, null);
-  is('markup in a name never survives', fromBargo({ ...t, member: '<img src=x onerror=alert(1)>Bob' }).who.includes('<'), false);
-  is('a javascript: link is dropped', fromBargo({ ...t, filing_portal: 'javascript:alert(1)' }).link, '');
+  const pelosi = { member: 'Nancy Pelosi', chamber: 'House', trade_type: 'buy', amount: '$500,001 - $1,000,000', tx_date: '2026-07-24',
+    disclosed: '2026-08-21', asset: 'Intel Corporation - Common Stock (INTC) [ST]', ticker: 'INTC',
+    link: 'https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035143.pdf' };
+  const r = fromCongress(pelosi, 0);
+  is('a buy, the member, the chamber, the ticker', [r.side, r.who, r.role, r.ticker], ['buy', 'Nancy Pelosi', 'House', 'INTC']);
+  is('the band and the dates', [r.lo, r.hi, r.traded, r.filed], [500001, 1000000, '2026-07-24', '2026-08-21']);
+  is('the asset without the ticker and the [ST] tag', r.asset, 'Intel Corporation - Common Stock');
+  is('the official PDF', r.link, 'https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035143.pdf');
+  is('a sale is a sale', fromCongress({ ...pelosi, trade_type: 'sell' }).side, 'sell');
+  is('an exchange is neither, and left out', fromCongress({ ...pelosi, trade_type: 'exchange' }), null);
+  is('a senator says Senate', fromCongress({ ...pelosi, chamber: 'Senate' }).role, 'Senate');
+  is('markup in a name never survives', fromCongress({ ...pelosi, member: '<img src=x onerror=alert(1)>Bob' }).who.includes('<'), false);
+  is('a javascript: link is dropped', fromCongress({ ...pelosi, link: 'javascript:alert(1)' }).link, '');
+
+  is('columns run into the name are cut', cleanAsset('Sony Group Corporation American P 12/26/2026 01/21/2026 $1,001 - $15,000', 'SONY'), 'Sony Group Corporation American');
+  is('a spouse prefix and the date tail are cut', cleanAsset('SP Bloom Energy Corporation Class A P 07/28/2026 07/28/2026 $500,001 -', 'BE'), 'Bloom Energy Corporation Class A');
+  is('a trade dated after its own filing: a year back', tradeDate('2026-12-26', '2026-02-09'), '2025-12-26');
+  is('…and one that still makes no sense is dropped', tradeDate('2026-12-26', '2026-06-30'), '');
+  is('a normal date is kept', tradeDate('2026-07-24', '2026-08-21'), '2026-07-24');
+
+  const page = { total: 3, has_more: false, trades: [pelosi, { ...pelosi }, { ...pelosi, ticker: 'BE', asset: 'Bloom Energy' }] };
+  is('a trade listed twice is one row; the wrapper is read', congressRows(page).map(x => x.ticker), ['INTC', 'BE']);
 }
 
 console.log('\nWhite House (Open Cabinet)');
@@ -167,6 +179,40 @@ console.log('\nCEOs (SEC Form 4)');
   is('markup in an owner name never survives', fromForm4(parseForm4(doc([line('2026-09-08', 'P', 1, '1', 'A', 1)], 0, '&lt;script&gt;Evil Bob')), ents[0], tesla)[0].who.includes('<'), false);
   is('no ownership document, nothing', parseForm4('<html>not here</html>'), null);
   is('the companies all have a CIK and a ticker', ISSUERS.every(x => x.cik > 0 && /^[A-Z.]{1,6}$/.test(x.t)), true);
+}
+
+console.log('\nportfolios and prices');
+{
+  const tesla = ISSUERS.find(x => x.t === 'TSLA');
+  const f = { owner: 'MUSK ELON', ticker: 'TSLA', issuer: 'Tesla, Inc.', title: 'CEO', director: true, officer: true, tenPct: true,
+    lines: [{ date: '2026-09-01', code: 'A', shares: 10, price: 0, ad: 'A', after: 410, direct: true },
+            { date: '2026-09-02', code: 'M', shares: 5, price: 0, ad: 'A', after: 415, direct: true },
+            { date: '2026-09-02', code: 'S', shares: 1, price: 0, ad: 'D', after: 99, direct: false }] };
+  const h = holdingFrom(f, { date: '2026-09-03' }, tesla);
+  is('a stake is the last direct line on the latest date — grants count', [h.who, h.t, h.shares, h.date], ['Elon Musk', 'TSLA', 415, '2026-09-02']);
+
+  const chart = { chart: { result: [{ meta: { regularMarketPrice: 120 },
+    timestamp: [Date.parse('2026-07-23T13:30:00Z') / 1000, Date.parse('2026-07-24T13:30:00Z') / 1000, Date.parse('2026-07-27T13:30:00Z') / 1000],
+    indicators: { quote: [{ close: [95, 100, 104] }] } }] } };
+  is('the close on the day, the last trading day before a weekend, and now', closesOn(chart, ['2026-07-24', '2026-07-26']), { now: 120, on: { '2026-07-24': 100, '2026-07-26': 100 } });
+  is('a price', priceFrom(chart), 120);
+  is('Berkshire is not priced', yahooSym(ISSUERS.find(x => x.t === 'BRK')), '');
+
+  const cong = fromCongress({ member: 'Nancy Pelosi', chamber: 'House', trade_type: 'buy', amount: '$500,001 - $1,000,000', tx_date: '2026-07-24',
+    disclosed: '2026-08-21', asset: 'Intel', ticker: 'INTC', link: 'https://disclosures-clerk.house.gov/x.pdf' });
+  const ceo = { id: 'f:1:sell', src: 'ceo', who: 'Elon Musk', role: 'CEO, Tesla', side: 'sell', ticker: 'TSLA', usd: 1000, shares: 10, price: 100, after: 415, filed: '2026-09-03' };
+  const px = { INTC: { p: 120 }, TSLA: { p: 150 } }, pxAt = { 'INTC|2026-07-24': 100 };
+  const [c2, e2] = withPrices([cong, ceo], px, pxAt);
+  is('a Congress trade, up since the close on its day', [c2.now, c2.perf], [120, 20]);
+  is('an insider: the stake now and the move since the sale', [e2.afterNow, e2.perf], [62250, 50]);
+
+  const ppl = peopleFrom([c2, e2, { ...cong, id: 'c:2', side: 'sell', lo: 1001, hi: 15000, ticker: 'NVDA' }], [h], px);
+  const elon = ppl.find(p => p.who === 'Elon Musk'), nancy = ppl.find(p => p.who === 'Nancy Pelosi');
+  is('a CEO: trades, and the stake at today\'s price', [elon.n, elon.sells, elon.holdUsd, elon.hold[0].t], [1, 1, 62250, 'TSLA']);
+  is('a member: bought and sold, summed bands', [nancy.n, nancy.bought, nancy.sold], [2, [500001, 1000000], [1001, 15000]]);
+  is('…what they traded most', nancy.top[0], 'INTC');
+  is('…and the move since, where known', nancy.perf, 20);
+  is('a stake first, then the biggest trader', ppl[0].who, 'Elon Musk');
 }
 
 console.log('\nthe table');

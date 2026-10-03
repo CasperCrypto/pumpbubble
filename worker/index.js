@@ -21,8 +21,10 @@ import { histToJSON, histFromJSON, pruneHistory, altGateways, fetchSolPrice } fr
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
-import { ISSUERS as INS_ISSUERS, SEC_UA, BARGO, OC, fromBargo, officialsFrom, recentTrades, fromCabinet,
-  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows } from '../src/insiders.mjs';
+import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
+  officialsFrom, recentTrades, fromCabinet,
+  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom,
+  yahooSym, priceUrl, priceFrom } from '../src/insiders.mjs';
 
 /* ------------------------------------------------------------- Tap wars */
 /* One Durable Object holds the whole arena. Taps are counter increments and
@@ -249,8 +251,18 @@ export class InsidersDO {
     if (this.c) return;
     const [c, w, f] = await Promise.all(['congress', 'wh', 'ceo'].map(k => this.state.storage.get(k)));
     this.c = c || { rows: [], at: 0, err: '', errAt: 0 };
+    /* v2 is CongressInvests: anything older is Bargo's (shown only with its
+       credit, which the page no longer carries) — dropped, and read again now */
+    if (this.c.v !== 2) this.c = { rows: [], at: 0, err: '', errAt: 0, v: 2 };
     this.w = w || { rows: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0 };
+    /* v2 reads every official's file properly (v1 kept only Trump's): read them all again */
+    if (this.w.v !== 2) this.w = { rows: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0, v: 2 };
     this.f = f || { rows: [], i: 0, seen: {}, queue: [], err: '', errAt: 0, at: 0, pause: 0 };
+    /* today's prices and each insider's latest stake, by person and ticker */
+    this.f.px = this.f.px || {};
+    /* stakes arrived after the first rows: read the window's filings once more
+       to fill them (rows are de-duplicated by filing, so nothing posts twice) */
+    if (!this.f.hold) { this.f.hold = {}; this.f.seen = {}; }
   }
   async persist() {
     const keys = { congress: this.c, wh: this.w, ceo: this.f };
@@ -266,15 +278,22 @@ export class InsidersDO {
       ceo: { rows: f.rows.length, companies: INS_ISSUERS.length, queue: f.queue.length, at: f.at, err: f.errAt > f.at ? f.err : '', paused: f.pause > Date.now() },
     };
   }
+  /* The table: each source's newest, so a year of Congress cannot crowd out
+     the White House and the companies. Portfolios read everything. */
   rows() {
-    return mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows).slice(0, 400);
+    return withPrices(mergeRows(this.c.rows.slice(0, 350), mergeRows(...Object.values(this.w.rows)).slice(0, 200), this.f.rows.slice(0, 250)),
+      this.f.px, this.f.pxAt);
+  }
+  people() {
+    const all = withPrices(mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows), this.f.px, this.f.pxAt);
+    return peopleFrom(all, Object.values(this.f.hold), this.f.px).slice(0, 300);
   }
   async fetch(req) {
     await this.load();
     let b = {};
     try { b = await req.json(); } catch { b = {}; }
     if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 1000);
-    const out = b.op === 'rows' ? { ok: true, rows: this.rows(), status: this.status() }
+    const out = b.op === 'rows' ? { ok: true, rows: this.rows(), people: this.people(), status: this.status() }
       : b.op === 'status' ? { ok: true, ...this.status() } : { ok: true };
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
   }
@@ -283,24 +302,66 @@ export class InsidersDO {
     if (!r.ok) { const e = new Error(r.status + ' ' + new URL(url).host); e.status = r.status; throw e; }
     return r;
   }
+  /* Congress, every four hours: the feed holds a year of trades (5,374 on
+     2026-10-03) in pages of 500 that are not in date order, so a sweep reads
+     one page a tick to the end, then keeps the last 150 days, newest filing
+     first. The pages in progress live in memory only — a restart mid-sweep
+     starts the sweep again rather than writing a megabyte a minute. */
   async readCongress(now) {
     const c = this.c;
+    /* the first sweep (nothing to show yet) reads four pages a tick and shows
+       what it has after each, so the table fills in minutes, not ten */
+    const sw = this.sweep || (this.sweep = { page: 0, rows: [], first: !c.rows.length });
+    const since = isoAgo(150);
+    const sorted = () => insDedupe(sw.rows, congressKey).filter(r => (r.filed || '') >= since)
+      .sort((a, b) => (b.filed || '').localeCompare(a.filed || '') || (b.traded || '').localeCompare(a.traded || '')).slice(0, 3000);
     try {
-      /* Bargo's docs name the key but not how REST takes it, so both of the
-         usual headers carry it. Keyless is 30 calls a day per IP, and
-         Cloudflare's egress shares its IPs: from the Worker it answered 429
-         on the first call (2026-10-03). */
-      const key = this.env.BARGO_KEY ? String(this.env.BARGO_KEY) : '';
-      const j = await (await this.get(BARGO + '/trades?limit=100', key ? { authorization: 'Bearer ' + key, 'x-api-key': key } : {})).json();
-      const rows = ((j && j.trades) || []).map((t, i) => fromBargo(t, i)).filter(Boolean);
-      if (rows.length) c.rows = rows;
-      c.at = now;
+      for (let n = 0; n < (sw.first ? 4 : 1); n++) {
+        const j = await (await this.get(CONGRESS + '&offset=' + sw.page * 500, {}, 30_000)).json();
+        sw.rows.push(...congressRows(j, sw.page * 500));
+        if (j && j.has_more && sw.page < 20) { sw.page++; continue; }
+        const rows = sorted();
+        if (rows.length) c.rows = rows;
+        c.at = now;
+        this.sweep = null;
+        this.dirty.add('congress');
+        return;
+      }
+      if (sw.first) c.rows = sorted();
     } catch (e) {
       c.err = String(e && e.message || e).slice(0, 120); c.errAt = now;
-      /* a refusal waits the full hour; anything else tries again in ten minutes */
-      c.at = e && e.status === 429 ? now : now - 50 * 60_000;
+      this.sweep = null;
+      /* a refusal waits the full four hours; anything else tries again in ten minutes */
+      c.at = e && e.status === 429 ? now : now - 3.8 * 3600_000;
+      this.dirty.add('congress');
     }
-    this.dirty.add('congress');
+  }
+  /* The move since a Congress trade: a year of daily closes per ticker (one
+     Yahoo call), the close on each trade day kept, refreshed twice a day.
+     Three tickers a tick, the ones in the table first. */
+  async pricePass(now) {
+    const f = this.f;
+    f.pxAt = f.pxAt || {}; f.chartAt = f.chartAt || {};
+    const want = new Map();
+    for (const r of this.c.rows.slice(0, 350)) {
+      if (!r.ticker || !r.traded) continue;
+      if (!want.has(r.ticker)) want.set(r.ticker, new Set());
+      want.get(r.ticker).add(r.traded);
+    }
+    const due = [...want.keys()].filter(t => now - (f.chartAt[t] || 0) > 12 * 3600_000
+      || [...want.get(t)].some(d => !(f.pxAt[t + '|' + d] > 0) && now - (f.chartAt[t] || 0) > 3600_000)).slice(0, 3);
+    for (const t of due) {
+      f.chartAt[t] = now;
+      try {
+        const got = closesOn(await (await this.get(chartUrl(t), { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })).json(), [...want.get(t)]);
+        if (got.now > 0) f.px[t] = { p: got.now, at: now };
+        for (const [d, v] of Object.entries(got.on)) f.pxAt[t + '|' + d] = v;
+      } catch { /* this ticker waits its turn again */ }
+    }
+    /* bounded: closes for trades no longer in the window fall away */
+    const keys = Object.keys(f.pxAt);
+    if (keys.length > 2500) for (const k of keys.slice(0, keys.length - 2500)) delete f.pxAt[k];
+    if (due.length) this.dirty.add('ceo');
   }
   async readOfficials(now) {
     const w = this.w;
@@ -324,7 +385,8 @@ export class InsidersDO {
     if (!off) return;
     try {
       const body = await (await this.get(OC + '/data/officials/' + slug + '.json', {}, 45_000)).text();
-      w.rows[slug] = recentTrades(body, { since: isoAgo(180), max: 25 }).map((t, i) => fromCabinet(t, off, i)).filter(Boolean);
+      /* a year, not half of one: officials file in rare batches, and Lutnick's newest is a year old */
+      w.rows[slug] = recentTrades(body, { since: isoAgo(365), max: 25 }).map((t, i) => fromCabinet(t, off, i)).filter(Boolean);
       if (!w.rows[slug].length) delete w.rows[slug];
       w.seen[slug] = off.last;
     } catch (e) { w.err = slug + ': ' + String(e && e.message || e).slice(0, 100); w.errAt = now; }
@@ -344,19 +406,39 @@ export class InsidersDO {
         f.queue.push({ acc: e.acc, date: e.date, href: e.href, t: iss.t, tries: 0 });
       }
       f.seen[iss.t] = ents.map(e => e.acc).slice(0, 40);
+      /* the company's price, for what its insiders' stakes are worth now */
+      const sym = yahooSym(iss);
+      if (sym) {
+        try {
+          const p = priceFrom(await (await this.get(priceUrl(sym), { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })).json());
+          if (p > 0) f.px[iss.t] = { p, at: now };
+        } catch { /* the last price stands */ }
+      }
       const fresh = [];
-      for (const q of f.queue.splice(0, 8)) {
+      for (const q of f.queue.splice(0, 10)) {
         const url = form4Text(q.href);
         if (!url) continue;
         try {
+          const iq = INS_ISSUERS.find(x => x.t === q.t) || {};
           const doc = parseForm4(await (await this.get(url)).text());
-          fresh.push(...fromForm4(doc, q, INS_ISSUERS.find(x => x.t === q.t) || {}));
+          fresh.push(...fromForm4(doc, q, iq));
+          /* every filing moves a stake, grants and exercises too */
+          const h = holdingFrom(doc, q, iq);
+          if (h && h.who) {
+            const k = h.who + '|' + h.t;
+            if (!f.hold[k] || (h.date || '') >= (f.hold[k].date || '')) f.hold[k] = h;
+          }
         } catch (e) {
           if (++q.tries < 3) f.queue.push(q);
           if (e && (e.status === 403 || e.status === 429)) throw e;
         }
       }
       if (fresh.length) f.rows = mergeRows(fresh, f.rows).slice(0, 250);
+      const hk = Object.keys(f.hold);
+      if (hk.length > 600) {
+        hk.sort((a, b) => (f.hold[a].date || '').localeCompare(f.hold[b].date || ''));
+        for (const k of hk.slice(0, hk.length - 600)) delete f.hold[k];
+      }
       if (f.queue.length > 400) f.queue = f.queue.slice(-400);
       f.at = now;
     } catch (e) {
@@ -370,11 +452,13 @@ export class InsidersDO {
     await this.load();
     const now = Date.now();
     try {
-      if (now - this.c.at > 3600_000) await this.readCongress(now);
+      if (now - this.c.at > 4 * 3600_000 || this.sweep) await this.readCongress(now);
       else if (now - this.w.at > 6 * 3600_000) await this.readOfficials(now);
-      else if (this.w.queue.length) await this.readOfficial(this.w.queue.shift(), now);
+      /* three officials a tick: the first pass reads forty files, most of them small */
+      else if (this.w.queue.length) for (let n = 0; n < 3 && this.w.queue.length; n++) await this.readOfficial(this.w.queue.shift(), now);
     } catch { /* each reader keeps its own error */ }
     await this.tickCeo(now);
+    try { await this.pricePass(now); } catch { /* prices wait a tick */ }
     await this.persist();
     await this.state.storage.setAlarm(Date.now() + INS_TICK_MS);
   }

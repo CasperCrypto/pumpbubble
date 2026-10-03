@@ -362,10 +362,11 @@ h3 .ic{vertical-align:-.12em}
 #smTable .hbar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;min-width:56px}
 #smTable .hbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#1fb877,#5ff7b4)}
 #smTable .i-ph{display:none}
-/* Insiders: the sources' credit line above the table (Bargo's one condition
-   for its Congress data is a visible link back), and the source icon */
-#smTable .inCredit{max-width:1100px;margin:2px auto 2px;padding:0 4px;font-size:11px;font-weight:700;color:var(--dim);line-height:1.5}
-#smTable .inCredit a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+/* Insiders: one person's header, and the source icon */
+#smTable .inPerson{max-width:1100px;margin:4px auto 2px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--glass);
+  font-size:12.5px;color:var(--dim);font-weight:700;line-height:1.55}
+#smTable .inPerson b{color:var(--ink);font-size:14px}
+#smTable .inPerson .back{float:right;cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:2px}
 #smTable td.isrc .ic{width:16px;height:16px;opacity:.85}
 /* a company's full legal name is long: one line, cut, on every screen */
 #smTable td.itrade{overflow:hidden;max-width:320px}
@@ -983,7 +984,11 @@ body.embed #brandbadge.on{display:flex}
     <button data-cw="weekly" class="on"><span class="sb-full">This week</span><span class="sb-short">Week</span></button>
     <button data-cw="monthly"><span class="sb-full">This month</span><span class="sb-short">Month</span></button>
   </div>
-  <!-- Insiders: whose trades, and which side -->
+  <!-- Insiders: trades or portfolios, whose, and which side -->
+  <div class="seg" id="inMode">
+    <button data-im="trades" class="on">Trades</button>
+    <button data-im="people">Portfolios</button>
+  </div>
   <div class="seg" id="inView">
     <button data-iv="all" class="on"><span class="sb-full">Everyone</span><span class="sb-short">All</span></button>
     <button data-iv="congress">Congress</button>
@@ -1259,12 +1264,16 @@ function subbar(){
   document.getElementById('smBoard').style.display=S.mode==='smart'?'':'none';
   document.getElementById('clView').style.display=cl?'':'none';
   document.getElementById('clWin').style.display=S.mode==='callers'?'':'none';
+  document.getElementById('inMode').style.display=ins?'':'none';
   document.getElementById('inView').style.display=ins?'':'none';
-  document.getElementById('inSide').style.display=ins?'':'none';
+  document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
   if(ins){
+    document.querySelectorAll('#inMode [data-im]').forEach(b=>b.classList.toggle('on',b.dataset.im===(S.insMode||'trades')));
     document.querySelectorAll('#inView [data-iv]').forEach(b=>b.classList.toggle('on',b.dataset.iv===(S.insWho||'all')));
     document.querySelectorAll('#inSide [data-is]').forEach(b=>b.classList.toggle('on',b.dataset.is===(S.insSide||'all')));
-    document.getElementById('smNote').textContent='from public filings \u00b7 Congress may file up to 45 days after a trade, CEOs within 2 business days \u00b7 tap a row for the filing';
+    document.getElementById('smNote').textContent=S.insMode==='people'
+      ?'what each person bought and sold in their recent filings \u00b7 company insiders\u2019 stakes at today\u2019s price \u00b7 not financial advice'
+      :'from public filings \u00b7 Congress may file up to 45 days after a trade, CEOs within 2 business days \u00b7 not financial advice';
     return;
   }
   if(cl){
@@ -1375,7 +1384,7 @@ async function fetchLive(){
   if(!j.tokens.length&&!EMPTY_MODES.has(S.mode))throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
-  S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null;
+  S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   /* The referral template arrives with the feed rather than per token, so the
      Buy button knows where to send people without 300 copies of one URL. */
   if(j.buy)BUY=j.buy;
@@ -1747,26 +1756,67 @@ function insLag(r){
   const d=Math.round((Date.parse(r.filed)-Date.parse(r.traded))/864e5);
   return Number.isFinite(d)&&d>=0?d:null;
 }
+/* No source line on the page: none of the sources asks for one (they are
+   listed in docs/sources.md), and the page stays clean. */
+const insKey=r=>r.src+':'+r.who;
+const insRange=(lo,hi)=>!lo&&!hi?'\u2014':lo===hi||!hi?(lo>=1e3&&lo%1e3===1?fmtBand(lo):fmtUsd(lo)):fmtBand(lo)+'\u2013'+fmtBand(hi);
+function insHoldTxt(p){
+  return (p.hold||[]).filter(h=>h.usd>0).slice(0,3).map(h=>esc(h.t)+' '+esc(fmtUsd(h.usd))).join(' \u00b7 ');
+}
+function renderInsiderPeople(box){
+  const who=S.insWho||'all';
+  const ppl=((S.insMeta&&S.insMeta.people)||[]).filter(p=>who==='all'||p.src===who);
+  if(!ppl.length){box.innerHTML=emptyNote('Reading the filings\u2026 portfolios fill in as the trades do.');return}
+  const dash='<span style="color:var(--dim)">\u2014</span>';
+  box.innerHTML='<table><thead><tr><th></th><th>Who</th><th class="num c-dt">Holds now</th><th class="num c-dt">Bought</th><th class="num c-dt">Sold</th>'
+    +'<th class="num c-vol">Trades</th><th class="c-who">Traded most</th><th class="num c-h1">Since</th><th class="num c-ph">Holds \u00b7 traded</th></tr></thead><tbody>'
+    +ppl.map(p=>{
+      const src=IN_SRC[p.src]||['chart',''];
+      const hold=p.holdUsd>0?`<b>${esc(fmtUsd(p.holdUsd))}</b><small>${insHoldTxt(p)}</small>`
+        :(p.hold||[]).length?`<b>${esc(fmtSh(p.hold[0].shares))} sh</b><small>${esc(p.hold[0].t)}</small>`
+        :`${dash}<small style="color:var(--dim)">${p.src==='ceo'?'':'trades only, by law'}</small>`;
+      const perf=p.perf==null?dash:`<span class="${p.perf>=0?'up':'dn'}">${esc(fmtPct(p.perf))}</span>`;
+      const vol=p.bought[1]?'+'+insRange(p.bought[0],p.bought[1]):p.sold[1]?'\u2212'+insRange(p.sold[0],p.sold[1]):'\u2014';
+      return `<tr class="row" data-ip="${esc(p.key)}"><td class="isrc" title="${esc(src[1])}">${ic(src[0])}</td>`
+        +`<td><div class="tk"><div><b>${esc(p.who)}</b><small>${esc(p.role||'')}</small></div></div></td>`
+        +`<td class="num c-dt stk">${hold}</td>`
+        +`<td class="num c-dt">${p.bought[1]?'<span class="up">'+esc(insRange(p.bought[0],p.bought[1]))+'</span>':dash}</td>`
+        +`<td class="num c-dt">${p.sold[1]?'<span class="dn">'+esc(insRange(p.sold[0],p.sold[1]))+'</span>':dash}</td>`
+        +`<td class="num c-vol stk"><b>${esc(String(p.n))}</b><small>${esc(String(p.buys))} buys \u00b7 ${esc(String(p.sells))} sells</small></td>`
+        +`<td class="who c-who">${(p.top||[]).map(x=>'<b>'+esc(x)+'</b>').join(', ')||dash}</td>`
+        +`<td class="num c-h1">${perf}</td>`
+        +`<td class="num c-ph stk"><b>${p.holdUsd>0?esc(fmtUsd(p.holdUsd)):esc(vol)}</b><small>${esc(String(p.n))} trades</small></td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+}
 function renderInsidersTable(box,list){
-  const who=S.insWho||'all',side=S.insSide||'all';
-  let rows=list.filter(t=>t.ins&&(who==='all'||t.ins.src===who)&&(side==='all'||t.ins.side===side));
+  if(S.insMode==='people')return renderInsiderPeople(box);
+  const who=S.insWho||'all',side=S.insSide||'all',person=S.insPerson||'';
+  let rows=list.filter(t=>t.ins&&(person?insKey(t.ins)===person:(who==='all'||t.ins.src===who))&&(side==='all'||t.ins.side===side));
   rows=IN_SORT==='size'?rows.sort((a,b)=>(b.mcap||0)-(a.mcap||0))
     :rows.sort((a,b)=>((b.ins.filed||'')+(b.ins.traded||'')).localeCompare((a.ins.filed||'')+(a.ins.traded||'')));
-  const credit='<div class="inCredit">Congress: <a href="https://www.bargo.ai" target="_blank" rel="noopener">Bargo</a>'
-    +' \u00b7 White House: <a href="https://open-cabinet.org" target="_blank" rel="noopener">Open Cabinet</a> (OGE filings)'
-    +' \u00b7 CEOs: <a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener">SEC Form 4</a> \u00b7 not financial advice</div>';
-  if(!rows.length){box.innerHTML=credit+emptyNote(list.some(t=>t.ins)?'No trades match these filters.':'Reading the filings\u2026 Congress and the first CEOs arrive within minutes of a fresh start, the White House within the hour.');return}
+  /* one person's trades open with what they hold, where that is known */
+  let head='';
+  if(person){
+    const p=((S.insMeta&&S.insMeta.people)||[]).find(x=>x.key===person);
+    const r0=rows[0]&&rows[0].ins;
+    const name=p?p.who:r0?r0.who:'';
+    const role=p?p.role:r0?r0.role:'';
+    const hold=p&&p.holdUsd>0?' \u00b7 holds \u2248 <b>'+esc(fmtUsd(p.holdUsd))+'</b> ('+insHoldTxt(p)+')':'';
+    head=`<div class="inPerson"><span class="back" data-iclear="1">\u2190 all</span><b>${esc(name)}</b> \u00b7 ${esc(role)}${hold}</div>`;
+  }
+  if(!rows.length){box.innerHTML=head+emptyNote(list.some(t=>t.ins)?'No trades match these filters.':'Reading the filings\u2026 Congress and the first CEOs arrive within minutes of a fresh start, the White House within the hour.');return}
   const th=(k,label,cls='')=>`<th class="${cls}${IN_SORT===k?' on':''}" ${k?'data-isort="'+k+'"':''}>${label}${IN_SORT===k?' \u2193':''}</th>`;
   const sp=(k,label)=>`<span class="${IN_SORT===k?'on':''}" data-isort="${k}">${label}${IN_SORT===k?' \u2193':''}</span>`;
   const dash='<span style="color:var(--dim)">\u2014</span>';
-  box.innerHTML=credit+'<table><thead><tr><th></th>'+th('','Who')+th('','Trade')+th('size','Amount','num c-dt')
+  box.innerHTML=head+'<table><thead><tr><th></th>'+th('','Who')+th('','Trade')+th('size','Amount','num c-dt')
     +th('','Holds after','num c-vol')+th('filed','Traded \u00b7 filed','num c-dt')+th('','Since','num c-h1')
     +'<th class="num c-ph">'+sp('size','Amount')+' \u00b7 '+sp('filed','Filed')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map(t=>{
       const r=t.ins,src=IN_SRC[r.src]||['chart',''],buy=r.side==='buy',lag=insLag(r),amt=insAmount(r);
       const lagTxt=lag==null?'':lag===0?'same day':lag+(lag===1?' day':' days')+' later';
-      const hold=r.after?`<b>${esc(fmtSh(r.after))} sh</b><small>${r.afterUsd?'\u2248 '+esc(fmtUsd(r.afterUsd)):''}</small>`:dash;
+      const hold=r.after?`<b>${esc(fmtSh(r.after))} sh</b><small>${r.afterNow?'\u2248 '+esc(fmtUsd(r.afterNow))+' now':r.afterUsd?'\u2248 '+esc(fmtUsd(r.afterUsd)):''}</small>`:dash;
       const perf=r.perf==null?dash:`<span class="${r.perf>=0?'up':'dn'}">${esc(fmtPct(r.perf))}</span>`;
       return `<tr class="row" data-id="${esc(t.id)}"><td class="isrc" title="${esc(src[1])}">${ic(src[0])}</td>`
         +`<td><div class="tk"><div><b>${esc(r.who||'')}</b><small>${esc(r.role||'')}</small></div></div></td>`
@@ -1805,6 +1855,9 @@ function callerLine(t){
 
 document.getElementById('smTable').addEventListener('click',e=>{
   if(e.target.closest('a'))return;
+  if(e.target.closest('[data-iclear]')){S.insPerson='';rebuild();return}
+  const ip=e.target.closest('tr[data-ip]');
+  if(ip){S.insPerson=ip.dataset.ip;S.insMode='trades';S.insSide='all';subbar();rebuild();document.getElementById('smTable').scrollTop=0;return}
   const hi=e.target.closest('[data-isort]');
   if(hi){IN_SORT=hi.dataset.isort;rebuild();return}
   const hc=e.target.closest('[data-csort]');
@@ -3496,7 +3549,8 @@ async function railOpen(key){
 /* ------------------------------------------------------------ Smart money tabs */
 document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.iv){S.insWho=b.dataset.iv;subbar();rebuild();return}
+  if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
+  if(b.dataset.iv){S.insWho=b.dataset.iv;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.is){S.insSide=b.dataset.is;subbar();rebuild();return}
   if(b.dataset.cv&&b.dataset.cv!==S.mode){
     S.mode=b.dataset.cv;subbar();lightMode();shareTenBtn();
