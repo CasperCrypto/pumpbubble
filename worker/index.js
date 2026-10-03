@@ -336,7 +336,7 @@ export class InsidersDO {
         this.dirty.add('congress');
         return;
       }
-      if (sw.first) c.rows = sorted();
+      if (sw.first) { c.rows = sorted(); this.dirty.add('congress'); }
     } catch (e) {
       c.err = String(e && e.message || e).slice(0, 120); c.errAt = now;
       this.sweep = null;
@@ -352,13 +352,13 @@ export class InsidersDO {
     const f = this.f;
     f.pxAt = f.pxAt || {}; f.chartAt = f.chartAt || {};
     const want = new Map();
-    for (const r of this.c.rows.slice(0, 350)) {
+    for (const r of this.c.rows) {
       if (!r.ticker || !r.traded) continue;
       if (!want.has(r.ticker)) want.set(r.ticker, new Set());
       want.get(r.ticker).add(r.traded);
     }
     const due = [...want.keys()].filter(t => now - (f.chartAt[t] || 0) > 12 * 3600_000
-      || [...want.get(t)].some(d => !(f.pxAt[t + '|' + d] > 0) && now - (f.chartAt[t] || 0) > 3600_000)).slice(0, 3);
+      || [...want.get(t)].some(d => !(f.pxAt[t + '|' + d] > 0) && now - (f.chartAt[t] || 0) > 3600_000)).slice(0, 4);
     for (const t of due) {
       f.chartAt[t] = now;
       try {
@@ -369,7 +369,7 @@ export class InsidersDO {
     }
     /* bounded: closes for trades no longer in the window fall away */
     const keys = Object.keys(f.pxAt);
-    if (keys.length > 2500) for (const k of keys.slice(0, keys.length - 2500)) delete f.pxAt[k];
+    if (keys.length > 6000) for (const k of keys.slice(0, keys.length - 6000)) delete f.pxAt[k];
     if (due.length) this.dirty.add('ceo');
   }
   async readOfficials(now) {
@@ -460,12 +460,14 @@ export class InsidersDO {
   async alarm() {
     await this.load();
     const now = Date.now();
+    /* every source moves on every tick — the White House used to wait for a
+       Congress sweep to finish, and a deploy mid-sweep made it wait again */
+    try { if (now - this.c.at > 4 * 3600_000 || this.sweep) await this.readCongress(now); } catch { /* kept in c.err */ }
     try {
-      if (now - this.c.at > 4 * 3600_000 || this.sweep) await this.readCongress(now);
-      else if (now - this.w.at > 6 * 3600_000) await this.readOfficials(now);
+      if (now - this.w.at > 6 * 3600_000) await this.readOfficials(now);
       /* three officials a tick: the first pass reads forty files, most of them small */
-      else if (this.w.queue.length) for (let n = 0; n < 3 && this.w.queue.length; n++) await this.readOfficial(this.w.queue.shift(), now);
-    } catch { /* each reader keeps its own error */ }
+      for (let n = 0; n < 3 && this.w.queue.length; n++) await this.readOfficial(this.w.queue.shift(), now);
+    } catch { /* kept in w.err */ }
     await this.tickCeo(now);
     try { await this.pricePass(now); } catch { /* prices wait a tick */ }
     await this.persist();

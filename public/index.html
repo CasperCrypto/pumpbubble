@@ -1821,7 +1821,12 @@ function renderInsidersTable(box,list){
     const r0=rows[0]&&rows[0].ins;
     const name=p?p.who:r0?r0.who:'';
     const role=p?p.role:r0?r0.role:'';
-    const hold=p&&p.holdUsd>0?' \u00b7 holds \u2248 <b>'+esc(fmtUsd(p.holdUsd))+'</b> ('+insHoldTxt(p)+')':'';
+    /* what they hold where a filing states it; otherwise what they moved —
+       members and officials disclose trades, not holdings */
+    const hold=p&&p.holdUsd>0?' \u00b7 holds \u2248 <b>'+esc(fmtUsd(p.holdUsd))+'</b> ('+insHoldTxt(p)+')'
+      :p?(p.bought[1]?' \u00b7 bought <b class="up">'+esc(insRange(p.bought[0],p.bought[1]))+'</b>':'')
+        +(p.sold[1]?' \u00b7 sold <b class="dn">'+esc(insRange(p.sold[0],p.sold[1]))+'</b>':'')
+        +(p.src==='ceo'?'':' <small>(trades disclosed, not holdings)</small>'):'';
     head=`<div class="inPerson"><span class="back" data-iclear="1">\u2190 all</span><b>${esc(name)}</b> \u00b7 ${esc(role)}${hold}</div>`;
   }
   /* once per search: going back to the list must not reopen them */
