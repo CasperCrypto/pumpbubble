@@ -2487,6 +2487,20 @@ export async function handle(req, ctx) {
       catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 502); }
     }
 
+    /* One person's trades for the Insiders tab: everything the watcher holds
+       for them. The key is the table's own (source and name), checked here. */
+    if (path === '/api/insiders/person') {
+      const limitedP = rateLimit(req, 'inperson', 60, 60_000);
+      if (limitedP) return limitedP;
+      const key = String(url.searchParams.get('key') || '');
+      if (!/^(congress|whitehouse|ceo):[^<>"\u0000-\u001f]{1,90}$/.test(key)) return json({ ok: false, error: 'bad key' }, 400);
+      if (!ctx.insiders) return json({ ok: false, error: 'not configured' }, 503);
+      try {
+        const d = await ctx.insiders('person', { key });
+        return json({ ok: true, rows: (d && d.rows) || [] }, 200, { 'cache-control': 'public, max-age=120' });
+      } catch { return json({ ok: false, error: 'unavailable' }, 502); }
+    }
+
     if (path === '/api/tg/status') {
       /* Public, so throttled and cached: every uncached call asks Telegram,
          asks Helius (billed in credits) and wakes three chain watchers. */

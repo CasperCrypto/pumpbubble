@@ -273,9 +273,9 @@ export class InsidersDO {
     const w = this.w, f = this.f, c = this.c;
     const whRows = Object.values(w.rows).reduce((n, r) => n + r.length, 0);
     return {
-      congress: { rows: c.rows.length, at: c.at, err: c.errAt > c.at ? c.err : '' },
-      whitehouse: { rows: whRows, officials: w.offs.length, read: Object.keys(w.seen).length, queue: w.queue.length, at: w.at, err: w.errAt > w.at ? w.err : '' },
-      ceo: { rows: f.rows.length, companies: INS_ISSUERS.length, queue: f.queue.length, at: f.at, err: f.errAt > f.at ? f.err : '', paused: f.pause > Date.now() },
+      congress: { rows: c.rows.length, at: c.at, err: c.errAt && c.errAt >= c.at ? c.err : '', sweeping: !!this.sweep },
+      whitehouse: { rows: whRows, officials: w.offs.length, read: Object.keys(w.seen).length, queue: w.queue.length, at: w.at, err: w.errAt && w.errAt >= w.at ? w.err : '' },
+      ceo: { rows: f.rows.length, companies: INS_ISSUERS.length, queue: f.queue.length, at: f.at, err: f.errAt && f.errAt >= f.at ? f.err : '', paused: f.pause > Date.now() },
     };
   }
   /* The table: each source's newest, so a year of Congress cannot crowd out
@@ -284,9 +284,17 @@ export class InsidersDO {
     return withPrices(mergeRows(this.c.rows.slice(0, 350), mergeRows(...Object.values(this.w.rows)).slice(0, 200), this.f.rows.slice(0, 250)),
       this.f.px, this.f.pxAt);
   }
+  /* Everything held for one person, not only the table's newest — Pelosi's
+     trades were filed in August and the table opens on this week's. */
+  personRows(key) {
+    const all = mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows).filter(r => r.src + ':' + r.who === key);
+    return withPrices(all.slice(0, 150), this.f.px, this.f.pxAt);
+  }
   people() {
     const all = withPrices(mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows), this.f.px, this.f.pxAt);
-    return peopleFrom(all, Object.values(this.f.hold), this.f.px).slice(0, 300);
+    const ppl = peopleFrom(all, Object.values(this.f.hold), this.f.px);
+    const cap = { congress: 400, whitehouse: 100, ceo: 300 }, n = {};
+    return ppl.filter(p => (n[p.src] = (n[p.src] || 0) + 1) <= (cap[p.src] || 100));
   }
   async fetch(req) {
     await this.load();
@@ -294,6 +302,7 @@ export class InsidersDO {
     try { b = await req.json(); } catch { b = {}; }
     if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 1000);
     const out = b.op === 'rows' ? { ok: true, rows: this.rows(), people: this.people(), status: this.status() }
+      : b.op === 'person' ? { ok: true, rows: this.personRows(String(b.key || '')) }
       : b.op === 'status' ? { ok: true, ...this.status() } : { ok: true };
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
   }

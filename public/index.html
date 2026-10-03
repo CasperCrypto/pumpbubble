@@ -1385,6 +1385,11 @@ async function fetchLive(){
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
+  if(S.insWhoQ&&S.insMeta&&Array.isArray(S.insMeta.people)){
+    const hit=S.insMeta.people.find(p=>String(p.who).toLowerCase().includes(S.insWhoQ));
+    S.insWhoQ='';
+    if(hit)setTimeout(()=>openInsider(hit.key),0);
+  }
   /* The referral template arrives with the feed rather than per token, so the
      Buy button knows where to send people without 300 copies of one URL. */
   if(j.buy)BUY=j.buy;
@@ -1764,9 +1769,10 @@ function insHoldTxt(p){
   return (p.hold||[]).filter(h=>h.usd>0).slice(0,3).map(h=>esc(h.t)+' '+esc(fmtUsd(h.usd))).join(' \u00b7 ');
 }
 function renderInsiderPeople(box){
-  const who=S.insWho||'all';
-  const ppl=((S.insMeta&&S.insMeta.people)||[]).filter(p=>who==='all'||p.src===who);
-  if(!ppl.length){box.innerHTML=emptyNote('Reading the filings\u2026 portfolios fill in as the trades do.');return}
+  const who=S.insWho||'all',q=(S.q||'').toLowerCase();
+  const ppl=((S.insMeta&&S.insMeta.people)||[]).filter(p=>(who==='all'||p.src===who)
+    &&(!q||String(p.who).toLowerCase().includes(q)||(p.top||[]).some(x=>String(x).toLowerCase().includes(q))));
+  if(!ppl.length){box.innerHTML=emptyNote(q?'Nobody by that name in the filings read so far.':'Reading the filings\u2026 portfolios fill in as the trades do.');return}
   const dash='<span style="color:var(--dim)">\u2014</span>';
   box.innerHTML='<table><thead><tr><th></th><th>Who</th><th class="num c-dt">Holds now</th><th class="num c-dt">Bought</th><th class="num c-dt">Sold</th>'
     +'<th class="num c-vol">Trades</th><th class="c-who">Traded most</th><th class="num c-h1">Since</th><th class="num c-ph">Holds \u00b7 traded</th></tr></thead><tbody>'
@@ -1789,10 +1795,23 @@ function renderInsiderPeople(box){
     }).join('')
     +'</tbody></table>';
 }
+/* A person's trades come from the watcher on demand: the table carries each
+   source's newest, and most people's trades are older than this week's. */
+async function openInsider(key){
+  S.insPerson=key;S.insPersonRows=null;S.insMode='trades';S.insSide='all';
+  subbar();rebuild();document.getElementById('smTable').scrollTop=0;
+  try{
+    const j=await jget('/api/insiders/person?key='+encodeURIComponent(key),15000);
+    if(S.insPerson===key)S.insPersonRows=j&&j.ok&&Array.isArray(j.rows)?j.rows:[];
+  }catch{if(S.insPerson===key)S.insPersonRows=[]}
+  if(S.insPerson===key)rebuild();
+}
 function renderInsidersTable(box,list){
   if(S.insMode==='people')return renderInsiderPeople(box);
   const who=S.insWho||'all',side=S.insSide||'all',person=S.insPerson||'';
-  let rows=list.filter(t=>t.ins&&(person?insKey(t.ins)===person:(who==='all'||t.ins.src===who))&&(side==='all'||t.ins.side===side));
+  /* one person: their own rows, fetched when they were tapped */
+  const src=person?(S.insPersonRows||[]).map(r=>({id:'ins:'+r.id,ins:r,mcap:Math.max(1,r.usd||r.hi||r.lo||1)})):list;
+  let rows=src.filter(t=>t.ins&&(person||who==='all'||t.ins.src===who)&&(side==='all'||t.ins.side===side));
   rows=IN_SORT==='size'?rows.sort((a,b)=>(b.mcap||0)-(a.mcap||0))
     :rows.sort((a,b)=>((b.ins.filed||'')+(b.ins.traded||'')).localeCompare((a.ins.filed||'')+(a.ins.traded||'')));
   /* one person's trades open with what they hold, where that is known */
@@ -1805,7 +1824,12 @@ function renderInsidersTable(box,list){
     const hold=p&&p.holdUsd>0?' \u00b7 holds \u2248 <b>'+esc(fmtUsd(p.holdUsd))+'</b> ('+insHoldTxt(p)+')':'';
     head=`<div class="inPerson"><span class="back" data-iclear="1">\u2190 all</span><b>${esc(name)}</b> \u00b7 ${esc(role)}${hold}</div>`;
   }
-  if(!rows.length){box.innerHTML=head+emptyNote(list.some(t=>t.ins)?'No trades match these filters.':'Reading the filings\u2026 Congress and the first CEOs arrive within minutes of a fresh start, the White House within the hour.');return}
+  /* once per search: going back to the list must not reopen them */
+  if(!rows.length&&!person&&S.q&&S.insQOpened!==S.q){
+    const q=S.q.toLowerCase(),hit=((S.insMeta&&S.insMeta.people)||[]).find(p=>String(p.who).toLowerCase().includes(q));
+    if(hit){S.insQOpened=S.q;openInsider(hit.key);return}
+  }
+  if(!rows.length){box.innerHTML=head+emptyNote(person&&!S.insPersonRows?'Loading their trades\u2026':list.some(t=>t.ins)?'No trades match these filters.':'Reading the filings\u2026 Congress and the first CEOs arrive within minutes of a fresh start, the White House within the hour.');return}
   const th=(k,label,cls='')=>`<th class="${cls}${IN_SORT===k?' on':''}" ${k?'data-isort="'+k+'"':''}>${label}${IN_SORT===k?' \u2193':''}</th>`;
   const sp=(k,label)=>`<span class="${IN_SORT===k?'on':''}" data-isort="${k}">${label}${IN_SORT===k?' \u2193':''}</span>`;
   const dash='<span style="color:var(--dim)">\u2014</span>';
@@ -1855,9 +1879,9 @@ function callerLine(t){
 
 document.getElementById('smTable').addEventListener('click',e=>{
   if(e.target.closest('a'))return;
-  if(e.target.closest('[data-iclear]')){S.insPerson='';rebuild();return}
+  if(e.target.closest('[data-iclear]')){S.insPerson='';S.insPersonRows=null;rebuild();return}
   const ip=e.target.closest('tr[data-ip]');
-  if(ip){S.insPerson=ip.dataset.ip;S.insMode='trades';S.insSide='all';subbar();rebuild();document.getElementById('smTable').scrollTop=0;return}
+  if(ip){openInsider(ip.dataset.ip);return}
   const hi=e.target.closest('[data-isort]');
   if(hi){IN_SORT=hi.dataset.isort;rebuild();return}
   const hc=e.target.closest('[data-csort]');
@@ -1869,7 +1893,8 @@ document.getElementById('smTable').addEventListener('click',e=>{
   const h=e.target.closest('[data-sort]');
   if(h){SM_SORT=h.dataset.sort;rebuild();return}
   const r=e.target.closest('tr[data-id]');if(!r)return;
-  const t=S.tokens.find(x=>x.id===r.dataset.id);
+  const t=S.tokens.find(x=>x.id===r.dataset.id)
+    ||(S.insPersonRows||[]).map(x=>({id:'ins:'+x.id,ins:x})).find(x=>x.id===r.dataset.id);
   /* an insider's row is a filing, not a token: it opens the filing */
   if(t&&t.ins){if(/^https:\/\//.test(t.ins.link||''))open(t.ins.link,'_blank','noopener');return}
   if(t)openCard(t);
@@ -3888,6 +3913,9 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   /* a link to one group of insiders opens the tab already filtered to it */
   const IW={politicians:'congress',congress:'congress',whitehouse:'whitehouse',trump:'whitehouse',ceos:'ceo'};
   if(IW[src])S.insWho=IW[src];
+  /* ?who=pelosi opens that person's trades, once the people have loaded */
+  const whoQ=(q.get('who')||'').trim().slice(0,60);
+  if(whoQ){S.mode='insiders';S.insWhoQ=whoQ.toLowerCase()}
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
   /* the share pages link back with the feed id itself */
