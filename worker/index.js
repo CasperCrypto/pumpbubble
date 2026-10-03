@@ -437,7 +437,7 @@ export class InsidersDO {
         } catch { /* the last price stands */ }
       }
       const fresh = [];
-      for (const q of f.queue.splice(0, 10)) {
+      for (const q of f.queue.splice(0, 20)) {
         const url = form4Text(q.href);
         if (!url) continue;
         try {
