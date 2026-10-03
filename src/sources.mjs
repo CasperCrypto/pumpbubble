@@ -329,6 +329,14 @@ export const SOURCES = {
     chain: 'mixed', ttl: 20_000, enrich: false, boostable: true, quality: 'major', history: false,
     fetch: () => [],
   },
+  /* Insiders: what Congress, the White House and CEOs trade — src/insiders.mjs.
+     Read by the InsidersDO on its own clock; this lifetime only bounds how
+     stale one isolate's copy may be. */
+  insiders: {
+    id: 'insiders', label: 'Insiders', group: 'Insiders',
+    chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
   'callers-daily': {
     id: 'callers-daily', label: 'Top callers', group: 'Callers',
     chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,

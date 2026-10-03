@@ -171,6 +171,17 @@ class_name = "SolWatch"
 tag = "v6-sol"
 new_sqlite_classes = ["SolWatch"]
 
+# Insiders (src/insiders.mjs): what Congress, the White House and CEOs trade,
+# from free public data, read a little each minute by one object. BARGO_KEY
+# (a free key, secret) raises the Congress feed's 30 calls a day.
+[[durable_objects.bindings]]
+name = "INSIDERS"
+class_name = "InsidersDO"
+
+[[migrations]]
+tag = "v7-insiders"
+new_sqlite_classes = ["InsidersDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

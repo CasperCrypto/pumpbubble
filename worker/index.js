@@ -21,6 +21,8 @@ import { histToJSON, histFromJSON, pruneHistory, altGateways, fetchSolPrice } fr
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
+import { ISSUERS as INS_ISSUERS, SEC_UA, BARGO, OC, fromBargo, officialsFrom, recentTrades, fromCabinet,
+  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows } from '../src/insiders.mjs';
 
 /* ------------------------------------------------------------- Tap wars */
 /* One Durable Object holds the whole arena. Taps are counter increments and
@@ -231,6 +233,148 @@ export class SolWatch {
   }
 }
 
+/* Insiders (src/insiders.mjs): Congress, the White House and CEOs, read on
+   this object's own clock — a little each minute, since the free plan's limits
+   are per invocation and none of these sources moves fast. A tick makes at
+   most one big read (Congress hourly, Open Cabinet's index every six hours,
+   then one official whose filing date moved), reads one company's insider
+   feed (each of the 27 about every half hour) and up to eight new Form 4s.
+   Each source's rows are saved under their own key, only when they change. */
+const INS_TICK_MS = 60_000;
+const INS_DAY = 864e5;
+const isoAgo = d => new Date(Date.now() - d * INS_DAY).toISOString().slice(0, 10);
+export class InsidersDO {
+  constructor(state, env) { this.state = state; this.env = env; this.c = null; this.w = null; this.f = null; this.dirty = new Set(); }
+  async load() {
+    if (this.c) return;
+    const [c, w, f] = await Promise.all(['congress', 'wh', 'ceo'].map(k => this.state.storage.get(k)));
+    this.c = c || { rows: [], at: 0, err: '', errAt: 0 };
+    this.w = w || { rows: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0 };
+    this.f = f || { rows: [], i: 0, seen: {}, queue: [], err: '', errAt: 0, at: 0, pause: 0 };
+  }
+  async persist() {
+    const keys = { congress: this.c, wh: this.w, ceo: this.f };
+    for (const k of this.dirty) { try { await this.state.storage.put(k, keys[k]); } catch { /* next tick */ } }
+    this.dirty.clear();
+  }
+  status() {
+    const w = this.w, f = this.f, c = this.c;
+    const whRows = Object.values(w.rows).reduce((n, r) => n + r.length, 0);
+    return {
+      congress: { rows: c.rows.length, at: c.at, err: c.errAt > c.at ? c.err : '' },
+      whitehouse: { rows: whRows, officials: w.offs.length, read: Object.keys(w.seen).length, queue: w.queue.length, at: w.at, err: w.errAt > w.at ? w.err : '' },
+      ceo: { rows: f.rows.length, companies: INS_ISSUERS.length, queue: f.queue.length, at: f.at, err: f.errAt > f.at ? f.err : '', paused: f.pause > Date.now() },
+    };
+  }
+  rows() {
+    return mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows).slice(0, 400);
+  }
+  async fetch(req) {
+    await this.load();
+    let b = {};
+    try { b = await req.json(); } catch { b = {}; }
+    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 1000);
+    const out = b.op === 'rows' ? { ok: true, rows: this.rows(), status: this.status() }
+      : b.op === 'status' ? { ok: true, ...this.status() } : { ok: true };
+    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
+  }
+  async get(url, headers = {}, ms = 20_000) {
+    const r = await fetch(url, { headers: { 'user-agent': SEC_UA, ...headers }, signal: AbortSignal.timeout(ms) });
+    if (!r.ok) { const e = new Error(r.status + ' ' + new URL(url).host); e.status = r.status; throw e; }
+    return r;
+  }
+  async readCongress(now) {
+    const c = this.c;
+    try {
+      const key = this.env.BARGO_KEY ? String(this.env.BARGO_KEY) : '';
+      const j = await (await this.get(BARGO + '/trades?limit=100', key ? { authorization: 'Bearer ' + key } : {})).json();
+      const rows = ((j && j.trades) || []).map((t, i) => fromBargo(t, i)).filter(Boolean);
+      if (rows.length) c.rows = rows;
+      c.at = now;
+    } catch (e) {
+      c.err = String(e && e.message || e).slice(0, 120); c.errAt = now;
+      c.at = now - 50 * 60_000;                 // try again in ten minutes, not an hour
+    }
+    this.dirty.add('congress');
+  }
+  async readOfficials(now) {
+    const w = this.w;
+    try {
+      const offs = officialsFrom(await (await this.get(OC + '/public/data/officials-summary.csv')).text());
+      if (offs.length) {
+        w.offs = offs;
+        for (const o of offs) if (w.seen[o.slug] !== o.last && !w.queue.includes(o.slug)) w.queue.push(o.slug);
+        /* the biggest books first — Trump's is read on the first pass, not the thirty-third */
+        const est = new Map(offs.map(o => [o.slug, o.est]));
+        w.queue.sort((a, b) => (est.get(b) || 0) - (est.get(a) || 0));
+        for (const slug of Object.keys(w.rows)) if (!offs.some(o => o.slug === slug)) delete w.rows[slug];
+      }
+      w.at = now;
+    } catch (e) { w.err = String(e && e.message || e).slice(0, 120); w.errAt = now; w.at = now - 5.5 * 3600_000; }
+    this.dirty.add('wh');
+  }
+  async readOfficial(slug, now) {
+    const w = this.w;
+    const off = w.offs.find(o => o.slug === slug);
+    if (!off) return;
+    try {
+      const body = await (await this.get(OC + '/data/officials/' + slug + '.json', {}, 45_000)).text();
+      w.rows[slug] = recentTrades(body, { since: isoAgo(180), max: 25 }).map((t, i) => fromCabinet(t, off, i)).filter(Boolean);
+      if (!w.rows[slug].length) delete w.rows[slug];
+      w.seen[slug] = off.last;
+    } catch (e) { w.err = slug + ': ' + String(e && e.message || e).slice(0, 100); w.errAt = now; }
+    this.dirty.add('wh');
+  }
+  async tickCeo(now) {
+    const f = this.f;
+    if (f.pause > now) return;
+    try {
+      const iss = INS_ISSUERS[f.i % INS_ISSUERS.length];
+      f.i = (f.i + 1) % INS_ISSUERS.length;
+      const ents = form4Entries(await (await this.get(form4Feed(iss.cik))).text());
+      const seen = new Set(f.seen[iss.t] || []);
+      const since = isoAgo(120);
+      for (const e of ents) {
+        if (seen.has(e.acc) || e.date < since || f.queue.some(q => q.acc === e.acc)) continue;
+        f.queue.push({ acc: e.acc, date: e.date, href: e.href, t: iss.t, tries: 0 });
+      }
+      f.seen[iss.t] = ents.map(e => e.acc).slice(0, 40);
+      const fresh = [];
+      for (const q of f.queue.splice(0, 8)) {
+        const url = form4Text(q.href);
+        if (!url) continue;
+        try {
+          const doc = parseForm4(await (await this.get(url)).text());
+          fresh.push(...fromForm4(doc, q, INS_ISSUERS.find(x => x.t === q.t) || {}));
+        } catch (e) {
+          if (++q.tries < 3) f.queue.push(q);
+          if (e && (e.status === 403 || e.status === 429)) throw e;
+        }
+      }
+      if (fresh.length) f.rows = mergeRows(fresh, f.rows).slice(0, 250);
+      if (f.queue.length > 400) f.queue = f.queue.slice(-400);
+      f.at = now;
+    } catch (e) {
+      f.err = String(e && e.message || e).slice(0, 120); f.errAt = now;
+      /* the SEC refusing (403) or slowing us (429): ten quiet minutes */
+      if (e && (e.status === 403 || e.status === 429)) f.pause = now + 10 * 60_000;
+    }
+    this.dirty.add('ceo');
+  }
+  async alarm() {
+    await this.load();
+    const now = Date.now();
+    try {
+      if (now - this.c.at > 3600_000) await this.readCongress(now);
+      else if (now - this.w.at > 6 * 3600_000) await this.readOfficials(now);
+      else if (this.w.queue.length) await this.readOfficial(this.w.queue.shift(), now);
+    } catch { /* each reader keeps its own error */ }
+    await this.tickCeo(now);
+    await this.persist();
+    await this.state.storage.setAlarm(Date.now() + INS_TICK_MS);
+  }
+}
+
 /* The bot's list and the mass DM (src/audience.mjs). One object; its alarm
    paces a send at Telegram's rate, whether or not the console is open. */
 export class AudienceDO {
@@ -311,6 +455,18 @@ function solClient(env) {
   const stub = () => env.SOL.get(env.SOL.idFromName('solana'));
   return async (op, body = {}) => {
     const r = await stub().fetch('https://sol/', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op, ...body }),
+    });
+    return r.json();
+  };
+}
+
+function insidersClient(env) {
+  if (!env.INSIDERS) return null;
+  const stub = () => env.INSIDERS.get(env.INSIDERS.idFromName('insiders'));
+  return async (op, body = {}) => {
+    const r = await stub().fetch('https://insiders/', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ op, ...body }),
     });
@@ -590,6 +746,7 @@ async function makeCtx(env, execCtx) {
     guard: guardClient(env),
     evm: evmClient(env),
     sol: solClient(env),
+    insiders: insidersClient(env),
     audience: audienceClient(env),
     callers: callersClient(env),
     fetchImage: imageFetcher(execCtx),
@@ -747,6 +904,7 @@ export default {
         /* the Solana buy watcher, likewise: a deploy restarts it, this only
            makes sure it is running while groups follow a token */
         if (ctx.sol) await ctx.sol('tick').catch(() => null);
+        if (ctx.insiders) await ctx.insiders('tick').catch(() => null);
         /* Marketing. Silent unless four X secrets are set, and rate-limited
            inside itself rather than by how often this fires. */
         await xbotTick(env, makeStore(env), async () => {

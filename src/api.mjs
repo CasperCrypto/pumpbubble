@@ -492,11 +492,35 @@ async function callersSnapshot(ctx, win) {
     tokens, callers: callersMeta(d),
   };
 }
+/* Insiders as rows: one trade each, from Congress, the White House or a
+   company's insiders (src/insiders.mjs). No mint and no address, so nothing
+   here is boosted or bought; the row links to the filing itself. `name`
+   carries the person and the asset so the search box finds "pelosi" and
+   "nvidia" alike, and `mcap` is the trade's size so the table can rank by it. */
+let insMem = { at: 0, data: null };
+async function insidersSnapshot(ctx) {
+  let d = insMem.data;
+  if (!d || Date.now() - insMem.at > 60_000) {
+    try { d = ctx.insiders ? await ctx.insiders('rows') : null; } catch { d = null; }
+    if (d && d.ok) insMem = { at: Date.now(), data: d }; else d = insMem.data;
+  }
+  const tokens = ((d && d.rows) || []).map(r => ({
+    id: 'ins:' + r.id, kind: 'insider', chain: 'mixed', mint: '', addr: '',
+    sym: r.ticker || '', name: r.who + ' \u00b7 ' + (r.asset || r.ticker || ''), img: '',
+    mcap: Math.max(1, r.usd || r.hi || r.lo || 1), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
+    grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'insider', ins: r,
+  }));
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: 0,
+    sampleArt: '', solid: tokens.length, signed: true, source: 'insiders', sourceLabel: 'Insiders', boostable: false,
+    tokens, insiders: d ? d.status || null : null,
+  };
+}
 /* feeds whose empty answer is a state (nothing yet), not an outage */
-const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly']);
+const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */
-const TABLE_FEED = id => id === 'calls' || id.startsWith('callers-') || id.startsWith('traders-');
+const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id.startsWith('callers-') || id.startsWith('traders-');
 
 async function snapshot(ctx, source, force = false) {
   const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
@@ -572,6 +596,8 @@ async function snapshot(ctx, source, force = false) {
         ? await tapsSnapshot(ctx)
         : src.id === 'calls'
         ? await callsSnapshot(ctx)
+        : src.id === 'insiders'
+        ? await insidersSnapshot(ctx)
         : src.id.startsWith('callers-')
         ? await callersSnapshot(ctx, src.id.slice(8))
         : await buildSnapshot({
@@ -997,6 +1023,7 @@ export async function handle(req, ctx) {
         /* Trending only: whether pump.fun's board answered, and how fast. */
         movers: snap.movers || undefined,
         callers: snap.callers || undefined,
+        insiders: snap.insiders || undefined,
         events: snap.events || undefined,
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
