@@ -175,6 +175,14 @@ console.log('\nCEOs (SEC Form 4)');
 
   const both = parseForm4(doc([line('2026-09-08', 'P', 1000, '50', 'A', 1000), line('2026-09-09', 'S', 10, '55', 'D', 990)]));
   is('a buy and a sale in one filing are two rows', fromForm4(both, ents[0], tesla).map(r => r.side), ['buy', 'sell']);
+  /* a company's own feed lists the filings it makes as another company's big holder */
+  const brk = ISSUERS.find(x => x.t === 'BRK');
+  const len = parseForm4(doc([line('2026-09-30', 'P', 660000, '81.59', 'A', 553000)])
+    .replace('<issuerCik>0001318605</issuerCik><issuerName>Tesla, Inc.</issuerName><issuerTradingSymbol>TSLA</issuerTradingSymbol>',
+      '<issuerCik>0000920760</issuerCik><issuerName>LENNAR CORP /NEW/</issuerName><issuerTradingSymbol>LEN</issuerTradingSymbol>'));
+  const lr = fromForm4(len, ents[0], brk)[0];
+  is('Berkshire buying Lennar is a Lennar trade, not a Berkshire one', [lr.ticker, lr.asset.toUpperCase().startsWith('LENNAR'), lr.role.includes('Berkshire')], ['LEN', true, false]);
+  is('…and a Tesla filing keeps the short name', fromForm4(both, ents[0], tesla)[0].asset, 'Tesla');
   is('a price given only as a footnote is zero, not a crash', parseForm4(doc([line('2026-09-08', 'S', 10, null, 'D', 5)])).lines[0].price, 0);
   is('markup in an owner name never survives', fromForm4(parseForm4(doc([line('2026-09-08', 'P', 1, '1', 'A', 1)], 0, '&lt;script&gt;Evil Bob')), ents[0], tesla)[0].who.includes('<'), false);
   is('no ownership document, nothing', parseForm4('<html>not here</html>'), null);

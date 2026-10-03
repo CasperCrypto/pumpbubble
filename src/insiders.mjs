@@ -381,6 +381,7 @@ export function parseForm4(src) {
   }
   return {
     issuer: text(val(doc, 'issuerName'), 80), ticker: tick(val(doc, 'issuerTradingSymbol')),
+    issuerCik: +val(doc, 'issuerCik') || 0,
     owner: val(owner, 'rptOwnerName'),
     director: flag(val(rel, 'isDirector')), officer: flag(val(rel, 'isOfficer')),
     tenPct: flag(val(rel, 'isTenPercentOwner')), title: text(val(rel, 'officerTitle'), 60),
@@ -390,6 +391,13 @@ export function parseForm4(src) {
 }
 
 const roleOf = (f, co) => ((f.title || (f.director ? 'Director' : f.tenPct ? '10% owner' : 'Insider')) + ', ' + co).slice(0, 90);
+/* The company a Form 4 is about. A company's feed also lists the filings it
+   makes as somebody else's big holder — Berkshire buying Lennar arrived in
+   Berkshire's feed — so the short name in ISSUERS is used only when the
+   filing's issuer is that company. */
+const companyOf = (f, issuer = {}) => (issuer.cik && f.issuerCik && f.issuerCik !== issuer.cik) || !issuer.co
+  ? shortCo(f.issuer) : issuer.co;
+const shortCo = s => text(String(s || '').replace(/[,.]?\s+(inc|corp|corporation|co|company|ltd|plc|holdings|group|n\.?v|s\.?a)\.?$/i, '').replace(/[,.]?\s+(inc|corp|corporation)\.?$/i, ''), 60);
 
 /* A Form 4 as table rows: open-market purchases (code P) and sales (S) only —
    grants, option exercises, tax withholding and gifts are paperwork, not a
@@ -400,7 +408,7 @@ const roleOf = (f, co) => ((f.title || (f.director ? 'Director' : f.tenPct ? '10
    less than one somebody chose to make. */
 export function fromForm4(f, filing, issuer = {}) {
   if (!f || !filing) return [];
-  const co = issuer.co || f.issuer;
+  const co = companyOf(f, issuer);
   const out = [];
   for (const [side, code] of [['buy', 'P'], ['sell', 'S']]) {
     const ls = f.lines.filter(l => l.code === code && l.shares > 0);
@@ -468,7 +476,7 @@ export function holdingFrom(f, filing, issuer = {}) {
   const last = pool[pool.length - 1];
   const t = f.ticker || tick(issuer.t);
   if (!t || !(last.after >= 0)) return null;
-  return { who: personName(f.owner), role: roleOf(f, issuer.co || f.issuer), t, shares: Math.round(last.after), date: last.date || (filing && filing.date) || '' };
+  return { who: personName(f.owner), role: roleOf(f, companyOf(f, issuer)), t, shares: Math.round(last.after), date: last.date || (filing && filing.date) || '' };
 }
 
 /* Company insiders' rows with today's price: what the holding is worth now,

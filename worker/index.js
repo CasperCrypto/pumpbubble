@@ -263,6 +263,21 @@ export class InsidersDO {
     /* stakes arrived after the first rows: read the window's filings once more
        to fill them (rows are de-duplicated by filing, so nothing posts twice) */
     if (!this.f.hold) { this.f.hold = {}; this.f.seen = {}; }
+    /* v2 names the company a filing is about: rows read before it called
+       Berkshire buying Lennar a Berkshire trade. Only those filings are read
+       again — a row whose ticker is not its company's own */
+    if (this.f.v !== 2) {
+      const keep = [];
+      for (const r of this.f.rows) {
+        const iss = INS_ISSUERS.find(x => x.co === r.asset);
+        const acc = String(r.id || '').split(':')[1] || '';
+        if (iss && r.ticker && !r.ticker.startsWith(iss.t) && /^\d{10}-\d{2}-\d{6}$/.test(acc)) {
+          if (!this.f.queue.some(q => q.acc === acc)) this.f.queue.unshift({ acc, date: r.filed, href: r.link, t: iss.t, tries: 0 });
+        } else keep.push(r);
+      }
+      this.f.rows = keep;
+      this.f.v = 2;
+    }
   }
   async persist() {
     const keys = { congress: this.c, wh: this.w, ceo: this.f };

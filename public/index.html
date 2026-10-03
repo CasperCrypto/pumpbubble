@@ -1385,10 +1385,11 @@ async function fetchLive(){
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
+  /* kept until the person is found: an early copy of the feed may not have
+     read their filings yet */
   if(S.insWhoQ&&S.insMeta&&Array.isArray(S.insMeta.people)){
     const hit=S.insMeta.people.find(p=>String(p.who).toLowerCase().includes(S.insWhoQ));
-    S.insWhoQ='';
-    if(hit)setTimeout(()=>openInsider(hit.key),0);
+    if(hit){S.insWhoQ='';setTimeout(()=>openInsider(hit.key),0)}
   }
   /* The referral template arrives with the feed rather than per token, so the
      Buy button knows where to send people without 300 copies of one URL. */
