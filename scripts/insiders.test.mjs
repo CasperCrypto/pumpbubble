@@ -17,7 +17,7 @@
 
 import {
   amountRange, personName, commaName, daysLate, fromCongress, congressRows, cleanAsset, tradeDate, parseCsv, officialsFrom,
-  recentTrades, fromCabinet, form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, ISSUERS, fp,
+  recentTrades, officialTrades, fromCabinet, form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, ISSUERS, fp,
   holdingFrom, withPrices, peopleFrom, closesOn, priceFrom, yahooSym,
 } from '../src/insiders.mjs';
 
@@ -112,6 +112,9 @@ console.log('\nWhite House (Open Cabinet)');
   ]
 }`;
   const got = recentTrades(file, { since: '2026-01-01' });
+  const whole = officialTrades(file, { since: '2026-01-01', max: 1 });
+  is('a year summed, while the table keeps the newest', [whole.recent.length, whole.sum.n, whole.sum.buys, whole.sum.sells, whole.sum.bought, whole.sum.sold],
+    [1, 2, 1, 1, [100001, 250000], [1000001, 5000000]]);
   is('newest first, nested objects read, old and annual rows out, repeats once', got.map(t => t.description), ['ABBOTT LABS', 'APPLE INC']);
   const rows = got.map((t, i) => fromCabinet(t, offs[0], i));
   is('as rows', rows.map(r => [r.side, r.who, r.asset, r.lo, r.hi, r.traded, r.filed]),
@@ -221,6 +224,9 @@ console.log('\nportfolios and prices');
   is('…what they traded most', nancy.top[0], 'INTC');
   is('…and the move since, where known', nancy.perf, 20);
   is('a stake first, then the biggest trader', ppl[0].who, 'Elon Musk');
+  const sums = { 'whitehouse:Donald J. Trump': { n: 10096, buys: 6212, sells: 3884, bought: [1e9, 2e9], sold: [5e8, 1e9], top: ['BROADCOM INC'] } };
+  const tr = peopleFrom([{ id: 'w:1', src: 'whitehouse', who: 'Donald J. Trump', role: 'President', side: 'buy', lo: 1001, hi: 15000, filed: '2026-09-22' }], [], {}, sums)[0];
+  is('an official\'s portfolio is their year, not the rows kept', [tr.n, tr.buys, tr.bought[1], tr.top[0]], [10096, 6212, 2e9, 'BROADCOM INC']);
 }
 
 console.log('\nthe table');

@@ -311,6 +311,30 @@ export function fp(s) {
 /* One Open Cabinet trade as a row. The id is built from what the trade says,
    plus its place in the list: newer rows carry no page or row number, and
    one account can buy the same bond twice on the same day. */
+/* One pass over an official's file: the newest `max` trades for the table,
+   and a summary of every periodic trade since `since` for their portfolio.
+   Trump reported 10,096 such trades; the newest few dozen are not his year,
+   and a portfolio built from them said he bought $1.7M–$3.9M. */
+export function officialTrades(src, { since = '', max = 40 } = {}) {
+  const all = recentTrades(src, { since, max: Infinity });
+  let n = 0, buys = 0, sells = 0, bLo = 0, bHi = 0, sLo = 0, sHi = 0;
+  const vol = {};
+  for (const t of all) {
+    const side = /purchase|buy/i.test(t.type || '') ? 'buy' : /sale|sell/i.test(t.type || '') ? 'sell' : '';
+    if (!side) continue;
+    const [lo, hi0] = amountRange(t.amount), hi = hi0 || lo;
+    n++;
+    if (side === 'buy') { buys++; bLo += lo; bHi += hi; } else { sells++; sLo += lo; sHi += hi; }
+    const name = tick(t.ticker) || text(t.description, 60);
+    if (name) vol[name] = (vol[name] || 0) + (lo + hi) / 2;
+  }
+  return {
+    recent: all.slice(0, max),
+    sum: { n, buys, sells, bought: [Math.round(bLo), Math.round(bHi)], sold: [Math.round(sLo), Math.round(sHi)],
+      top: Object.entries(vol).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]) },
+  };
+}
+
 export function fromCabinet(t, off, i = 0) {
   if (!t || !off) return null;
   const side = /purchase|buy/i.test(t.type || '') ? 'buy' : /sale|sell/i.test(t.type || '') ? 'sell' : '';
@@ -504,7 +528,7 @@ export function withPrices(rows, px = {}, pxAt = {}) {
    report trades, not positions): every stake, at today's price where there
    is one, and the total. People who hold but did not trade in the window
    are listed too: a CEO's stake is the point even in a quiet month. */
-export function peopleFrom(rows, holdings = [], px = {}) {
+export function peopleFrom(rows, holdings = [], px = {}, sums = {}) {
   const by = new Map();
   const get = (src, who, role) => {
     const key = src + ':' + who;
@@ -532,10 +556,11 @@ export function peopleFrom(rows, holdings = [], px = {}) {
     p.holdUsd += usd;
     if ((h.date || '') > p.last && !p.n) p.last = h.date;
   }
-  return [...by.values()].map(p => ({
-    key: p.key, src: p.src, who: p.who, role: p.role, n: p.n, buys: p.buys, sells: p.sells,
-    bought: [Math.round(p.bLo), Math.round(p.bHi)], sold: [Math.round(p.sLo), Math.round(p.sHi)], last: p.last,
-    top: Object.entries(p.vol).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
+  /* a whole year's summary, where the source gave one, over the rows we keep */
+  return [...by.values()].map(p => ({ p, s: sums[p.key] })).map(({ p, s }) => ({
+    key: p.key, src: p.src, who: p.who, role: p.role, n: s ? s.n : p.n, buys: s ? s.buys : p.buys, sells: s ? s.sells : p.sells,
+    bought: s ? s.bought : [Math.round(p.bLo), Math.round(p.bHi)], sold: s ? s.sold : [Math.round(p.sLo), Math.round(p.sHi)], last: p.last,
+    top: s && s.top.length ? s.top : Object.entries(p.vol).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
     perf: p.perfN ? +(p.perfSum / p.perfN).toFixed(2) : null,
     hold: p.hold.sort((a, b) => b.usd - a.usd).slice(0, 6), holdUsd: p.holdUsd,
   })).sort((a, b) => (b.holdUsd - a.holdUsd) || ((b.bought[1] + b.sold[1]) - (a.bought[1] + a.sold[1])));

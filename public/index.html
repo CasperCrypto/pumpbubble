@@ -1272,7 +1272,7 @@ function subbar(){
     document.querySelectorAll('#inView [data-iv]').forEach(b=>b.classList.toggle('on',b.dataset.iv===(S.insWho||'all')));
     document.querySelectorAll('#inSide [data-is]').forEach(b=>b.classList.toggle('on',b.dataset.is===(S.insSide||'all')));
     document.getElementById('smNote').textContent=S.insMode==='people'
-      ?'what each person bought and sold in their recent filings \u00b7 company insiders\u2019 stakes at today\u2019s price \u00b7 not financial advice'
+      ?'bought and sold: Congress last 150 days, White House last 12 months \u00b7 company insiders\u2019 stakes at today\u2019s price \u00b7 not financial advice'
       :'from public filings \u00b7 Congress may file up to 45 days after a trade, CEOs within 2 business days \u00b7 not financial advice';
     return;
   }

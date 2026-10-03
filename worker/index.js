@@ -22,7 +22,7 @@ import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
-  officialsFrom, recentTrades, fromCabinet,
+  officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom,
   yahooSym, priceUrl, priceFrom } from '../src/insiders.mjs';
 
@@ -256,7 +256,8 @@ export class InsidersDO {
     if (this.c.v !== 2) this.c = { rows: [], at: 0, err: '', errAt: 0, v: 2 };
     this.w = w || { rows: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0 };
     /* v2 reads every official's file properly (v1 kept only Trump's): read them all again */
-    if (this.w.v !== 2) this.w = { rows: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0, v: 2 };
+    /* v3 also keeps each official's whole-year summary: read them all again */
+    if (this.w.v !== 3) this.w = { rows: {}, sum: {}, offs: [], at: 0, seen: {}, queue: [], err: '', errAt: 0, v: 3 };
     this.f = f || { rows: [], i: 0, seen: {}, queue: [], err: '', errAt: 0, at: 0, pause: 0 };
     /* today's prices and each insider's latest stake, by person and ticker */
     this.f.px = this.f.px || {};
@@ -307,7 +308,7 @@ export class InsidersDO {
   }
   people() {
     const all = withPrices(mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows), this.f.px, this.f.pxAt);
-    const ppl = peopleFrom(all, Object.values(this.f.hold), this.f.px);
+    const ppl = peopleFrom(all, Object.values(this.f.hold), this.f.px, this.w.sum || {});
     const cap = { congress: 400, whitehouse: 100, ceo: 300 }, n = {};
     return ppl.filter(p => (n[p.src] = (n[p.src] || 0) + 1) <= (cap[p.src] || 100));
   }
@@ -410,8 +411,11 @@ export class InsidersDO {
     try {
       const body = await (await this.get(OC + '/data/officials/' + slug + '.json', {}, 45_000)).text();
       /* a year, not half of one: officials file in rare batches, and Lutnick's newest is a year old */
-      w.rows[slug] = recentTrades(body, { since: isoAgo(365), max: 25 }).map((t, i) => fromCabinet(t, off, i)).filter(Boolean);
+      const { recent, sum } = officialTrades(body, { since: isoAgo(365), max: 40 });
+      w.rows[slug] = recent.map((t, i) => fromCabinet(t, off, i)).filter(Boolean);
       if (!w.rows[slug].length) delete w.rows[slug];
+      w.sum = w.sum || {};
+      if (sum.n) w.sum['whitehouse:' + off.name] = sum; else delete w.sum['whitehouse:' + off.name];
       w.seen[slug] = off.last;
     } catch (e) { w.err = slug + ': ' + String(e && e.message || e).slice(0, 100); w.errAt = now; }
     this.dirty.add('wh');
