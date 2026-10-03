@@ -286,14 +286,19 @@ export class InsidersDO {
   async readCongress(now) {
     const c = this.c;
     try {
+      /* Bargo's docs name the key but not how REST takes it, so both of the
+         usual headers carry it. Keyless is 30 calls a day per IP, and
+         Cloudflare's egress shares its IPs: from the Worker it answered 429
+         on the first call (2026-10-03). */
       const key = this.env.BARGO_KEY ? String(this.env.BARGO_KEY) : '';
-      const j = await (await this.get(BARGO + '/trades?limit=100', key ? { authorization: 'Bearer ' + key } : {})).json();
+      const j = await (await this.get(BARGO + '/trades?limit=100', key ? { authorization: 'Bearer ' + key, 'x-api-key': key } : {})).json();
       const rows = ((j && j.trades) || []).map((t, i) => fromBargo(t, i)).filter(Boolean);
       if (rows.length) c.rows = rows;
       c.at = now;
     } catch (e) {
       c.err = String(e && e.message || e).slice(0, 120); c.errAt = now;
-      c.at = now - 50 * 60_000;                 // try again in ten minutes, not an hour
+      /* a refusal waits the full hour; anything else tries again in ten minutes */
+      c.at = e && e.status === 429 ? now : now - 50 * 60_000;
     }
     this.dirty.add('congress');
   }
