@@ -823,6 +823,15 @@ with what the owner holds directly afterwards and its value at the average price
 10b5-1 sale. Congress rows carry the move since the trade (Yahoo, see Portfolios). Newest filing first: that is
 when anyone could have known. A row opens the filing.
 
+**One person** (`/api/insiders/person?key=<src>:<name>`, the Portfolios row, a search with no rows in
+the table, or `?who=pelosi`): everything the object holds for them — the table carries each source's
+newest, and Pelosi's August filing was never in it, so tapping her once showed nothing. An official's
+portfolio is their whole year (`officialTrades` sums every periodic trade while reading the file —
+Trump: 9,006 trades, bought $470M–$1.5B), not the forty rows kept for the table; the first version
+summed those forty and said he bought $1.7M–$3.9M. A company's feed also carries the filings it makes
+as another company's big holder (Berkshire buying Lennar arrived in Berkshire's), so a row names the
+company the filing is about (`issuerCik`), not the feed it came from.
+
 **Clock**: one tick a minute — a Congress sweep every four hours (one page a tick until the last),
 Open Cabinet's index every six hours, then one official whose filing date moved (biggest books first,
 so Trump is read on the first pass), plus one company's insider feed and price, up to ten new Form 4s,
