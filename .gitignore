@@ -18,3 +18,6 @@ wrangler.toml.bak
 # working files of scripts/casino-wallets.mjs; the result is committed as src/casinowallets.mjs
 scripts/casino-seeds.json
 scripts/casino-registry.json
+
+# rendered promo videos and stills (marketing/promo.py makes them)
+marketing/out/
