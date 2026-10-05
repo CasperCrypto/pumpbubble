@@ -267,8 +267,10 @@ export class SolWatch {
          addresses over from a first look rather than failing on it forever */
       this.errs = (this.errs || 0) + 1;
       if (/not found/i.test(this.stat.err) || this.errs >= 10) { this.cur = {}; this.errs = 0; }
-      /* every endpoint refused: back off, doubling to a minute */
-      this.back = Math.min(30_000, Math.max(SOL_EVERY, this.back) * 2);
+      /* every endpoint refused: back off, doubling — to three minutes once
+         it keeps happening, because a poller that cannot read is still an
+         alarm, a write and run time out of the allowance every object shares */
+      this.back = Math.min(this.errs >= 3 ? 180_000 : 30_000, Math.max(SOL_EVERY, this.back) * 2);
     }
     this.stat.eps = this.eps.report();
     const every = now - this.movedAt > SOL_QUIET ? SOL_IDLE : SOL_EVERY;

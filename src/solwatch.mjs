@@ -71,9 +71,17 @@ const TX_OPTS = { encoding: 'json', maxSupportedTransactionVersion: 0, commitmen
    worth its credits. Exactly one of the two may, or every buy posts twice. */
 export const solPolling = env => String((env && env.SOL_BUYS) || 'poll').trim().toLowerCase() !== 'helius';
 
+/* A keyed endpoint first: SOL_POLL_RPC (any provider's URL), else Alchemy's
+   Solana endpoint when ALCHEMY_KEY is set — the same free key the EVM
+   watchers use, so one sign-up serves every chain's buy alerts. From
+   Cloudflare's egress the keyless ones were refusing by 2026-10-05: Solana's
+   own blocks it outright, PublicNode and Solana Vibe Station answer 429. */
 export function rpcList(env = {}) {
   const own = String(env.SOL_POLL_RPC || '').trim();
-  return (/^https:\/\/\S+$/.test(own) ? [own] : []).concat(RPCS);
+  const key = String(env.ALCHEMY_KEY || '').trim();
+  return (/^https:\/\/\S+$/.test(own) ? [own] : [])
+    .concat(/^[A-Za-z0-9_-]{8,}$/.test(key) ? ['https://solana-mainnet.g.alchemy.com/v2/' + key] : [])
+    .concat(RPCS);
 }
 
 /* For status lines and errors: the host, never a path that might carry a key. */

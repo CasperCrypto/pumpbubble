@@ -145,6 +145,8 @@ console.log('\nendpoints');
   is('the free endpoints, Solana\'s own first', RPCS[0], 'https://api.mainnet-beta.solana.com');
   is('SOL_POLL_RPC goes first', rpcList({ SOL_POLL_RPC: 'https://my.rpc/?k=1' })[0], 'https://my.rpc/?k=1');
   is('…only when it is https', rpcList({ SOL_POLL_RPC: 'http://my.rpc' })[0], RPCS[0]);
+  is('the EVM watchers\' Alchemy key serves Solana too', rpcList({ ALCHEMY_KEY: 'abcdEFGH1234' })[0], 'https://solana-mainnet.g.alchemy.com/v2/abcdEFGH1234');
+  is('…and a junk key is ignored', rpcList({ ALCHEMY_KEY: 'x y' })[0], RPCS[0]);
   is('polling is the default', solPolling({}), true);
   is('SOL_BUYS=helius switches it off', solPolling({ SOL_BUYS: ' Helius ' }), false);
   is('anything else keeps it on', solPolling({ SOL_BUYS: 'poll' }), true);
