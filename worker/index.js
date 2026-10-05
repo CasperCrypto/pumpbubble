@@ -23,7 +23,7 @@ import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
-  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom,
+  form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
   yahooSym, priceUrl, priceFrom } from '../src/insiders.mjs';
 
 /* ------------------------------------------------------------- Tap wars */
@@ -338,17 +338,17 @@ export class InsidersDO {
   /* The table: each source's newest, so a year of Congress cannot crowd out
      the White House and the companies. Portfolios read everything. */
   rows() {
-    return withPrices(mergeRows(this.c.rows.slice(0, 350), mergeRows(...Object.values(this.w.rows)).slice(0, 200), this.f.rows.slice(0, 250)),
-      this.f.px, this.f.pxAt);
+    return withThemes(withPrices(mergeRows(this.c.rows.slice(0, 350), mergeRows(...Object.values(this.w.rows)).slice(0, 200), this.f.rows.slice(0, 250)),
+      this.f.px, this.f.pxAt));
   }
   /* Everything held for one person, not only the table's newest — Pelosi's
      trades were filed in August and the table opens on this week's. */
   personRows(key) {
     const all = mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows).filter(r => r.src + ':' + r.who === key);
-    return withPrices(all.slice(0, 150), this.f.px, this.f.pxAt);
+    return withThemes(withPrices(all.slice(0, 150), this.f.px, this.f.pxAt));
   }
   people() {
-    const all = withPrices(mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows), this.f.px, this.f.pxAt);
+    const all = withThemes(withPrices(mergeRows(this.c.rows, ...Object.values(this.w.rows), this.f.rows), this.f.px, this.f.pxAt));
     const ppl = peopleFrom(all, Object.values(this.f.hold), this.f.px, this.w.sum || {});
     const cap = { congress: 400, whitehouse: 100, ceo: 300 }, n = {};
     return ppl.filter(p => (n[p.src] = (n[p.src] || 0) + 1) <= (cap[p.src] || 100));

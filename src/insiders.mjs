@@ -111,7 +111,69 @@ export const ISSUERS = [
   { t: 'BAC', cik: 70858, co: 'Bank of America' },
   { t: 'WFC', cik: 72971, co: 'Wells Fargo' },
   { t: 'BLK', cik: 2012383, co: 'BlackRock' },
+  /* the themes asked for on 2026-10-04 — defense, magnets and rare earths,
+     robotics, energy and nuclear, AI (ARM and TSMC file 20-Fs, so no Form 4s:
+     they are tagged by ticker below, not followed here) */
+  { t: 'LMT', cik: 936468, co: 'Lockheed Martin' },
+  { t: 'RTX', cik: 101829, co: 'RTX' },
+  { t: 'NOC', cik: 1133421, co: 'Northrop Grumman' },
+  { t: 'GD', cik: 40533, co: 'General Dynamics' },
+  { t: 'KTOS', cik: 1069258, co: 'Kratos' },
+  { t: 'AVAV', cik: 1368622, co: 'AeroVironment' },
+  { t: 'HII', cik: 1501585, co: 'Huntington Ingalls' },
+  { t: 'RCAT', cik: 748268, co: 'Red Cat' },
+  { t: 'MP', cik: 1801368, co: 'MP Materials' },
+  { t: 'USAR', cik: 1970622, co: 'USA Rare Earth' },
+  { t: 'UUUU', cik: 1385849, co: 'Energy Fuels' },
+  { t: 'ISRG', cik: 1035267, co: 'Intuitive Surgical' },
+  { t: 'SYM', cik: 1837240, co: 'Symbotic' },
+  { t: 'TER', cik: 97210, co: 'Teradyne' },
+  { t: 'SERV', cik: 1832483, co: 'Serve Robotics' },
+  { t: 'OKLO', cik: 1849056, co: 'Oklo' },
+  { t: 'SMR', cik: 1822966, co: 'NuScale' },
+  { t: 'NNE', cik: 1923891, co: 'Nano Nuclear' },
+  { t: 'LEU', cik: 1065059, co: 'Centrus Energy' },
+  { t: 'CEG', cik: 1868275, co: 'Constellation Energy' },
+  { t: 'VST', cik: 1692819, co: 'Vistra' },
+  { t: 'GEV', cik: 1996810, co: 'GE Vernova' },
+  { t: 'BE', cik: 1664703, co: 'Bloom Energy' },
+  { t: 'FSLR', cik: 1274494, co: 'First Solar' },
+  { t: 'SOUN', cik: 1840856, co: 'SoundHound AI' },
+  { t: 'AI', cik: 1577526, co: 'C3.ai' },
+  { t: 'BBAI', cik: 1836981, co: 'BigBear.ai' },
 ];
+
+/* Themes, for the tab's theme filter: by ticker where a row has one, by the
+   company's name where it does not (the White House's reports name companies
+   without tickers — "LOCKHEED MARTIN CORP"). A row can sit in two (Palantir is
+   AI and defense). Lists, not a classifier: a theme is a claim on the page,
+   and a list can be read and argued with. */
+export const THEMES = {
+  ai: { label: 'AI', t: 'NVDA AMD AVGO PLTR MSFT GOOGL GOOG META ORCL SMCI CRWV MU ARM TSM SNOW NOW CRM AI SOUN BBAI INTC QCOM DELL IBM ADBE ANET MRVL AMZN',
+    kw: /nvidia|advanced micro|broadcom|palantir|microsoft|alphabet|google|meta platforms|oracle|super micro|coreweave|micron|arm holdings|taiwan semiconductor|snowflake|servicenow|salesforce|c3\.ai|soundhound|bigbear|marvell|arista|artificial intelligence/i },
+  robotics: { label: 'Robotics', t: 'TSLA ISRG SYM TER SERV RR ROK ZBRA PATH',
+    kw: /tesla|intuitive surgical|symbotic|teradyne|serve robotics|richtech|rockwell automation|zebra tech|uipath|robot/i },
+  magnets: { label: 'Magnets & rare earths', t: 'MP USAR UUUU ALB NB CRML TMC LAC',
+    kw: /mp materials|usa rare earth|rare earth|energy fuels|albemarle|niocorp|critical metals|lithium|magnet/i },
+  defense: { label: 'Defense', t: 'LMT RTX NOC GD KTOS AVAV HII LDOS PLTR BA RCAT ONDS BWXT KRMN LHX TXT AXON',
+    kw: /lockheed|raytheon|\brtx\b|northrop|general dynamics|kratos|aerovironment|huntington ingalls|leidos|boeing|red cat|l3harris|textron|axon enterprise|bwx|defen[cs]e/i },
+  energy: { label: 'Energy', t: 'XOM CVX COP OXY CEG VST OKLO SMR NNE LEU TLN BE GEV FSLR ENPH NEE CCJ SLB EOG DUK SO EXC ET KMI WMB MPC PSX VLO HAL BKR DVN FANG',
+    kw: /exxon|chevron|conocophillips|occidental|constellation energy|vistra|oklo|nuscale|nano nuclear|centrus|talen|bloom energy|ge vernova|first solar|enphase|nextera|cameco|schlumberger|duke energy|southern co|exelon|energy transfer|kinder morgan|williams cos|marathon petroleum|phillips 66|valero|halliburton|baker hughes|devon energy|diamondback|nuclear|uranium|petroleum|natural gas|\boil\b|solar|\benergy\b/i },
+  crypto: { label: 'Crypto', t: 'COIN HOOD MSTR XYZ SQ CRCL GLXY BMNR SBET MARA RIOT CLSK HUT IREN CIFR BITF IBIT FBTC ETHA GBTC BITO',
+    kw: /coinbase|robinhood|microstrategy|strategy inc|circle internet|galaxy digital|bitmine|sharplink|mara holdings|riot platforms|cleanspark|bitcoin|ethereum|crypto|blockchain/i },
+};
+const THEME_T = Object.fromEntries(Object.entries(THEMES).map(([k, v]) => [k, new Set(v.t.split(' '))]));
+
+export function themesOf(r) {
+  const out = [];
+  const t = String((r && r.ticker) || '').toUpperCase().replace(/[.\-].*$/, '');
+  const name = String((r && r.asset) || '');
+  for (const [k, v] of Object.entries(THEMES)) if ((t && THEME_T[k].has(t)) || v.kw.test(name)) out.push(k);
+  return out;
+}
+/* The rows with their themes, read at serve time — a list edited here tags
+   every row already held, without reading anything again. */
+export const withThemes = rows => rows.map(r => ({ ...r, themes: themesOf(r) }));
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 const day = s => { const m = String(s || '').match(/\d{4}-\d{2}-\d{2}/); return m ? m[0] : ''; };
@@ -533,7 +595,7 @@ export function peopleFrom(rows, holdings = [], px = {}, sums = {}) {
   const get = (src, who, role) => {
     const key = src + ':' + who;
     let p = by.get(key);
-    if (!p) by.set(key, p = { key, src, who, role, n: 0, buys: 0, sells: 0, bLo: 0, bHi: 0, sLo: 0, sHi: 0, last: '', vol: {}, perfSum: 0, perfN: 0, hold: [], holdUsd: 0 });
+    if (!p) by.set(key, p = { key, src, who, role, n: 0, buys: 0, sells: 0, bLo: 0, bHi: 0, sLo: 0, sHi: 0, last: '', vol: {}, perfSum: 0, perfN: 0, hold: [], holdUsd: 0, gain: 0, gainN: 0, themes: new Set() });
     return p;
   };
   for (const r of rows || []) {
@@ -545,7 +607,13 @@ export function peopleFrom(rows, holdings = [], px = {}, sums = {}) {
     if ((r.filed || '') > p.last) p.last = r.filed;
     const name = r.ticker || r.asset || '';
     if (name) p.vol[name] = (p.vol[name] || 0) + (lo + hi) / 2;
-    if (r.perf !== null && r.perf !== undefined && Number.isFinite(+r.perf)) { p.perfSum += +r.perf; p.perfN++; }
+    if (r.perf !== null && r.perf !== undefined && Number.isFinite(+r.perf)) {
+      p.perfSum += +r.perf; p.perfN++;
+      /* what a buy has made since, at the middle of its band (exact for a
+         Form 4): an estimate, and the page says so */
+      if (r.side === 'buy') { p.gain += ((lo + hi) / 2) * (+r.perf / 100); p.gainN++; }
+    }
+    for (const th of (r.themes || themesOf(r))) p.themes.add(th);
   }
   for (const h of holdings || []) {
     if (!h || !h.who || !h.t) continue;
@@ -563,6 +631,7 @@ export function peopleFrom(rows, holdings = [], px = {}, sums = {}) {
     top: s && s.top.length ? s.top : Object.entries(p.vol).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
     perf: p.perfN ? +(p.perfSum / p.perfN).toFixed(2) : null,
     hold: p.hold.sort((a, b) => b.usd - a.usd).slice(0, 6), holdUsd: p.holdUsd,
+    gain: p.gainN ? Math.round(p.gain) : null, gainN: p.gainN, themes: [...p.themes],
   })).sort((a, b) => (b.holdUsd - a.holdUsd) || ((b.bought[1] + b.sold[1]) - (a.bought[1] + a.sold[1])));
 }
 

@@ -368,6 +368,10 @@ h3 .ic{vertical-align:-.12em}
 #smTable .inPerson b{color:var(--ink);font-size:14px}
 #smTable .inPerson .back{float:right;cursor:pointer;color:var(--ink);text-decoration:underline;text-underline-offset:2px}
 #smTable td.isrc .ic{width:16px;height:16px;opacity:.85}
+#inTheme{overflow-x:auto;scrollbar-width:none}#inTheme::-webkit-scrollbar{display:none}
+@media (max-width:820px){#subbar #inTheme button{flex:0 0 auto;padding:0 12px}}
+#smTable .thm{display:inline-block;margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;font-weight:800;
+  color:var(--dim);border:1px solid var(--line);vertical-align:1px}
 /* a company's full legal name is long: one line, cut, on every screen */
 #smTable td.itrade{overflow:hidden;max-width:320px}
 #smTable td.itrade b,#smTable td.itrade small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -995,6 +999,15 @@ body.embed #brandbadge.on{display:flex}
     <button data-iv="whitehouse"><span class="sb-full">White House</span><span class="sb-short">W. House</span></button>
     <button data-iv="ceo">CEOs</button>
   </div>
+  <div class="seg" id="inTheme">
+    <button data-it="all" class="on"><span class="sb-full">All sectors</span><span class="sb-short">All</span></button>
+    <button data-it="ai">AI</button>
+    <button data-it="robotics"><span class="sb-full">Robotics</span><span class="sb-short">Robots</span></button>
+    <button data-it="magnets"><span class="sb-full">Magnets &amp; rare earths</span><span class="sb-short">Magnets</span></button>
+    <button data-it="defense">Defense</button>
+    <button data-it="energy">Energy</button>
+    <button data-it="crypto">Crypto</button>
+  </div>
   <div class="seg" id="inSide">
     <button data-is="all" class="on"><span class="sb-full">Buys and sells</span><span class="sb-short">All</span></button>
     <button data-is="buy">Buys</button>
@@ -1266,10 +1279,12 @@ function subbar(){
   document.getElementById('clWin').style.display=S.mode==='callers'?'':'none';
   document.getElementById('inMode').style.display=ins?'':'none';
   document.getElementById('inView').style.display=ins?'':'none';
+  document.getElementById('inTheme').style.display=ins?'':'none';
   document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
   if(ins){
     document.querySelectorAll('#inMode [data-im]').forEach(b=>b.classList.toggle('on',b.dataset.im===(S.insMode||'trades')));
     document.querySelectorAll('#inView [data-iv]').forEach(b=>b.classList.toggle('on',b.dataset.iv===(S.insWho||'all')));
+    document.querySelectorAll('#inTheme [data-it]').forEach(b=>b.classList.toggle('on',b.dataset.it===(S.insTheme||'all')));
     document.querySelectorAll('#inSide [data-is]').forEach(b=>b.classList.toggle('on',b.dataset.is===(S.insSide||'all')));
     document.getElementById('smNote').textContent=S.insMode==='people'
       ?'bought and sold: Congress last 150 days, White House last 12 months \u00b7 company insiders\u2019 stakes at today\u2019s price \u00b7 not financial advice'
@@ -1742,6 +1757,7 @@ function renderCallerTable(box,list){
    every screen: a visible link back is Bargo's one condition for its
    Congress data. A row opens the filing itself. */
 let IN_SORT='filed';
+const IN_THEME={ai:'AI',robotics:'Robotics',magnets:'Magnets',defense:'Defense',energy:'Energy',crypto:'Crypto'};
 const IN_SRC={congress:['landmark','Congress'],whitehouse:['flag','White House'],ceo:['brief','Company insider']};
 const fmtSh=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1)+'M':n>=1e4?Math.round(n/1e3)+'K':Math.round(n||0).toLocaleString('en-US');
 /* a disclosure band the way the forms print it: $1K\u2013$15K, $1M\u2013$5M */
@@ -1770,19 +1786,20 @@ function insHoldTxt(p){
   return (p.hold||[]).filter(h=>h.usd>0).slice(0,3).map(h=>esc(h.t)+' '+esc(fmtUsd(h.usd))).join(' \u00b7 ');
 }
 function renderInsiderPeople(box){
-  const who=S.insWho||'all',q=(S.q||'').toLowerCase();
-  const ppl=((S.insMeta&&S.insMeta.people)||[]).filter(p=>(who==='all'||p.src===who)
+  const who=S.insWho||'all',q=(S.q||'').toLowerCase(),th=S.insTheme||'all';
+  const ppl=((S.insMeta&&S.insMeta.people)||[]).filter(p=>(who==='all'||p.src===who)&&(th==='all'||(p.themes||[]).includes(th))
     &&(!q||String(p.who).toLowerCase().includes(q)||(p.top||[]).some(x=>String(x).toLowerCase().includes(q))));
   if(!ppl.length){box.innerHTML=emptyNote(q?'Nobody by that name in the filings read so far.':'Reading the filings\u2026 portfolios fill in as the trades do.');return}
   const dash='<span style="color:var(--dim)">\u2014</span>';
   box.innerHTML='<table><thead><tr><th></th><th>Who</th><th class="num c-dt">Holds now</th><th class="num c-dt">Bought</th><th class="num c-dt">Sold</th>'
-    +'<th class="num c-vol">Trades</th><th class="c-who">Traded most</th><th class="num c-h1">Since</th><th class="num c-ph">Holds \u00b7 traded</th></tr></thead><tbody>'
+    +'<th class="num c-vol">Trades</th><th class="c-who">Traded most</th><th class="num c-h1" title="What their buys have made since, at the middle of each disclosed band (exact for company insiders)">Gain on buys</th><th class="num c-ph">Holds \u00b7 traded</th></tr></thead><tbody>'
     +ppl.map(p=>{
       const src=IN_SRC[p.src]||['chart',''];
       const hold=p.holdUsd>0?`<b>${esc(fmtUsd(p.holdUsd))}</b><small>${insHoldTxt(p)}</small>`
         :(p.hold||[]).length?`<b>${esc(fmtSh(p.hold[0].shares))} sh</b><small>${esc(p.hold[0].t)}</small>`
         :`${dash}<small style="color:var(--dim)">${p.src==='ceo'?'':'trades only, by law'}</small>`;
-      const perf=p.perf==null?dash:`<span class="${p.perf>=0?'up':'dn'}">${esc(fmtPct(p.perf))}</span>`;
+      const perf=p.gain!=null&&p.gain!==0?`<b class="${p.gain>=0?'up':'dn'}">\u2248 ${p.gain>=0?'+':'\u2212'}${esc(fmtUsd(Math.abs(p.gain)))}</b>${p.perf==null?'':`<small>${esc(fmtPct(p.perf))} avg</small>`}`
+        :p.perf==null?dash:`<span class="${p.perf>=0?'up':'dn'}">${esc(fmtPct(p.perf))}</span>`;
       const vol=p.bought[1]?'+'+insRange(p.bought[0],p.bought[1]):p.sold[1]?'\u2212'+insRange(p.sold[0],p.sold[1]):'\u2014';
       return `<tr class="row" data-ip="${esc(p.key)}"><td class="isrc" title="${esc(src[1])}">${ic(src[0])}</td>`
         +`<td><div class="tk"><div><b>${esc(p.who)}</b><small>${esc(p.role||'')}</small></div></div></td>`
@@ -1791,7 +1808,7 @@ function renderInsiderPeople(box){
         +`<td class="num c-dt">${p.sold[1]?'<span class="dn">'+esc(insRange(p.sold[0],p.sold[1]))+'</span>':dash}</td>`
         +`<td class="num c-vol stk"><b>${esc(String(p.n))}</b><small>${esc(String(p.buys))} buys \u00b7 ${esc(String(p.sells))} sells</small></td>`
         +`<td class="who c-who">${(p.top||[]).map(x=>'<b>'+esc(x)+'</b>').join(', ')||dash}</td>`
-        +`<td class="num c-h1">${perf}</td>`
+        +`<td class="num c-h1 stk">${perf}</td>`
         +`<td class="num c-ph stk"><b>${p.holdUsd>0?esc(fmtUsd(p.holdUsd)):esc(vol)}</b><small>${esc(String(p.n))} trades</small></td></tr>`;
     }).join('')
     +'</tbody></table>';
@@ -1812,7 +1829,9 @@ function renderInsidersTable(box,list){
   const who=S.insWho||'all',side=S.insSide||'all',person=S.insPerson||'';
   /* one person: their own rows, fetched when they were tapped */
   const src=person?(S.insPersonRows||[]).map(r=>({id:'ins:'+r.id,ins:r,mcap:Math.max(1,r.usd||r.hi||r.lo||1)})):list;
-  let rows=src.filter(t=>t.ins&&(person||who==='all'||t.ins.src===who)&&(side==='all'||t.ins.side===side));
+  const sector=S.insTheme||'all';
+  let rows=src.filter(t=>t.ins&&(person||who==='all'||t.ins.src===who)&&(side==='all'||t.ins.side===side)
+    &&(person||sector==='all'||(t.ins.themes||[]).includes(sector)));
   rows=IN_SORT==='size'?rows.sort((a,b)=>(b.mcap||0)-(a.mcap||0))
     :rows.sort((a,b)=>((b.ins.filed||'')+(b.ins.traded||'')).localeCompare((a.ins.filed||'')+(a.ins.traded||'')));
   /* one person's trades open with what they hold, where that is known */
@@ -1850,7 +1869,7 @@ function renderInsidersTable(box,list){
       const perf=r.perf==null?dash:`<span class="${r.perf>=0?'up':'dn'}">${esc(fmtPct(r.perf))}</span>`;
       return `<tr class="row" data-id="${esc(t.id)}"><td class="isrc" title="${esc(src[1])}">${ic(src[0])}</td>`
         +`<td><div class="tk"><div><b>${esc(r.who||'')}</b><small>${esc(r.role||'')}</small></div></div></td>`
-        +`<td class="stk itrade"><b class="${buy?'up':'dn'}">${buy?'Bought':'Sold'}${r.ticker?' '+esc(r.ticker):''}</b><small>${esc(r.asset||'')}${r.plan?' \u00b7 planned sale':''}</small></td>`
+        +`<td class="stk itrade"><b class="${buy?'up':'dn'}">${buy?'Bought':'Sold'}${r.ticker?' '+esc(r.ticker):''}${(r.themes||[]).slice(0,2).map(k=>'<span class="thm">'+esc(IN_THEME[k]||k)+'</span>').join('')}</b><small>${esc(r.asset||'')}${r.plan?' \u00b7 planned sale':''}</small></td>`
         +`<td class="num c-dt stk"><b>${esc(amt)}</b><small>${r.shares?esc(fmtSh(r.shares))+' sh @ $'+esc(String(r.price)):'disclosed range'}</small></td>`
         +`<td class="num c-vol stk">${hold}</td>`
         +`<td class="num c-dt stk"><b>${esc(insDay(r.traded))}</b><small>filed ${esc(insDay(r.filed))}${lagTxt?' \u00b7 '+esc(lagTxt):''}${r.late?' \u00b7 <span class="dn">late</span>':''}</small></td>`
@@ -3592,6 +3611,7 @@ document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.iv){S.insWho=b.dataset.iv;S.insPerson='';subbar();rebuild();return}
+  if(b.dataset.it){S.insTheme=b.dataset.it;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.is){S.insSide=b.dataset.is;subbar();rebuild();return}
   if(b.dataset.cv&&b.dataset.cv!==S.mode){
     S.mode=b.dataset.cv;subbar();lightMode();shareTenBtn();
@@ -3929,6 +3949,8 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   /* a link to one group of insiders opens the tab already filtered to it */
   const IW={politicians:'congress',congress:'congress',whitehouse:'whitehouse',trump:'whitehouse',ceos:'ceo'};
   if(IW[src])S.insWho=IW[src];
+  const thQ=(q.get('theme')||'').toLowerCase();
+  if(['ai','robotics','magnets','defense','energy','crypto'].includes(thQ)){S.mode='insiders';S.insTheme=thQ}
   /* ?who=pelosi opens that person's trades, once the people have loaded */
   const whoQ=(q.get('who')||'').trim().slice(0,60);
   if(whoQ){S.mode='insiders';S.insWhoQ=whoQ.toLowerCase()}

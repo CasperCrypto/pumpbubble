@@ -18,7 +18,7 @@
 import {
   amountRange, personName, commaName, daysLate, fromCongress, congressRows, cleanAsset, tradeDate, parseCsv, officialsFrom,
   recentTrades, officialTrades, fromCabinet, form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, ISSUERS, fp,
-  holdingFrom, withPrices, peopleFrom, closesOn, priceFrom, yahooSym,
+  holdingFrom, withPrices, peopleFrom, closesOn, priceFrom, yahooSym, themesOf, withThemes,
 } from '../src/insiders.mjs';
 
 let pass = 0, fail = 0;
@@ -227,6 +227,25 @@ console.log('\nportfolios and prices');
   const sums = { 'whitehouse:Donald J. Trump': { n: 10096, buys: 6212, sells: 3884, bought: [1e9, 2e9], sold: [5e8, 1e9], top: ['BROADCOM INC'] } };
   const tr = peopleFrom([{ id: 'w:1', src: 'whitehouse', who: 'Donald J. Trump', role: 'President', side: 'buy', lo: 1001, hi: 15000, filed: '2026-09-22' }], [], {}, sums)[0];
   is('an official\'s portfolio is their year, not the rows kept', [tr.n, tr.buys, tr.bought[1], tr.top[0]], [10096, 6212, 2e9, 'BROADCOM INC']);
+}
+
+console.log('\nsectors and gains');
+{
+  is('by ticker, two sectors where both are true', themesOf({ ticker: 'PLTR' }), ['ai', 'defense']);
+  is('by the name, where a report gives no ticker', themesOf({ ticker: '', asset: 'LOCKHEED MARTIN CORP' }), ['defense']);
+  is('a class suffix is still the company', themesOf({ ticker: 'BRK.B' }), []);
+  is('magnets and rare earths', themesOf({ ticker: 'MP' }), ['magnets']);
+  is('nuclear is energy', themesOf({ asset: 'Oklo Inc.' }), ['energy']);
+  is('an index fund is no sector', themesOf({ asset: 'SPDR S&P 500 ETF Trust' }), []);
+  is('"PowerShares" is not power', themesOf({ asset: 'Invesco PowerShares QQQ' }), []);
+  const rows = withThemes([{ id: 'a', ticker: 'NVDA' }]);
+  is('rows carry their sectors', rows[0].themes, ['ai']);
+  const buy = { id: 'c:1', src: 'congress', who: 'A', role: 'House', side: 'buy', ticker: 'LMT', lo: 1001, hi: 15000, perf: 10, filed: '2026-09-01' };
+  const sell = { ...buy, id: 'c:2', side: 'sell', perf: -50 };
+  const p = peopleFrom([buy, sell])[0];
+  is('a gain is what the buys made, at the middle of the band; sales are not counted', [p.gain, p.gainN], [Math.round(8000.5 * 0.1), 1]);
+  is('…and the person carries the sectors they traded', p.themes, ['defense']);
+  is('no priced buy, no gain claimed', peopleFrom([{ ...buy, perf: null }])[0].gain, null);
 }
 
 console.log('\nthe table');
