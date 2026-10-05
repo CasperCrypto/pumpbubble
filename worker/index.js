@@ -199,9 +199,14 @@ export class SolWatch {
     if (!solPolling(this.env) || !this.env.TG_BOT_TOKEN) return;
     const env = { ...this.env, IMG_SECRET: await imgSecret(this.env) };
     const store = makeStore(env);
-    const { list } = await solTracked(store, this.fresh);
+    const tr = await solTracked(store, this.fresh);
+    const list = tr.list;
     this.fresh = false;
     this.stat.tokens = list.length;
+    this.stat.listAt = Date.now();
+    /* a failed read is not "nobody follows anything": try again in half a
+       minute rather than sleeping until the cron's next tick */
+    if (tr.failed) { this.stat.err = 'could not read the followed tokens'; this.stat.errAt = Date.now(); await this.state.storage.setAlarm(Date.now() + 30_000); return; }
     if (!list.length) return;               // nobody follows a token: no next alarm until /setup or the cron
     const now = Date.now();
     try {

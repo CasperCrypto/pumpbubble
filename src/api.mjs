@@ -440,7 +440,8 @@ async function signedImg(ctx, raw) {
 }
 const NULL_PC = () => ({ m5: null, h1: null, h6: null, h24: null, d7: null, d30: null, y1: null });
 const callersMeta = d => d && d.status
-  ? { calls: d.status.calls, callers: d.status.callers, withStats: d.status.withStats, lastOk: d.status.lastOk } : null;
+  ? { calls: d.status.calls, callers: d.status.callers, withStats: d.status.withStats, lastOk: d.status.lastOk,
+      lastError: String(d.status.lastError || '').slice(0, 120), errors: d.status.errors || 0, ticks: d.status.ticks || 0, backoffS: Math.round((d.status.backoff || 0) / 1000) } : null;
 
 /* Live calls as token rows: the called coin is the row, so the card's Chart,
    Buy and Boost work as they do for any token; the call rides along. One row
@@ -2525,12 +2526,12 @@ export async function handle(req, ctx) {
       if (ctx.sol && st.enabled && solPolling(ctx.env)) {
         const s = await ctx.sol('status').catch(() => null);
         if (s && s.ok) sol = { tokens: s.tokens || 0, lastReadS: s.okAt ? Math.round((Date.now() - s.okAt) / 1000) : null,
-          rpc: s.rpc || '', polls: s.polls, txs: s.txs, buys: s.buys, sent: s.sent, skipped: s.skipped,
+          rpc: s.rpc || '', polls: s.polls, txs: s.txs, buys: s.buys, sent: s.sent, skipped: s.skipped, listReadS: s.listAt ? Math.round((Date.now() - s.listAt) / 1000) : null,
           error: s.errAt && s.errAt > (s.okAt || 0) ? s.err : '',
           last: s.last || null, cursors: s.cursors || 0, endpoints: s.eps || {},
           warn: s.warnAt && Date.now() - s.warnAt < 600_000 ? s.warn : '' };
       }
-      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, sol, evm,
+      tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, mints: st.mints || 0, sol, evm,
         profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null } };
       return json(tgStatusMem.v);
     }
