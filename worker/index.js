@@ -187,15 +187,20 @@ export class SolWatch {
     this.sol = { v: 0, at: 0 };
     this.stat = { okAt: 0, err: '', errAt: 0, polls: 0, txs: 0, buys: 0, sent: 0, skipped: 0, rpc: '', tokens: 0 };
   }
+  /* Cursors older than ten minutes are dropped, not resumed: after a long
+     stop the endpoint may not have the old signature any more — PublicNode
+     answered "Transaction … not found" to a two-day-old `until` and the
+     watcher failed every poll on it — and anything that old is history the
+     age limit would refuse to post anyway. */
   async load() {
     if (this.cur) return;
     const s = (await this.state.storage.get('s')) || {};
-    this.cur = s.cur || {};
+    this.cur = s.at && Date.now() - s.at < 600_000 ? (s.cur || {}) : {};
   }
   async save(force) {
     if (!force && Date.now() - this.savedAt < 120_000) return;
     this.savedAt = Date.now();
-    await this.state.storage.put('s', { cur: this.cur });
+    await this.state.storage.put('s', { cur: this.cur, at: this.savedAt });
   }
   async fetch(req) {
     await this.load();
@@ -240,7 +245,7 @@ export class SolWatch {
       this.stat.rpc = r.rpc; this.stat.okAt = Date.now(); this.stat.polls++; this.stat.skipped += r.skipped;
       this.stat.last = r.diag; this.stat.cursors = Object.keys(this.cur).length;
       if (r.diag && r.diag.warn) { this.stat.warn = r.diag.warn; this.stat.warnAt = Date.now(); }
-      this.back = 0;
+      this.back = 0; this.errs = 0;
       for (const tx of r.txs) {
         const sig = tx && tx.transaction && tx.transaction.signatures && tx.transaction.signatures[0];
         if (sig) { this.seen.add(sig); if (this.seen.size > 3000) { const it = this.seen.values(); for (let i = 0; i < 1000; i++) this.seen.delete(it.next().value); } }
@@ -258,6 +263,10 @@ export class SolWatch {
     } catch (e) {
       this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
       console.log(JSON.stringify({ ev: 'sol-poll-error', err: this.stat.err }));
+      /* a cursor the endpoints cannot find, or a run of failures, starts the
+         addresses over from a first look rather than failing on it forever */
+      this.errs = (this.errs || 0) + 1;
+      if (/not found/i.test(this.stat.err) || this.errs >= 10) { this.cur = {}; this.errs = 0; }
       /* every endpoint refused: back off, doubling to a minute */
       this.back = Math.min(30_000, Math.max(SOL_EVERY, this.back) * 2);
     }

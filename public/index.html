@@ -2116,7 +2116,17 @@ function resize(){
   const w=st.clientWidth,h=st.clientHeight;
   if(!w||!h)return;                       // layout not resolved yet — the observer will call back
   if(w===W&&h===H&&cv.width)return;       // nothing changed; skip the reallocation
+  const oldW=W,oldH=H;
   W=w;H=h;
+  /* Bubbles keep their place in the picture, not their pixel. A canvas that
+     was 0x0 when they arrived (a page opened in a background tab, a hidden
+     pane) spawned every one at the corner, and they crawled out over half a
+     minute; a rotated phone pushed half of them off an edge. */
+  for(const t of S.tokens){
+    if(t.x==null)continue;
+    if(!oldW||!oldH){const a=Math.random()*TAU,d=Math.random()*Math.min(W,H)*.3;t.x=W/2+Math.cos(a)*d;t.y=H/2+Math.sin(a)*d;t.vx=0;t.vy=0}
+    else{t.x*=W/oldW;t.y*=H/oldH}
+  }
   cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
   PB=W<820?44:40; PT=4;
   const uh=Math.max(H-PT-PB,80),m=Math.min(W,uh);
