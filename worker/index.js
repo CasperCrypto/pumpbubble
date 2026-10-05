@@ -65,6 +65,29 @@ export class GroupGuard {
   }
 }
 
+/* The free plan gives all Durable Objects together 100,000 requests a day
+   (alarms included), 100,000 rows written (each setAlarm is one) and 13,000
+   GB-s; past any of them, operations of that kind fail until 00:00 UTC, and
+   an alarm that fails is an alarm chain that has stopped — which is how the
+   Solana buy watcher, the Calls watcher and the Insiders object all went
+   quiet on 2026-10-03 and stayed quiet. So every polling object re-arms
+   itself from any request that reaches it when its alarm is missing or more
+   than two minutes overdue, and says how it is (`diag`, /api/health/do). */
+async function rearm(state, ms = 500) {
+  let at = null;
+  try { at = await state.storage.getAlarm(); } catch { /* reported by diag */ }
+  if (at && at > Date.now() - 120_000) return { at };
+  try { await state.storage.setAlarm(Date.now() + ms); return { at: Date.now() + ms, rearmed: true }; }
+  catch (e) { return { at, err: String(e && e.message || e).slice(0, 160) }; }
+}
+async function doDiag(state) {
+  const out = { alarmAt: null, alarmInS: null, writeErr: '' };
+  try { out.alarmAt = await state.storage.getAlarm(); } catch (e) { out.writeErr = 'getAlarm: ' + String(e && e.message || e).slice(0, 120); }
+  if (out.alarmAt) out.alarmInS = Math.round((out.alarmAt - Date.now()) / 1000);
+  try { await state.storage.put('diag', Date.now()); } catch (e) { out.writeErr = String(e && e.message || e).slice(0, 160); }
+  return out;
+}
+
 /* One per EVM chain: the tokens groups follow there, and a poll every few
    seconds while there are any. src/evmbuy.mjs has the decoding and the why.
    The last block is kept in memory and saved at most once a minute — a
@@ -170,7 +193,7 @@ export class SolWatch {
     this.cur = s.cur || {};
   }
   async save(force) {
-    if (!force && Date.now() - this.savedAt < 60_000) return;
+    if (!force && Date.now() - this.savedAt < 120_000) return;
     this.savedAt = Date.now();
     await this.state.storage.put('s', { cur: this.cur });
   }
@@ -180,8 +203,9 @@ export class SolWatch {
     try { b = await req.json(); } catch { b = {}; }
     let out = { ok: true };
     if (b.op === 'status') out = { ok: true, ...this.stat, backoffMs: this.back };
+    if (b.op === 'diag') out = { ok: true, ...(await doDiag(this.state)), polls: this.stat.polls, okAt: this.stat.okAt, err: this.stat.err };
     if (b.op === 'track') this.fresh = true;
-    if (solPolling(this.env) && !(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 500);
+    if (solPolling(this.env)) await rearm(this.state);
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
   }
   /* SOL in dollars for the alert: the site's own saved price while it is
@@ -223,10 +247,13 @@ export class SolWatch {
       }
       if (r.txs.length) {
         this.movedAt = now; this.stat.txs += r.txs.length;
-        /* saved before posting: a restart mid-send must not post twice */
-        await this.save(true);
         const res = await solTrade({ env, store, callers: callersClient(env) }, r.txs, await this.solUsd(store), { wallets: false });
         this.stat.buys += res.buys || 0; this.stat.sent += res.sent || 0;
+        /* a poll that posted saves its cursors at once, so a restart cannot
+           post the same buys again; every other poll at most every two
+           minutes — saving on every busy poll was a storage write every few
+           seconds, against a free allowance shared by every object */
+        await this.save((res.sent || 0) > 0);
       } else await this.save(false);
     } catch (e) {
       this.stat.err = String(e && e.message || e).slice(0, 200); this.stat.errAt = Date.now();
@@ -321,7 +348,8 @@ export class InsidersDO {
     await this.load();
     let b = {};
     try { b = await req.json(); } catch { b = {}; }
-    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 1000);
+    await rearm(this.state, 1000);
+    if (b.op === 'diag') return new Response(JSON.stringify({ ok: true, ...(await doDiag(this.state)), ...this.status() }), { headers: { 'content-type': 'application/json' } });
     const out = b.op === 'rows' ? { ok: true, rows: this.rows(), people: this.people(), status: this.status() }
       : b.op === 'person' ? { ok: true, rows: this.personRows(String(b.key || '')) }
       : b.op === 'status' ? { ok: true, ...this.status() } : { ok: true };
@@ -385,7 +413,8 @@ export class InsidersDO {
     /* bounded: closes for trades no longer in the window fall away */
     const keys = Object.keys(f.pxAt);
     if (keys.length > 6000) for (const k of keys.slice(0, keys.length - 6000)) delete f.pxAt[k];
-    if (due.length) this.dirty.add('ceo');
+    /* prices ride along with the next company-state write; on their own
+       they are not worth one */
   }
   async readOfficials(now) {
     const w = this.w;
@@ -442,6 +471,7 @@ export class InsidersDO {
         } catch { /* the last price stands */ }
       }
       const fresh = [];
+      let holdChanged = false;
       for (const q of f.queue.splice(0, 20)) {
         const url = form4Text(q.href);
         if (!url) continue;
@@ -453,7 +483,7 @@ export class InsidersDO {
           const h = holdingFrom(doc, q, iq);
           if (h && h.who) {
             const k = h.who + '|' + h.t;
-            if (!f.hold[k] || (h.date || '') >= (f.hold[k].date || '')) f.hold[k] = h;
+            if (!f.hold[k] || (h.date || '') >= (f.hold[k].date || '')) { f.hold[k] = h; holdChanged = true; }
           }
         } catch (e) {
           if (++q.tries < 3) f.queue.push(q);
@@ -461,6 +491,9 @@ export class InsidersDO {
         }
       }
       if (fresh.length) f.rows = mergeRows(fresh, f.rows).slice(0, 250);
+      /* the company state is the biggest thing this object keeps: written
+         when it learned something, else every ten minutes — not every tick */
+      if (fresh.length || holdChanged || now - (f.savedAt || 0) > 600_000) { f.savedAt = now; this.dirty.add('ceo'); }
       const hk = Object.keys(f.hold);
       if (hk.length > 600) {
         hk.sort((a, b) => (f.hold[a].date || '').localeCompare(f.hold[b].date || ''));
@@ -472,8 +505,8 @@ export class InsidersDO {
       f.err = String(e && e.message || e).slice(0, 120); f.errAt = now;
       /* the SEC refusing (403) or slowing us (429): ten quiet minutes */
       if (e && (e.status === 403 || e.status === 429)) f.pause = now + 10 * 60_000;
+      this.dirty.add('ceo');
     }
-    this.dirty.add('ceo');
   }
   async alarm() {
     await this.load();
@@ -647,7 +680,7 @@ export class TapArena {
    thing once however many people are looking. Any request (the cron's
    `tick` every five minutes) restarts the alarm if a deploy lost it. The
    book is saved every two minutes: one storage write, not one per call. */
-const CALLERS_TICK_MS = 20_000;
+const CALLERS_TICK_MS = 30_000;
 export class CallersDO {
   constructor(state, env) { this.state = state; this.env = env; this.book = null; this.savedAt = Date.now(); }
   async load() {
@@ -659,7 +692,10 @@ export class CallersDO {
     let b = {};
     try { b = await req.json(); } catch { b = {}; }
     const now = Date.now();
-    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(now + 1000);
+    await rearm(this.state, 1000);
+    if (b.op === 'diag') {
+      return new Response(JSON.stringify({ ok: true, ...(await doDiag(this.state)), ...this.book.status(now) }), { headers: { 'content-type': 'application/json' } });
+    }
     const win = CALL_WINDOWS[b.window] ? b.window : 'weekly';
     let out;
     switch (b.op) {
@@ -990,6 +1026,10 @@ export default {
   async scheduled(event, env, execCtx) {
     const ctx = await makeCtx(env, execCtx);
     execCtx.waitUntil((async () => {
+      /* first, before the heavy work: make sure every polling object is
+         running — a tick cut off later must not leave them stopped */
+      await Promise.all([ctx.callers && ctx.callers('tick'), ctx.sol && ctx.sol('tick'), ctx.insiders && ctx.insiders('tick')]
+        .filter(Boolean).map(p => p.catch(() => null)));
       try {
         await handle(new Request('https://pumpbubble.fun/api/tokens'), ctx);
         /* Keep the whole-market feed warm too. /market renders from it, and a

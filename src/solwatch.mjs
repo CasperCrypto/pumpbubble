@@ -47,8 +47,11 @@ export const RPCS = [
   'https://public.rpc.solanavibestation.com',
 ];
 
-export const EVERY = 4000;          // between polls while something moved lately
-export const IDLE_EVERY = 8000;     // after QUIET_MS with nothing new anywhere
+/* Every poll is a Durable Object alarm, and the free plan's alarms, writes
+   and run time are shared by every object the site runs: at 4 s this one
+   alone was 21,600 alarms a day. 8 s busy, 20 s quiet. */
+export const EVERY = 8000;          // between polls while something moved lately
+export const IDLE_EVERY = 20000;    // after QUIET_MS with nothing new anywhere
 export const QUIET_MS = 120_000;
 export const SIG_LIMIT = 25;        // signatures per address per poll
 /* Transactions read per poll. At twenty, PUMP (several trades a second) had

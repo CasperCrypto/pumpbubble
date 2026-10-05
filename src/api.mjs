@@ -777,6 +777,7 @@ async function solPriceNow(ctx) {
 
 /* =============================================================== routes */
 let tgStatusMem = { at: 0, v: null };
+let doHealthMem = { at: 0, v: null };
 
 /* after a tracker-wide change made from the console */
 async function tgEnsureAudience(ctx) {
@@ -2486,6 +2487,24 @@ export async function handle(req, ctx) {
     if (path === '/api/tg/ensure') {
       try { return json({ ok: true, ...(await tgEnsure(ctx.env, ctx.store, ctx.audience || null)) }); }
       catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 502); }
+    }
+
+    /* How the polling objects are: alarm scheduled, writes working, last
+       good read. Public, throttled and cached, nothing private in it — it
+       exists because their free-plan failures are otherwise silent. */
+    if (path === '/api/health/do') {
+      const limitedH = rateLimit(req, 'dohealth', 20, 60_000);
+      if (limitedH) return limitedH;
+      if (doHealthMem.v && Date.now() - doHealthMem.at < 30_000) return json(doHealthMem.v);
+      const ask = async (fn, ...a) => { try { return fn ? await fn(...a) : null; } catch (e) { return { ok: false, error: String(e && e.message || e).slice(0, 160) }; } };
+      const pick = d => d && { alarmInS: d.alarmInS, writeErr: d.writeErr || '', error: d.error || '',
+        lastOkS: d.okAt ? Math.round((Date.now() - d.okAt) / 1000) : d.lastOk ? Math.round((Date.now() - d.lastOk) / 1000) : null,
+        ticks: d.ticks ?? d.polls ?? null, lastError: String(d.lastError || d.err || '').slice(0, 120) };
+      const [sol, callers, insiders] = await Promise.all([
+        ask(ctx.sol, 'diag'), ask(ctx.callers, 'diag'), ask(ctx.insiders, 'diag'),
+      ]);
+      doHealthMem = { at: Date.now(), v: { ok: true, sol: pick(sol), callers: pick(callers), insiders: pick(insiders) } };
+      return json(doHealthMem.v);
     }
 
     /* One person's trades for the Insiders tab: everything the watcher holds
