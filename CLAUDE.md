@@ -222,6 +222,22 @@ a map open in a tab (a refresh every 15 s — now paused while the tab is hidden
 (one request per bubble's art on a first visit; the browser caches it after). `[observability]` is
 on at a tenth of requests, so the dashboard's Logs name the route that is spending it.
 
+**Durable Objects have their own free allowance, shared by every object, and running out of it
+stops them silently** (2026-10-05). 100,000 requests a day (alarm invocations included), 100,000 rows
+written (every `setAlarm` is one), 13,000 GB-s; past any of them, operations of that kind fail until
+00:00 UTC. The Solana buy watcher, the Calls watcher and the Insiders object all stopped on
+2026-10-03 ~22:30 UTC and were still stopped two days later: the Solana watcher's alarm was found
+**scheduled 151,636 seconds in the past** — set, never fired, never cleared — and every fetch handler
+re-armed only when `getAlarm()` was null, so nothing ever re-armed it. Now:
+
+- `rearm()` (worker/index.js) re-arms from any request when the alarm is missing *or more than two
+  minutes overdue*, and the cron re-arms the three polling objects first, before its heavy work.
+- `/api/health/do` reports each one's alarm (`alarmInS`), whether a storage write still works
+  (`writeErr` — the free-allowance failure names itself there), its last good read and last error.
+- The spend is cut: Solana polls every 8 s busy / 20 s quiet (it was 4 / 8 — 21,600 alarms a day
+  on its own) and saves cursors when a poll posted or every two minutes, Calls ticks every 30 s,
+  Insiders writes its company state only when it learned something.
+
 **A second Cloudflare account for the bot is not the fix**: the bot shares KV and Durable Objects
 with the site, its shop calls the site's own routes (those would land on the site's account anyway),
 and a second free account opened to get round a limit risks both. Workers Paid ($5/month, ten
@@ -831,6 +847,18 @@ Trump: 9,006 trades, bought $470M–$1.5B), not the forty rows kept for the tabl
 summed those forty and said he bought $1.7M–$3.9M. A company's feed also carries the filings it makes
 as another company's big holder (Berkshire buying Lennar arrived in Berkshire's), so a row names the
 company the filing is about (`issuerCik`), not the feed it came from.
+
+**Sectors** (2026-10-05, asked for as "robotics, AI, magnets, defense, energy"): `THEMES` in
+insiders.mjs — AI, Robotics, Magnets & rare earths, Defense, Energy, Crypto — by ticker, and by the
+company's name where a report gives no ticker (the White House's "LOCKHEED MARTIN CORP"); a row can
+sit in two (Palantir: AI and defense). Tagged at serve time (`withThemes`), so editing a list re-tags
+everything already held. Lists rather than a classifier: a sector is a claim on the page and a list
+can be argued with. `?theme=defense` opens the tab on it. 92 companies are followed, 27 of them
+added for these sectors (Lockheed, RTX, Northrop, Kratos, AeroVironment, MP Materials, USA Rare Earth,
+Intuitive Surgical, Symbotic, Oklo, NuScale, Constellation, Vistra, GE Vernova, Bloom Energy, C3.ai,
+SoundHound…); ARM and TSMC file 20-Fs, no Form 4s, so they are tagged, not followed. Portfolios
+carries **Gain on buys** — each buy's move since at the middle of its band (exact for a Form 4),
+summed, marked ≈ because it is an estimate; sales are not counted.
 
 **Clock**: one tick a minute — a Congress sweep every four hours (one page a tick until the last),
 Open Cabinet's index every six hours, then one official whose filing date moved (biggest books first,
@@ -1602,7 +1630,12 @@ is history, twenty transactions a poll at most (eight where an endpoint refuses 
 plan's fifty subrequests also carry the alerts). Free endpoints in order, a failing one benched a
 minute: `api.mainnet-beta.solana.com`, `solana-rpc.publicnode.com` (one getTransaction per batch),
 `public.rpc.solanavibestation.com` (one method per batch); dRPC, Ankr, BlockPI, OnFinality, Omnia
-and LeoRPC refused without a key. **Probed from a laptop only** — a throwaway probe Worker was not
+and LeoRPC refused without a key. **By 2026-10-05 the keyless three refused Cloudflare too** — Solana's
+own "Your IP or provider is blocked", the other two 429 — so the watcher needs a key: `SOL_POLL_RPC`,
+or `ALCHEMY_KEY`, which the EVM watchers already read and which now puts Alchemy's Solana endpoint
+first as well (one free sign-up for every chain's alerts). While everything refuses it backs off to
+three minutes. Cursors older than ten minutes are dropped on load: after the two-day stop PublicNode
+answered "Transaction … not found" to the old `until`, and the watcher failed every poll on it. **Probed from a laptop only** — a throwaway probe Worker was not
 allowed — so `/api/tg/status` → `sol` (`rpc`, `lastReadS`, `error`) is where Cloudflare's egress
 shows. `SOL_POLL_RPC` (secret) puts a keyed URL first; Helius's own RPC is never polled, its
 credits are the payments'. `SOL_BUYS = "helius"` in wrangler.toml switches back to the webhook —
