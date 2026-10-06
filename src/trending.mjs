@@ -140,18 +140,32 @@ export function heat(t) {
    are pump.fun's top twelve; when it is down they are ours, as before. */
 export function mergeMovers(movers, computed, limit = 160) {
   const seen = new Set();
+  /* One bubble per ticker: the first in this order keeps it. pump.fun's own
+     list carried two MISOs and two LAMBOs (2026-10-06), and the wider market
+     a LIT beside Robinhood Chain's — two bubbles with one name read as a
+     broken map, and the one ranked higher is the one people mean. */
+  const names = new Set();
+  const named = t => {
+    const n = String(t.sym || '').trim().toUpperCase();
+    if (!n) return false;
+    if (names.has(n)) return true;
+    names.add(n);
+    return false;
+  };
   const out = [];
   for (const t of movers || []) {
     if (!t || !t.solid) continue;
     const key = t.addr || t.mint || t.id;
     if (!key || seen.has(key)) continue;
     seen.add(key);
+    if (named(t)) continue;
     out.push({ ...t, heat: 1e6 / Math.max(1, t.rank || out.length + 1) });
   }
   for (const t of computed || []) {
     const key = t.addr || t.mint || t.id;
     if (!key || seen.has(key)) continue;
     seen.add(key);
+    if (named(t)) continue;
     out.push(t);
   }
   const cut = out.slice(0, limit);

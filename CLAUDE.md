@@ -460,7 +460,18 @@ other and has no upstream of its own. **Its feeds are read at once, each against
 (`within()`, 3.5 s a feed, 4.5 s for pump.fun's board): read one after another, a cold isolate
 building four feeds took 40 s and more — two of six requests on 2026-10-06 got no answer inside 40 s
 while the tab's own fetch gives up at 12, which is what "trending tab not working" was. A feed not
-ready in time lends its last good copy, or nothing; its build carries on for the next request. Spanning pump.fun, Base, Robinhood Chain and the wider market
+ready in time lends its last good copy, or nothing; its build carries on for the next request.
+
+**The order of that build is the request budget.** A free-plan invocation may make 50 outbound
+calls, KV reads included; a cold build of the four feeds plus pump.fun's board made about 55, and the
+board — read last — kept its list and lost its prices: every row pump.fun ranks drew grey with a
+dash on every window, and `movers.error` said *Too many subrequests*. Now copies that already exist
+come first (`trendCopy`: this isolate's, else KV, pump.fun's up to 3 minutes old and the shared
+feeds' up to 20), then the board, then at most one of the two expensive feeds is built
+(`TREND_HEAVY`: pump.fun ~17 calls, Robinhood ~20). A cold build measured 35 instead of 52, with 37
+of 38 board rows priced; `movers.priced` and `movers.feeds` on `/api/tokens?source=trending` say
+how the last build went. **One bubble per ticker** on this tab (`mergeMovers`): pump.fun's own list
+carried two MISOs and two LAMBOs, and the higher-ranked one is the one people mean. Spanning pump.fun, Base, Robinhood Chain and the wider market
 on one scale is the part nobody else can copy — and it surfaces the tokenised-stock crossover by
 itself: METAc, AAPLc, NVDAc on Base, SPCX and GME on Robinhood, STONKS and Nasduck on pump.fun.
 

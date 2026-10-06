@@ -566,38 +566,51 @@ async function snapshot(ctx, source, force = false) {
          keeps its own cache and its own lifetime. */
       const snap = src.id === 'trending'
         ? await (async () => {
-            /* Every feed at once, each with a deadline. One after another, a
-               cold isolate building four feeds took 40 s and more — two of six
-               requests on 2026-10-06 got no answer inside 40 s, and the tab's
-               own fetch gives up at 12. A feed not ready in time lends its last
-               good copy, or nothing; its build carries on for the next request. */
-            const feeds = (await Promise.all(TREND_SOURCES.map(async id => {
-              const last = cacheFor(id).data;
-              const m = await within(snapshot(ctx, sourceOf(id)).catch(() => null), TREND_FEED_MS, last);
-              return m && Array.isArray(m.tokens) ? { id, tokens: m.tokens } : null;
-            }))).filter(Boolean);
+            /* The order is the budget. A free-plan invocation may make 50
+               outbound calls, KV reads included, and a cold build of all four
+               feeds plus pump.fun's board made about 55: the board, read last,
+               kept its list but lost its prices, so every row pump.fun ranks
+               drew grey with a dash on every window (2026-10-06). So: copies
+               of the feeds that already exist, then the board, then at most
+               one of the two expensive feeds built (TREND_HEAVY), each against
+               a deadline — a build that runs out costs its own rows, not the
+               board's. One after another and with no deadline, a cold build
+               also took 40 s and more, past the page's own 12. */
+            const copies = await Promise.all(TREND_SOURCES.map(id => trendCopy(ctx, id)));
             /* pump.fun's own board leads; see src/pumptrend.mjs. Our feeds
                lend it liquidity and art for tokens they already carry. A
                board that fails to answer leaves the computed list alone,
                which is what the tab was before the board existed. */
             const known = new Map();
-            for (const f of feeds) if (f.id === 'pumpfun' || f.id === 'robinhood') {
-              for (const t of f.tokens) known.set(t.addr || t.mint, t);
-            }
+            TREND_SOURCES.forEach((id, i) => {
+              if ((id === 'pumpfun' || id === 'robinhood') && copies[i]) for (const t of copies[i].tokens) known.set(t.addr || t.mint, t);
+            });
             let movers = [], moversError = '';
             const t0 = Date.now();
-            /* pump.fun's board too: a deadline, and its last good answer */
+            /* A deadline, and its last good answer — one that carried prices. */
             movers = await within(pumpTrending({ secret: ctx.env.IMG_SECRET, known })
-              .then(m => { if (m && m.length) lastMovers = m; return m; })
+              .then(m => { if (m && m.some(t => t.pc && t.pc.h24 != null)) lastMovers = m; return m; })
               .catch(e => { moversError = String(e && e.message || e); return lastMovers; }), TREND_MOVERS_MS, null);
             if (movers === null) { moversError = moversError || 'pump.fun board slow — last good list'; movers = lastMovers; }
+            const moversMs = Date.now() - t0;
+            let heavy = 1;
+            const feeds = (await Promise.all(TREND_SOURCES.map(async (id, i) => {
+              let m = copies[i];
+              if (!m && (!TREND_HEAVY.includes(id) || heavy-- > 0)) {
+                m = await within(snapshot(ctx, sourceOf(id)).catch(() => null), TREND_FEED_MS, cacheFor(id).data);
+              }
+              return m && Array.isArray(m.tokens) ? { id, tokens: m.tokens } : null;
+            }))).filter(Boolean);
             const tokens = mergeMovers(movers, buildTrending(feeds));
             return {
               ts: Date.now(), sol: 0, count: tokens.length,
               enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
               sampleArt: '', solid: tokens.length, signed: true,
               source: 'trending', sourceLabel: 'Trending', boostable: true,
-              movers: { n: movers.length, ms: Date.now() - t0, error: moversError },
+              /* priced: board rows that came with prices — 0 of 39 was this bug */
+              movers: { n: movers.length, ms: moversMs, error: moversError,
+                priced: movers.filter(t => t.pc && t.pc.h24 != null).length,
+                feeds: feeds.map(f => f.id).join(',') },
               tokens,
             };
           })()
@@ -742,6 +755,25 @@ const BUILD_DEADLINE = 6000;
 const within = (p, ms, fallback) => Promise.race([p, new Promise(r => setTimeout(() => r(fallback), ms))]);
 const TREND_FEED_MS = 3500, TREND_MOVERS_MS = 4500;
 let lastMovers = [];
+
+/* How old a feed's copy may be and still rank on Trending (which rebuilds
+   every minute), and which feeds are expensive to build: pump.fun is ~17
+   calls, Robinhood ~20 with its registry, Base and the wider market one or
+   two. Shared copies sit in KV for up to fifteen minutes between writes. */
+const TREND_REUSE_MS = { pumpfun: 3 * 60_000, base: 20 * 60_000, robinhood: 20 * 60_000, majors: 20 * 60_000 };
+const TREND_HEAVY = ['pumpfun', 'robinhood'];
+
+/* A feed's copy recent enough to rank — this isolate's, else the shared one
+   in KV — without building anything. */
+async function trendCopy(ctx, id) {
+  const max = TREND_REUSE_MS[id] || 10 * 60_000;
+  const ok = m => m && Array.isArray(m.tokens) && m.tokens.length > 0 && Date.now() - (m.ts || 0) < max;
+  const mem = cacheFor(id).data;
+  if (ok(mem)) return mem;
+  if (!sourceOf(id).shared) return null;
+  try { const saved = await ctx.store.get('snap:' + id); if (ok(saved)) return saved; } catch { /* a miss */ }
+  return null;
+}
 
 function raceStale(cache, inflight) {
   if (!cache.data) return inflight;

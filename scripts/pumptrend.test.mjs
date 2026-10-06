@@ -127,5 +127,20 @@ console.log('\nmerge — pump.fun order first, ours after');
   is('empty board leaves the computed list', mergeMovers([], ours, 10).map(t => t.id).join(','), 'm2,c1,c2');
 }
 
+console.log('\nmerge — one bubble per ticker');
+{
+  const movers = [
+    { id: 'a', mint: 'a', sym: 'MISO', rank: 1, solid: true },
+    { id: 'b', mint: 'b', sym: 'LAMBO', rank: 2, solid: true },
+    { id: 'c', mint: 'c', sym: 'miso', rank: 3, solid: true },       // same ticker, lower rank
+    { id: 'd', mint: 'd', sym: '', rank: 4, solid: true },           // no ticker: never merged away
+    { id: 'e', mint: 'e', sym: '', rank: 5, solid: true },
+  ];
+  const ours = [{ id: 'f', mint: 'f', sym: 'LAMBO', heat: 900 }, { id: 'g', mint: 'g', sym: 'LIT', heat: 500 }, { id: 'h', addr: '0xh', sym: 'LIT', heat: 400 }];
+  const out = mergeMovers(movers, ours, 20);
+  is('the higher-ranked MISO stays, the other goes', out.map(t => t.id).join(','), 'a,b,d,e,g');
+  is('pump.fun rank survives the gap', out.find(t => t.id === 'd').heat, 1e6 / 4);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
