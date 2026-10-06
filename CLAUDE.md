@@ -308,7 +308,11 @@ cache TTL and whether it is boostable.
   2026-10-06; `?source=crypto` and `?source=market` land on it). **Its logos come from CoinCap**
   (`assets.coincap.io/assets/icons/<symbol>@2x.png`): CoinPaprika's own logo host answers 403 to
   everyone, so the tab lost every picture at once. CoinCap covers 170 of the top 250; the rest are
-  mostly wrapped and staked versions, which get a letter rather than a borrowed logo.
+  mostly wrapped and staked versions, which get a letter rather than a borrowed logo. CoinPaprika
+  itself refuses some isolates at times (after the 2026-10-06 deploy, one isolate rebuilt while the
+  rest served the KV copy for minutes): a failed build now waits 20 s before the next try
+  (`cache.retryAt`) instead of re-asking on every request, and `/api/tokens` carries `buildError`
+  whenever a feed is older than its lifetime.
 - **robinhood** is Robinhood Chain, whose launchpad is Pons — its pump.fun. See
   `src/rhchain.mjs`, which exists because **nothing ranks this chain**. Pons publishes no REST API
   and its docs say to index the factory yourself; the chain's public RPC 429s after two calls;

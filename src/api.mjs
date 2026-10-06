@@ -533,6 +533,8 @@ async function snapshot(ctx, source, force = false) {
      does not move enough in ten seconds to be worth a request. */
   const ttl = src.ttl || SNAPSHOT_TTL;
   if (!force && cache.data && now - cache.at < ttl) return cache.data;
+  /* A build that just failed is not retried by the very next request. */
+  if (!force && cache.data && now < (cache.retryAt || 0)) return cache.data;
   if (cache.inflight) return raceStale(cache, cache.inflight);
 
   cache.inflight = (async () => {
@@ -682,7 +684,7 @@ async function snapshot(ctx, source, force = false) {
 
       cache.data = snap;
       cache.at = empty ? Date.now() - Math.max(0, ttl - EMPTY_RETRY_MS) : Date.now();
-      cache.err = null;
+      cache.err = null; cache.retryAt = 0;
       /* The shared copy is refreshed at most every fifteen minutes, not on
          every rebuild. Every rebuild used to write it — trending alone could
          spend 1,440 writes a day — and the free plan's 1,000 KV writes a day
@@ -697,6 +699,11 @@ async function snapshot(ctx, source, force = false) {
       return snap;
     } catch (e) {
       cache.err = String(e && e.message || e);
+      /* Back off before asking again. Without this every request retried an
+         upstream that had just refused us: after the 2026-10-06 deploy most
+         isolates had CoinPaprika answer each of them on every visit while they
+         served a copy from KV, which is how a rate limit keeps itself going. */
+      cache.retryAt = Date.now() + EMPTY_RETRY_MS;
       /* Stale data beats an empty map — the front end shows the age. */
       if (cache.data && Date.now() - cache.at < STALE_OK) return cache.data;
       /* For a shared source, fall back to whatever KV holds however old it is.
@@ -1041,6 +1048,9 @@ export async function handle(req, ctx) {
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
         stale: Date.now() - snap.ts > SNAPSHOT_TTL * 3,
+        /* why a feed is older than its lifetime: its last build's error, query strings cut */
+        buildError: cacheFor(src.id).err && Date.now() - snap.ts > (src.ttl || SNAPSHOT_TTL)
+          ? String(cacheFor(src.id).err).replace(/\?\S*/g, '').slice(0, 120) : undefined,
         degraded: !!snap.degraded,
         tokens,
       });
