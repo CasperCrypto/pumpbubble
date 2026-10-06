@@ -921,7 +921,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="calls"><svg class="ic" aria-hidden="true"><use href="#i-megaphone"/></svg>Calls</button>
     <button data-mode="insiders"><svg class="ic" aria-hidden="true"><use href="#i-landmark"/></svg>Insiders</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
-    <button data-mode="majors">Whole market</button>
+    <button data-mode="majors">Crypto</button>
     <button data-mode="stocks">Stocks</button>
     <button data-mode="robinhood">Robinhood</button>
     <button data-mode="base">Base</button>
@@ -3942,7 +3942,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const src=q.get('source')||q.get('mode');
   const OK={calls:'calls',callouts:'calls',callers:'callers',smart:'smart',smartmoney:'smart',whales:'smart',traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
             prediction:'prediction',predictions:'prediction',bets:'prediction',
-            casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',stocks:'stocks',robinhood:'robinhood',
+            casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',crypto:'majors',market:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
             insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders'};
   if(OK[src])S.mode=OK[src];

@@ -129,7 +129,7 @@ const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robi
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
   traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
   callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly' };
-const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'MARKET · 24H', stocks: 'STOCKS · 24H' };
+const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H' };
 const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
   'smart-daily': 'TODAY\u2019S TOP TRADERS HOLD', 'smart-weekly': 'THIS WEEK\u2019S TOP TRADERS HOLD',
@@ -564,13 +564,16 @@ async function snapshot(ctx, source, force = false) {
          keeps its own cache and its own lifetime. */
       const snap = src.id === 'trending'
         ? await (async () => {
-            const feeds = [];
-            for (const id of TREND_SOURCES) {
-              try {
-                const m = await snapshot(ctx, sourceOf(id));
-                feeds.push({ id, tokens: m.tokens || [] });
-              } catch { /* a feed that is down simply does not contribute */ }
-            }
+            /* Every feed at once, each with a deadline. One after another, a
+               cold isolate building four feeds took 40 s and more — two of six
+               requests on 2026-10-06 got no answer inside 40 s, and the tab's
+               own fetch gives up at 12. A feed not ready in time lends its last
+               good copy, or nothing; its build carries on for the next request. */
+            const feeds = (await Promise.all(TREND_SOURCES.map(async id => {
+              const last = cacheFor(id).data;
+              const m = await within(snapshot(ctx, sourceOf(id)).catch(() => null), TREND_FEED_MS, last);
+              return m && Array.isArray(m.tokens) ? { id, tokens: m.tokens } : null;
+            }))).filter(Boolean);
             /* pump.fun's own board leads; see src/pumptrend.mjs. Our feeds
                lend it liquidity and art for tokens they already carry. A
                board that fails to answer leaves the computed list alone,
@@ -581,8 +584,11 @@ async function snapshot(ctx, source, force = false) {
             }
             let movers = [], moversError = '';
             const t0 = Date.now();
-            try { movers = await pumpTrending({ secret: ctx.env.IMG_SECRET, known }); }
-            catch (e) { moversError = String(e && e.message || e); }
+            /* pump.fun's board too: a deadline, and its last good answer */
+            movers = await within(pumpTrending({ secret: ctx.env.IMG_SECRET, known })
+              .then(m => { if (m && m.length) lastMovers = m; return m; })
+              .catch(e => { moversError = String(e && e.message || e); return lastMovers; }), TREND_MOVERS_MS, null);
+            if (movers === null) { moversError = moversError || 'pump.fun board slow — last good list'; movers = lastMovers; }
             const tokens = mergeMovers(movers, buildTrending(feeds));
             return {
               ts: Date.now(), sol: 0, count: tokens.length,
@@ -724,6 +730,11 @@ async function snapshot(ctx, source, force = false) {
    already displays that age. With nothing cached there is nothing to serve, so
    the wait is the only option and the build is awaited in full. */
 const BUILD_DEADLINE = 6000;
+
+/* A promise, or `fallback` once `ms` have passed — whichever comes first. */
+const within = (p, ms, fallback) => Promise.race([p, new Promise(r => setTimeout(() => r(fallback), ms))]);
+const TREND_FEED_MS = 3500, TREND_MOVERS_MS = 4500;
+let lastMovers = [];
 
 function raceStale(cache, inflight) {
   if (!cache.data) return inflight;

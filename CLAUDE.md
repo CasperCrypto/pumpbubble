@@ -304,7 +304,11 @@ cache TTL and whether it is boostable.
 - **majors** is CoinPaprika, not CoinGecko. CoinGecko's free tier rate-limits by IP and
   Cloudflare's egress is shared platform-wide, so it returned 429 from the Worker while working
   from a laptop; the documented fix is a demo key we do not have. CoinPaprika needs none and
-  returns 2,000 coins in one request.
+  returns 2,000 coins in one request. The tab is labelled **Crypto** (it was "Whole market" until
+  2026-10-06; `?source=crypto` and `?source=market` land on it). **Its logos come from CoinCap**
+  (`assets.coincap.io/assets/icons/<symbol>@2x.png`): CoinPaprika's own logo host answers 403 to
+  everyone, so the tab lost every picture at once. CoinCap covers 170 of the top 250; the rest are
+  mostly wrapped and staked versions, which get a letter rather than a borrowed logo.
 - **robinhood** is Robinhood Chain, whose launchpad is Pons — its pump.fun. See
   `src/rhchain.mjs`, which exists because **nothing ranks this chain**. Pons publishes no REST API
   and its docs say to index the factory yourself; the chain's public RPC 429s after two calls;
@@ -448,7 +452,11 @@ meaningless — METAc, a tokenised Meta with $1.2M of liquidity, was called a fr
 because the feed it comes from carries no creation date.
 
 It is composed in `snapshot()` rather than fetched, because it ranks the other feeds against each
-other and has no upstream of its own. Spanning pump.fun, Base, Robinhood Chain and the wider market
+other and has no upstream of its own. **Its feeds are read at once, each against a deadline**
+(`within()`, 3.5 s a feed, 4.5 s for pump.fun's board): read one after another, a cold isolate
+building four feeds took 40 s and more — two of six requests on 2026-10-06 got no answer inside 40 s
+while the tab's own fetch gives up at 12, which is what "trending tab not working" was. A feed not
+ready in time lends its last good copy, or nothing; its build carries on for the next request. Spanning pump.fun, Base, Robinhood Chain and the wider market
 on one scale is the part nobody else can copy — and it surfaces the tokenised-stock crossover by
 itself: METAc, AAPLc, NVDAc on Base, SPCX and GME on Robinhood, STONKS and Nasduck on pump.fun.
 

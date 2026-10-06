@@ -84,7 +84,12 @@ async function paprikaMarkets(limit = 250) {
         mint: '',
         sym: String(c.symbol).toUpperCase().slice(0, 12),
         name: String(c.name || c.symbol).slice(0, 48),
-        rawImg: 'https://static.coinpaprika.com/coin/' + encodeURIComponent(c.id) + '/logo.png',
+        /* CoinCap's icon set, by ticker: CoinPaprika's own logo host answers
+           403 to everyone since 2026-10 (the tab had no art at all). CoinCap
+           covers 170 of the top 250; what it lacks is mostly wrapped and
+           staked versions, which get a letter rather than a borrowed logo. */
+        rawImg: /^[A-Za-z0-9.]{1,12}$/.test(String(c.symbol))
+          ? 'https://assets.coincap.io/assets/icons/' + encodeURIComponent(String(c.symbol).toLowerCase()) + '@2x.png' : '',
         img: '',
         mcap,
         ath: 0,
@@ -222,7 +227,7 @@ export const SOURCES = {
      move enough in ten seconds to be worth a request, and the budget is better
      spent on the feeds that do. */
   majors: {
-    id: 'majors', label: 'Whole market', group: 'Whole market',
+    id: 'majors', label: 'Crypto', group: 'Crypto',
     /* Five minutes, and shared through KV. Per-isolate caching meant every
        cold isolate fetched independently, multiplying our request count by the
        number of isolates Cloudflare happens to be running. Market caps of this
