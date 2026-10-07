@@ -83,11 +83,22 @@ export function akashQuote(models, gpu) {
     avail += +(m.availability && m.availability.available) || 0;
     total += +(m.availability && m.availability.total) || 0;
   }
-  const typ = rows.map(m => +(m.price && m.price.weightedAverage)).filter(sane);
-  /* the cheapest bid counts as "from" only while a GPU is actually free */
-  const low = avail > 0 ? rows.map(m => +(m.price && m.price.min)).filter(sane) : [];
-  if (!typ.length && !low.length) return null;
-  return { p: 'akash', typical: typ.length ? Math.min(...typ) : null, from: low.length ? Math.min(...low) : null, avail, total };
+  /* Two listings of one card (the PRO 6000's server and workstation editions)
+     are weighted by how many GPUs each has. Taking the lower price, as the
+     first version did, put a single listing with nothing free ($1.44) in
+     front of twenty-five GPUs at $2.02. */
+  let num = 0, den = 0;
+  for (const m of rows) {
+    const w = +(m.price && m.price.weightedAverage);
+    if (!sane(w)) continue;
+    const n = Math.max(+(m.availability && m.availability.total) || 0, 0) || 1;
+    num += w * n; den += n;
+  }
+  /* the cheapest bid counts as "from" only on a listing with a GPU free now */
+  const low = rows.filter(m => (+(m.availability && m.availability.available) || 0) > 0)
+    .map(m => +(m.price && m.price.min)).filter(sane);
+  if (!den && !low.length) return null;
+  return { p: 'akash', typical: den ? num / den : null, from: low.length ? Math.min(...low) : null, avail, total };
 }
 
 /* One GPU model across markets: the middle typical price, and the cheapest

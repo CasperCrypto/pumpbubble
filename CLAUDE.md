@@ -921,6 +921,14 @@ RTX 5090, RTX 4090; B200, B300 and H200 appear by themselves when someone offers
 (`GPUS`). **Probed from a laptop only** — `compute.errors` on `/api/tokens?source=compute` is where
 Cloudflare's egress shows.
 
+- **These are posted rates, not trades, and they barely move.** Checked 2026-10-07: every Akash
+  price was identical to the cent across ~21 hours; only the GPUs-free counts changed. The endpoint
+  is a CDN-cached summary (5 minutes) of what providers ask, and Akash's own proposal for real-time
+  pricing (AEP-35) is a draft. So the strip says "posted rates, not trades" and never "live". A
+  daily, transaction-based number exists — Ornn's OCPI — and needs their agreement to show.
+- Two listings of one card (the PRO 6000's server and workstation editions) are **weighted by GPU
+  count**; taking the lower price put one listing with nothing free ($1.44) in front of twenty-five
+  GPUs at $2.02.
 - **The big number is the market's weighted price, "from" its cheapest bid — and "from" only while
   a GPU is actually free.** `boardRow` takes any number of markets and shows the middle typical
   price, so a second market (a licensed index, another network) slots in without a new shape.

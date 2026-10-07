@@ -1315,7 +1315,7 @@ function subbar(){
   document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
   if(cp){
     document.querySelectorAll('#cpGrp [data-cg]').forEach(b=>b.classList.toggle('on',b.dataset.cg===(S.cpGrp||'all')));
-    document.getElementById('smNote').textContent='GPU price: one GPU for one hour on the open market · not financial advice';
+    document.getElementById('smNote').textContent='GPU price: what providers ask for one GPU, one hour — posted rates, not trades · not financial advice';
     return;
   }
   if(ins){

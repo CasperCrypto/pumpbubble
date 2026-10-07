@@ -43,6 +43,12 @@ console.log('\nAkash — weighted average, and "from" only while a GPU is free')
   ];
   is('H100 SXM5', akashQuote(models, g('h100')), { p: 'akash', typical: 2.72, from: 2.04, avail: 23, total: 68 });
   is('A100 SXM4 80 GB only, not the PCIe card', akashQuote(models, g('a100')).typical, 1.67);
+  const pro = akashQuote([
+    { model: 'pro6000se', ram: '96Gi', interface: 'PCIe', availability: { total: 25, available: 10 }, price: { min: 1.49, weightedAverage: 2.02 } },
+    { model: 'pro6000we', ram: '96Gi', interface: 'PCIe', availability: { total: 1, available: 0 }, price: { min: 1.44, weightedAverage: 1.44 } },
+  ], g('pro6000'));
+  is('two listings weighted by GPUs: one card with nothing free does not set the price', Math.round(pro.typical * 100) / 100, 2);
+  is('"from" only from a listing with a GPU free', pro.from, 1.49);
   is('nothing free: a market price, but no "from"', akashQuote(models, g('rtx5090')), { p: 'akash', typical: 0.68, from: null, avail: 0, total: 10 });
   is('a model nobody lists is no quote', akashQuote(models, g('b200')), null);
 }
