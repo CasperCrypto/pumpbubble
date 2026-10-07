@@ -24,6 +24,7 @@ import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
 import { chainTokens, padTokens, predictionTokens, casinoTokens } from './flows.mjs';
+import { pickCompute } from './compute.mjs';
 
 const CG = 'https://api.coingecko.com/api/v3';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0';
@@ -70,7 +71,27 @@ async function jget(url, ms = 12000) {
    anywhere in this product rather than being drawn as a flat line. */
 const PAPRIKA = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
 
-async function paprikaMarkets(limit = 250) {
+/* A parsed list is shared for two minutes. Crypto and Compute both read the
+   coins, Stocks and Compute the screener, and a response of thousands of rows
+   parsed once costs half the CPU of the same response parsed twice — on the
+   free plan, where a request gets ten milliseconds of it. An empty answer is
+   not kept. Callers get copies, because a build writes into its tokens. */
+const ROWS_MEMO_MS = 120_000;
+function memo(load) {
+  let at = 0, rows = null, inflight = null;
+  return () => {
+    if (rows && Date.now() - at < ROWS_MEMO_MS) return Promise.resolve(rows);
+    if (inflight) return inflight;
+    inflight = load().then(r => {
+      inflight = null;
+      if (r.length) { rows = r; at = Date.now(); }
+      return r;
+    }, e => { inflight = null; throw e; });
+    return inflight;
+  };
+}
+
+const paprikaRows = memo(async () => {
   const rows = await jget(PAPRIKA, 15000);
   if (!Array.isArray(rows)) return [];
 
@@ -112,9 +133,15 @@ async function paprikaMarkets(limit = 250) {
         liq: 0, curveSol: 0,
       };
     })
-    .filter(Boolean)
+    .filter(Boolean);
+});
+
+async function paprikaMarkets(limit = 250) {
+  return (await paprikaRows())
+    .slice()
     .sort((a, b) => b.mcap - a.mcap)
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(t => ({ ...t, pc: { ...t.pc } }));
 }
 
 
@@ -245,6 +272,17 @@ export const SOURCES = {
     chain: 'stock', ttl: 600_000, shared: true, enrich: false,
     boostable: false, quality: 'major',
     fetch: () => nasdaqStocks(300),
+  },
+  /* The Compute tab: what a GPU hour costs (src/compute.mjs, read in the
+     route on its own clock) above bubbles for compute tokens and the companies
+     that sell compute. Ten minutes and shared: the rows are the two lists
+     above, read again for fifty-odd names. History off, so these rows add no
+     second set of samples for coins and stocks the other tabs already track. */
+  compute: {
+    id: 'compute', label: 'Compute', group: 'Compute',
+    chain: 'mixed', ttl: 600_000, shared: true, enrich: false,
+    boostable: false, quality: 'major', history: false,
+    fetch: () => computeAssets(),
   },
   /* Where trading is happening, by chain. Sized by 24h DEX volume rather than
      TVL: TVL is money parked, volume is money moving, and the question is where
@@ -460,19 +498,22 @@ function companyKey(name) {
    somebody would check, and be right. */
 const UNTRUSTED = /depositary|ADR|preferred|warrant|rights?|units?|tracking/i;
 
-async function nasdaqStocks(limit = 300) {
+/* Every listing, parsed once (see memo above). A depositary line is kept but
+   marked `untrusted`: the Stocks tab drops it exactly as before, and Compute
+   admits only the one-share ADSs it names (ADS_OK in src/compute.mjs). */
+const nasdaqRows = memo(async () => {
   const j = await jget(NASDAQ + '?tableonly=true&limit=6000&offset=0&download=true', 15000);
   const rows = (j && j.data && (j.data.rows || (j.data.table && j.data.table.rows))) || [];
 
-  const out = rows
+  return rows
     .map(r => {
       const mcap = money(r.marketCap);
       const pct = parseFloat(String(r.pctchange || '').replace('%', ''));
       const sym = String(r.symbol || '').trim().toUpperCase();
       const rawName = String(r.name || sym);
       if (!sym || !(mcap > 0)) return null;
-      if (UNTRUSTED.test(rawName)) return null;
       return {
+        untrusted: UNTRUSTED.test(rawName),
         id: 'stock:' + sym,
         mint: '',                       // no chain, so nothing to boost against
         sym,
@@ -504,7 +545,13 @@ async function nasdaqStocks(limit = 300) {
         liq: 0, curveSol: 0,
       };
     })
-    .filter(Boolean)
+    .filter(Boolean);
+});
+
+async function nasdaqStocks(limit = 300) {
+  const out = (await nasdaqRows())
+    .filter(t => !t.untrusted)
+    .map(t => ({ ...t, pc: { ...t.pc } }))
     .sort((a, b) => b.mcap - a.mcap);
 
   const best = new Map();
@@ -516,7 +563,21 @@ async function nasdaqStocks(limit = 300) {
   return [...best.values()]
     .sort((a, b) => b.mcap - a.mcap)
     .slice(0, limit)
-    .map(t => { delete t.companyKey; return t; });
+    .map(t => { delete t.companyKey; delete t.untrusted; return t; });
+}
+
+/* ------------------------------------------------------------- compute */
+/* The Compute tab's bubbles: compute tokens from the coins above and the
+   companies that sell compute from the screener (src/compute.mjs names them
+   all). Half a map is worse than the last whole one, so a side that comes
+   back empty fails the build and the snapshot keeps its last good copy. */
+async function computeAssets() {
+  const [coins, stocks] = await Promise.all([paprikaRows(), nasdaqRows()]);
+  const rows = pickCompute(coins, stocks);
+  if (!rows.some(t => t.grp === 'tokens') || !rows.some(t => t.grp !== 'tokens')) {
+    throw new Error('compute: ' + (coins.length ? 'no stocks' : 'no coins'));
+  }
+  return rows;
 }
 
 export const DEFAULT_SOURCE = 'pumpfun';

@@ -39,6 +39,7 @@ import {
   refreshWindows as refreshCryptoWin,
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
+import { gpuBoard, COMPUTE_STOCKS, computeCgIds } from './compute.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
@@ -125,11 +126,11 @@ const caches = new Map();
 /* Which feeds the ranked card is allowed to draw from, and what it calls them.
    A table rather than free text out of the query string: the value reaches the
    rasteriser and is printed onto an image that carries our domain. */
-const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending',
+const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending', compute: 'compute',
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
   traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
   callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly' };
-const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H' };
+const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H', compute: 'COMPUTE · 24H' };
 const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
   'smart-daily': 'TODAY\u2019S TOP TRADERS HOLD', 'smart-weekly': 'THIS WEEK\u2019S TOP TRADERS HOLD',
@@ -751,6 +752,31 @@ async function snapshot(ctx, source, force = false) {
    the wait is the only option and the build is awaited in full. */
 const BUILD_DEADLINE = 6000;
 
+/* The Compute tab's GPU price board (src/compute.mjs), on its own clock: ten
+   minutes in this isolate, a minute after a failed read, and it never holds
+   the map — four seconds, then the last good board or none, with the read
+   carried on by waitUntil. A board with no price at all never replaces one
+   that had prices; its errors are reported on the old one. */
+let gpuMem = { at: 0, data: null, good: false, inflight: null };
+const GPU_TTL = 10 * 60_000, GPU_RETRY = 60_000, GPU_WAIT = 4000;
+async function gpuBoardCached(ctx) {
+  const age = Date.now() - gpuMem.at;
+  if (gpuMem.data && age < (gpuMem.good ? GPU_TTL : GPU_RETRY)) return gpuMem.data;
+  if (!gpuMem.inflight || Date.now() - gpuMem.since > 30_000) {
+    const p = gpuBoard({ store: ctx.store }).then(b => {
+      const good = b.gpus.some(r => r.price != null);
+      gpuMem = good || !gpuMem.data
+        ? { at: Date.now(), data: b, good, inflight: null }
+        : { at: Date.now(), data: { ...gpuMem.data, errors: b.errors }, good: false, inflight: null };
+      return gpuMem.data;
+    }).catch(() => { gpuMem.inflight = null; return gpuMem.data; });
+    gpuMem.inflight = p;
+    gpuMem.since = Date.now();
+    if (ctx.waitUntil) ctx.waitUntil(p);
+  }
+  return within(gpuMem.inflight, GPU_WAIT, gpuMem.data);
+}
+
 /* A promise, or `fallback` once `ms` have passed — whichever comes first. */
 const within = (p, ms, fallback) => Promise.race([p, new Promise(r => setTimeout(() => r(fallback), ms))]);
 const TREND_FEED_MS = 3500, TREND_MOVERS_MS = 4500;
@@ -936,6 +962,18 @@ export async function handle(req, ctx) {
       if (src.id === 'majors') {
         try { tokens = applyCryptoWin(tokens, await loadCryptoWin(ctx.store)); } catch {}
       }
+      /* Compute mixes both, so each row takes the windows of its own kind:
+         keyed by symbol, a coin and a company sharing a ticker would trade
+         numbers otherwise. */
+      let gpus = null;
+      if (src.id === 'compute') {
+        try {
+          const [sw, cw] = await Promise.all([loadWindows(ctx.store), loadCryptoWin(ctx.store)]);
+          applyWindows(tokens.filter(t => String(t.id).startsWith('stock:')), sw);
+          applyCryptoWin(tokens.filter(t => String(t.id).startsWith('cg:')), cw);
+        } catch {}
+        gpus = await gpuBoardCached(ctx).catch(() => null);
+      }
 
       /* A boosted token that dropped out of the pump.fun feed is re-added so a
          paid bubble never disappears before its time is up. */
@@ -1076,6 +1114,8 @@ export async function handle(req, ctx) {
         movers: snap.movers || undefined,
         callers: snap.callers || undefined,
         insiders: snap.insiders || undefined,
+        /* Compute only: the GPU-hour price board */
+        compute: gpus || undefined,
         events: snap.events || undefined,
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
@@ -1989,7 +2029,9 @@ export async function handle(req, ctx) {
       try {
         const snap = await snapshot(ctx, sourceOf('stocks'));
         const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
-        return json({ ok: true, ...(await refreshWindows(ctx.store, syms)) });
+        /* the Compute tab's companies too — half of them sit below the top 300 */
+        const all = [...new Set([...syms, ...Object.values(COMPUTE_STOCKS).flat()])];
+        return json({ ok: true, ...(await refreshWindows(ctx.store, all)) });
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }
@@ -2465,7 +2507,12 @@ export async function handle(req, ctx) {
       try {
         const snap = await snapshot(ctx, sourceOf('majors'));
         const syms = (snap.tokens || []).map(t => t.sym).filter(Boolean);
-        return json({ ok: true, ...(await refreshCryptoWin(ctx.store, syms)) });
+        /* the Compute tab's tokens too, most of them outside the top 250 and
+           so outside cgmap — their CoinGecko ids come from src/compute.mjs */
+        let ids = {};
+        try { ids = computeCgIds((await snapshot(ctx, sourceOf('compute'))).tokens); } catch { /* next day */ }
+        const all = [...new Set([...syms, ...Object.keys(ids)])];
+        return json({ ok: true, ...(await refreshCryptoWin(ctx.store, all, false, ids)) });
       } catch (e) {
         return json({ ok: false, error: String(e && e.message || e) }, 502);
       }

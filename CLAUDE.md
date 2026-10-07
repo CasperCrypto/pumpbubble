@@ -890,6 +890,82 @@ and three Congress tickers' daily closes. The table shows each source's newest (
 House 200, companies 250) so a year of Congress cannot crowd out the rest. A 403/429 from the SEC pauses the SEC side ten minutes.
 `/api/tokens?source=insiders` → `insiders` shows each source's rows, last read and error.
 
+## Compute
+
+`src/compute.mjs`, source `compute`, the Compute tab (chip icon, after Insiders). Asked for on
+2026-10-07 as "compute power is now available to trade — what can we do in pumpbubble", two days
+after CME listed the first regulated compute futures (`GPU1` H100 and `GPU2` B200 rental-index
+futures, 730 GPU-hours a contract, settled on Silicon Data's index). Measured that day: the GPU-hour
+contracts themselves barely trade (Kalshi's GPU markets showed no volume, Hyperliquid's `xyz:H100`
+perp no open interest), while the trades around them do (trade.xyz's AI, memory and chip perps
+~$789M a day). So the tab shows both: **what a GPU hour costs**, as a strip above the map, and **who
+sells compute**, as bubbles.
+
+**Where a GPU price may come from was decided by terms, not by what answers.** All of these answered
+a keyless request on 2026-10-07; most may not be used:
+
+| source | why not |
+|---|---|
+| Vast.ai's marketplace | its terms forbid its prices as an input to "any index, benchmark, pricing index, price-comparison database" — this board |
+| RunPod's GraphQL | its terms forbid access "through automated or non-human means" |
+| Ornn's index (OCPI, the one ICE's futures will use) | free and keyless, and its terms forbid displaying even the free tier publicly without a signed agreement — **worth asking for**: the benchmark on a free map is marketing for them |
+| gpurentalprices.com, FastGPU, gpu.ai (open datasets over 12–22 clouds) | CC BY 4.0: usable with a visible credit, which the operator does not want on the main UI |
+| Silicon Data, CME settlements | sold / licensed market data |
+
+So the strip reads **Akash**, the decentralized compute market: its prices are its providers' own
+bids on a public chain, weighted by GPUs on offer, served keyless by its open-source console
+(`console-api.akash.network/v1/gpu-prices`), no reuse restriction found. Akash's H100 read $2.72 the
+day it was built, beside Ornn's $2.79 — an open market's price, which suits a crypto map anyway: the
+networks' tokens are the bubbles under it. Models Akash prices that day: H100, A100, RTX PRO 6000,
+RTX 5090, RTX 4090; B200, B300 and H200 appear by themselves when someone offers them priced
+(`GPUS`). **Probed from a laptop only** — `compute.errors` on `/api/tokens?source=compute` is where
+Cloudflare's egress shows.
+
+- **The big number is the market's weighted price, "from" its cheapest bid — and "from" only while
+  a GPU is actually free.** `boardRow` takes any number of markets and shows the middle typical
+  price, so a second market (a licensed index, another network) slots in without a new shape.
+- **A day's and a week's move come from our own hourly history** (KV `gpu:hist`, one point an hour,
+  eight days kept, one write an hour) and are **null until a point that old exists**, like the
+  casinos. The tooltip names the market and how many GPUs are free; the page itself carries no
+  source text.
+- The board is read in the route on its own clock (`gpuBoardCached`: ten minutes, a minute after a
+  failed read, four seconds of waiting at most, then the last good board or none; `waitUntil`
+  carries the read past the response). A board with no price never replaces one with prices.
+
+**The bubbles** are 17 compute tokens and 38 companies, in five groups the sub-bar filters (All,
+Chips, Memory, Servers & networks, Clouds & data centers, Tokens; `?grp=memory` deep-links one):
+
+- **Tokens by CoinPaprika id, never by ticker** (`COMPUTE_TOKENS`): "GPU" is two coins and "IO" is a
+  word. Bittensor, Internet Computer, Render, Theta, Akash, Aethir, AIOZ, Golem, USD.AI's CHIP,
+  Livepeer, io.net, 0G, Phala, Nosana, iExec, Flux, GAIB. Logos from CoinGecko's image host — CoinCap's
+  set (the Crypto tab's) lacks six of them.
+- **Companies by what they sell** (`COMPUTE_STOCKS`): chips (NVDA, TSM, AVGO, AMD, ASML, ARM, INTC,
+  MRVL, AMAT, LRCX, KLAC, ALAB, CRDO), memory (MU, SNDK, WDC, STX), servers and networks (DELL, ANET,
+  SMCI, HPE, VRT, CLS, LITE, COHR, CIEN), clouds and data centers (ORCL, CRWV, NBIS, EQIX, DLR, IREN,
+  HUT, GLXY, CIFR, WULF, APLD, CORZ). Microsoft, Alphabet, Amazon and Meta are left out on purpose —
+  they would make it the big-tech map. SK Hynix and Samsung are not on Nasdaq's screener.
+- **ARM is admitted by name** (`ADS_OK`): the screener's own rule drops depositary lines because one
+  can quote the parent's cap against a fraction of a share; ARM's ADS is one ordinary share.
+- **One parse, two tabs** (`memo` in sources.mjs): the CoinPaprika and Nasdaq lists are parsed once
+  and shared for two minutes by Crypto/Stocks and Compute — a 2 MB response parsed twice is twice the
+  CPU on a plan that gives a request ten milliseconds. Callers get copies, because a build writes
+  into its tokens. A side that comes back empty fails the build (`computeAssets`), so the snapshot
+  keeps the last whole map rather than drawing chips with no tokens.
+- `history: false`: these rows add no second set of samples for coins and stocks other tabs track.
+- **Long windows by kind**: companies take the stock windows, coins the crypto windows, matched by id
+  prefix (keyed by symbol, a coin and a company sharing a ticker would trade numbers). The cron's two
+  window jobs now include the Compute symbols; the crypto one takes their CoinGecko ids from
+  `computeCgIds` (most sit outside the top 250 and so outside cgmap), and `refreshWindows` re-reads
+  inside the day when it is asked about an id it has not tried (`tried`).
+- The tab opens on 24H (`fixTf`): companies carry 24H, 1M and 1Y, coins those and 1H and 1W.
+  `?source=compute|gpu|gpus`. Share top 10 works on it (`BOARD_SRC`).
+
+**Not built yet, and why**: the Trade button on Hyperliquid's equity perps (builder codes: up to 0.1%
+a fill, the user signs, no custody). It needs the operator's builder wallet with 100 USDC on
+Hyperliquid, a US block, a look at EU rules for derivatives, and — because Hyperliquid's orders are
+signed with an agent key in the browser — a signing library (secp256k1, keccak), which this
+project's no-dependency rule says to argue for first.
+
 ## The generative card
 
 `src/bubblecard.mjs`, `/api/card?kind=bubbles`, the page at `/s/top10`, and the **Share top 10**

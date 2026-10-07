@@ -68,14 +68,21 @@ export async function loadWindows(store) {
 /* Rebuild every window in one pass, at most once a day. Returns counts so cron
    reports work done rather than silence — a bare zero here once hid an upstream
    block behind a success response for a full warm-up run. */
-export async function refreshWindows(store, symbols, force = false) {
+export async function refreshWindows(store, symbols, force = false, extra = {}) {
   const rec = await loadWindows(store);
-  if (!force && rec.at && (Date.now() - rec.at) < FRESH_MS) {
+  /* `extra` maps symbols cgmap does not carry (the Compute tab's tokens) to
+     their CoinGecko ids, and is consulted first */
+  const pairs = symbols.map(s => [s, extra[s] || CGMAP[s]]).filter(([, id]) => id);
+  const ids = [...new Set(pairs.map(([, id]) => id))];
+  /* Fresh means read within the day *and* every id asked about now was asked
+     about then, so a newly added coin does not wait a day for its windows.
+     A record from before `tried` existed counts as covering everything. */
+  const tried = new Set(rec.tried || []);
+  const covered = !rec.tried || ids.every(id => tried.has(id));
+  if (!force && rec.at && (Date.now() - rec.at) < FRESH_MS && covered) {
     return { refreshed: 0, known: Object.keys(rec.w || {}).length, fresh: true };
   }
 
-  const pairs = symbols.map(s => [s, CGMAP[s]]).filter(([, id]) => id);
-  const ids = [...new Set(pairs.map(([, id]) => id))];
   if (!ids.length) return { refreshed: 0, known: 0, unmapped: symbols.length };
 
   const t30 = Date.now() - 30 * DAY;
@@ -117,7 +124,7 @@ export async function refreshWindows(store, symbols, force = false) {
     n++;
   }
 
-  const next = { at: Date.now(), w };
+  const next = { at: Date.now(), w, tried: ids };
   try { await store.put(KEY, next); } catch { /* next tick retries */ }
   return { refreshed: n, known: n, mapped: ids.length, universe: symbols.length };
 }

@@ -24,3 +24,19 @@ link wherever the data is shown, and it answered the Worker 429 on its first cal
 Unusual Whales (they sell this data, and copying their pages breaks their terms); OpenInsider and
 SECForm4 (front-ends over the same SEC filings, read here directly); the House Clerk's PTR PDFs
 directly (they are encrypted PDFs with CID fonts — possible later, not needed while the API works).
+
+## Compute tab (`src/compute.mjs`)
+
+| Data | Source | Terms, as read on 2026-10-07 |
+|---|---|---|
+| GPU rental price per hour | [Akash](https://akash.network/pricing/gpus/) console API, `console-api.akash.network/v1/gpu-prices` — providers' own bids on the Akash chain, weighted by GPUs on offer | keyless; the console is open source; no reuse restriction found |
+| Compute tokens | CoinPaprika, as the Crypto tab | keyless free tier |
+| Compute companies | Nasdaq's screener, as the Stocks tab | keyless |
+| Token logos | the projects' own logos, from CoinGecko's image host, through our image proxy | the marks are the projects' |
+
+**Not used, and why**: Vast.ai (its terms forbid its prices in "any index, benchmark, pricing index,
+price-comparison database"); RunPod (its terms forbid access "through automated or non-human
+means"); Ornn's index, OCPI (its free tier may not be displayed publicly without a signed agreement
+— ask them); gpurentalprices.com, FastGPU and gpu.ai (CC BY 4.0 — a visible credit, which the main
+UI does not carry); Silicon Data and CME settlement prices (licensed); Kalshi's GPU markets (no
+trading to read a price from).

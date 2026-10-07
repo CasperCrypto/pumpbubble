@@ -421,6 +421,23 @@ h3 .ic{vertical-align:-.12em}
   .sb-short{display:inline}
 }
 #subbar .subnote{font-size:11px;color:var(--dim);white-space:nowrap}
+/* Compute: what one GPU rents for, an hour, as a strip above the map. It
+   scrolls sideways on a phone rather than wrapping into a second block. */
+#gpuBoard{position:relative;z-index:16;flex:0 0 auto;display:flex;align-items:stretch;gap:8px;
+  padding:8px 12px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none;
+  -webkit-overflow-scrolling:touch}
+#gpuBoard::-webkit-scrollbar{display:none}
+#gpuBoard[hidden]{display:none}
+#gpuBoard .gb-h{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;gap:1px;
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);line-height:1.25}
+#gpuBoard .gb-h b{color:var(--ink);font-size:12px;font-weight:900}
+#gpuBoard .gpu{flex:0 0 auto;min-width:104px;padding:7px 11px;border-radius:12px;background:var(--glass);
+  border:1px solid var(--line);display:flex;flex-direction:column;gap:1px}
+#gpuBoard .gn{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
+#gpuBoard .gp{font-size:17px;font-weight:900;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+#gpuBoard .gp small{font-size:10.5px;font-weight:700;color:var(--dim);margin-left:1px}
+#gpuBoard .gc,#gpuBoard .gf{font-size:10.5px;font-weight:700;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(min-width:820px){#gpuBoard{padding:8px 16px}#gpuBoard .gpu{min-width:118px}}
 #chips{
   position:relative;z-index:18;flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:9px 12px;overflow-x:auto;border-bottom:1px solid var(--line);
@@ -859,6 +876,7 @@ body.embed #brandbadge.on{display:flex}
 <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3.5 10h17L12 4.5zM5.5 10v7M9.5 10v7M14.5 10v7M18.5 10v7M4.5 17.5h15M3 20.5h18"/></symbol>
 <symbol id="i-brief" viewBox="0 0 24 24"><path d="M4 8h16a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 4 8zM9 8V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2M2.5 12.5h19"/></symbol>
 <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5.5 21V4M5.5 4.5h11.5l-2.2 4 2.2 4H5.5"/></symbol>
+<symbol id="i-chip" viewBox="0 0 24 24"><path d="M8 7h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM10 10h4v4h-4zM10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
 <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14"/></symbol>
 <symbol id="i-bot" viewBox="0 0 24 24"><path d="M6.5 9h11A2.5 2.5 0 0 1 20 11.5v5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-5A2.5 2.5 0 0 1 6.5 9zM12 5.5V9M12 3.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM9 13.5v1M15 13.5v1M2 12.5v3M22 12.5v3"/></symbol>
 <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></symbol>
@@ -920,6 +938,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-mode="smart"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>Smart money</button>
     <button data-mode="calls"><svg class="ic" aria-hidden="true"><use href="#i-megaphone"/></svg>Calls</button>
     <button data-mode="insiders"><svg class="ic" aria-hidden="true"><use href="#i-landmark"/></svg>Insiders</button>
+    <button data-mode="compute"><svg class="ic" aria-hidden="true"><use href="#i-chip"/></svg>Compute</button>
     <button data-mode="pumpfun" class="on">pump.fun</button>
     <button data-mode="majors">Crypto</button>
     <button data-mode="stocks">Stocks</button>
@@ -1013,8 +1032,19 @@ body.embed #brandbadge.on{display:flex}
     <button data-is="buy">Buys</button>
     <button data-is="sell">Sells</button>
   </div>
+  <!-- Compute: who sells it, by what they sell -->
+  <div class="seg" id="cpGrp">
+    <button data-cg="all" class="on">All</button>
+    <button data-cg="chips">Chips</button>
+    <button data-cg="memory">Memory</button>
+    <button data-cg="hardware"><span class="sb-full">Servers &amp; networks</span><span class="sb-short">Servers</span></button>
+    <button data-cg="clouds"><span class="sb-full">Clouds &amp; data centers</span><span class="sb-short">Clouds</span></button>
+    <button data-cg="tokens">Tokens</button>
+  </div>
   <span class="subnote" id="smNote"></span>
 </div>
+<!-- ================= Compute's price strip ================= -->
+<div id="gpuBoard" hidden></div>
 
 <!-- ================= stage ================= -->
 <div id="stage">
@@ -1271,8 +1301,10 @@ function lightMode(){
 }
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
-  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers',ins=S.mode==='insiders';
-  el.hidden=!(sm||cl||ins);if(el.hidden)return;
+  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers',ins=S.mode==='insiders',cp=S.mode==='compute';
+  renderGpuBoard();
+  el.hidden=!(sm||cl||ins||cp);if(el.hidden)return;
+  document.getElementById('cpGrp').style.display=cp?'':'none';
   document.getElementById('smView').style.display=sm?'':'none';
   document.getElementById('smBoard').style.display=S.mode==='smart'?'':'none';
   document.getElementById('clView').style.display=cl?'':'none';
@@ -1281,6 +1313,11 @@ function subbar(){
   document.getElementById('inView').style.display=ins?'':'none';
   document.getElementById('inTheme').style.display=ins?'':'none';
   document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
+  if(cp){
+    document.querySelectorAll('#cpGrp [data-cg]').forEach(b=>b.classList.toggle('on',b.dataset.cg===(S.cpGrp||'all')));
+    document.getElementById('smNote').textContent='GPU price: one GPU for one hour on the open market · not financial advice';
+    return;
+  }
   if(ins){
     document.querySelectorAll('#inMode [data-im]').forEach(b=>b.classList.toggle('on',b.dataset.im===(S.insMode||'trades')));
     document.querySelectorAll('#inView [data-iv]').forEach(b=>b.classList.toggle('on',b.dataset.iv===(S.insWho||'all')));
@@ -1305,7 +1342,40 @@ function subbar(){
     ?'what pump.fun\u2019s top traders by realized profit hold right now \u00b7 tap a row for chart, buy and boost'
     :'ranked by realized profit, not paper gains \u00b7 24H / 1W / 1M pick the board';
 }
+/* The Compute tab's price strip: what one GPU rents for, an hour, on the
+   open market (src/compute.mjs says why that market and not the clouds'). The
+   big number is the market's own weighted price, "from" its cheapest free GPU;
+   which market said what is in the tooltip, not on the page. A window with no
+   history yet reads a dash. */
+const GPU_PROV={akash:'Akash'};
+function renderGpuBoard(){
+  const box=document.getElementById('gpuBoard');if(!box)return;
+  const g=S.mode==='compute'&&S.gpuMeta&&Array.isArray(S.gpuMeta.gpus)&&S.gpuMeta.gpus.length?S.gpuMeta.gpus:null;
+  box.hidden=!g;if(!g)return;
+  const usd=v=>v==null||!Number.isFinite(+v)?'\u2014':'$'+(+v).toFixed(2);
+  const wk=S.tf==='d7'||S.tf==='d30'||S.tf==='y1',key=wk?'ch7':'ch24',lab=wk?'7d':'24h';
+  box.innerHTML='<div class="gb-h"><b>GPU</b><span>per hour</span></div>'+g.map(r=>{
+    const c=r[key];
+    const ch=c==null||!Number.isFinite(+c)?`<span class="gc">\u2014 ${lab}</span>`
+      :`<span class="gc ${c>=0?'up':'dn'}">${c>=0?'+':''}${(+c).toFixed(1)}% ${lab}</span>`;
+    const tip=[`${r.label}: ${usd(r.price)} an hour`+(r.providers>1?`, the middle of ${r.providers} markets`:'')]
+      .concat((r.quotes||[]).map(q=>(GPU_PROV[q.p]||q.p)+' '+usd(q.typical)
+        +(q.from!=null&&q.from!==q.typical?' (from '+usd(q.from)+')':'')
+        +(q.total?` \u00b7 ${q.avail} of ${q.total} free`:''))).join('\n');
+    return `<div class="gpu" title="${esc(tip)}"><div class="gn">${esc(r.label)}</div>`
+      +`<div class="gp">${usd(r.price)}<small>/h</small></div>${ch}`
+      +`<div class="gf">${r.from!=null?'from '+usd(r.from):'&nbsp;'}</div></div>`;
+  }).join('');
+}
 function fixTf(){
+  /* Compute mixes coins (1H to 1Y) and companies (24H, 1M, 1Y): it opens on a
+     window both carry, so half the map is not grey on arrival */
+  if(S.mode==='compute'){
+    if(S.tf==='h24'||S.tf==='d30'||S.tf==='y1')return;
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+    return;
+  }
   /* Smart money's colour is pump.fun's own market activity: 1H and 24H, nothing longer */
   if(S.mode==='smart'){
     if(S.tf==='h1'||S.tf==='h24')return;
@@ -1400,6 +1470,8 @@ async function fetchLive(){
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
+  /* the board rides the Compute feed; a response without one keeps the last */
+  if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
   /* kept until the person is found: an early copy of the feed may not have
      read their filings yet */
   if(S.insWhoQ&&S.insMeta&&Array.isArray(S.insMeta.people)){
@@ -1432,7 +1504,7 @@ async function fetchLive(){
     smartN:+t.smartN||0, smartBanked:+t.smartBanked||0,
     smartWho:Array.isArray(t.smartWho)?t.smartWho.slice(0,6).map(w=>({name:String(w.name||''),xh:String(w.xh||''),realized:+w.realized||0})):[],
     key:t.addr||t.mint||'', taps:+t.taps||0, tapsTotal:+t.tapsTotal||0, tapRank:+t.tapRank||0, award:t.award||'', tapGold:+t.tapGold||0, goldSince:+t.goldSince||0, adSince:+t.adSince||0,
-    kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0,
+    kind:t.kind||'', slug:t.slug||'', vol7d:+t.vol7d||0, grp:t.grp||'',
     /* a call and its caller, or a caller's record: objects from our own API,
        escaped wherever they are written */
     call:t.call&&typeof t.call==='object'?t.call:null, caller:t.caller&&typeof t.caller==='object'?t.caller:null,
@@ -1561,6 +1633,8 @@ function rebuild(){
     if(kept.length){S.hidden=L.length-kept.length;L=kept}
     else S.hidden=0;
   }else S.hidden=0;
+  /* Compute's groups: chips, memory, servers, clouds, tokens */
+  if(S.mode==='compute'&&S.cpGrp&&S.cpGrp!=='all')L=L.filter(t=>t.grp===S.cpGrp);
   if(S.q){const q=S.q.toLowerCase();
     L=L.filter(t=>t.sym.toLowerCase().includes(q)||(t.name||'').toLowerCase().includes(q))}
   /* A window with no data is not a flat window. pump.fun tokens carry nothing
@@ -3029,6 +3103,7 @@ wire('tf',b=>{
   S.tf=b.dataset.tf;
   /* on Traders the window is a different board, not a different column */
   if(S.mode==='traders'){fixTf();setLive(false,'loading traders…');refresh(true);return}
+  renderGpuBoard();
   rebuild();
 });
 wire('sz',b=>{S.sizeBy=b.dataset.sz;rebuild()});
@@ -3609,6 +3684,7 @@ async function railOpen(key){
 /* ------------------------------------------------------------ Smart money tabs */
 document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cg){S.cpGrp=b.dataset.cg;subbar();rebuild();return}
   if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.iv){S.insWho=b.dataset.iv;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.it){S.insTheme=b.dataset.it;S.insPerson='';subbar();rebuild();return}
@@ -3728,7 +3804,7 @@ function showPost(txt){
    ten is a claim somebody would repost. Chains, launchpads, prediction and
    casinos are venues rather than projects — a "top 10 trending" of them is not
    a thing, and the card's shape (ticker, logo, percentage) is not theirs. */
-const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,traders:1,smart:1,callers:1};
+const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,compute:1,traders:1,smart:1,callers:1};
 function shareTenBtn(){
   const b=document.getElementById('shareTen');
   if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
@@ -3944,8 +4020,12 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
             prediction:'prediction',predictions:'prediction',bets:'prediction',
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',crypto:'majors',market:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
-            insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders'};
+            insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders',
+            compute:'compute',gpu:'compute',gpus:'compute'};
   if(OK[src])S.mode=OK[src];
+  /* ?grp=memory opens Compute on one group */
+  const gq=(q.get('grp')||'').toLowerCase();
+  if(['chips','memory','hardware','clouds','tokens'].includes(gq)){S.mode='compute';S.cpGrp=gq}
   /* a link to one group of insiders opens the tab already filtered to it */
   const IW={politicians:'congress',congress:'congress',whitehouse:'whitehouse',trump:'whitehouse',ceos:'ceo'};
   if(IW[src])S.insWho=IW[src];
