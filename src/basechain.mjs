@@ -73,7 +73,8 @@ export async function loadUniverse(store) {
 
 export async function refreshUniverse(store, force = false) {
   const have = await loadUniverse(store);
-  if (!force && have && (Date.now() - (have.at || 0)) < UNIVERSE_TTL) {
+  /* a record from before logos were kept is read again once, so art arrives today */
+  if (!force && have && have.logos && (Date.now() - (have.at || 0)) < UNIVERSE_TTL) {
     return { universe: have.addrs.length, cached: true };
   }
   let list;
@@ -82,17 +83,35 @@ export async function refreshUniverse(store, force = false) {
 
   const seen = new Set();
   const addrs = [];
+  /* The list carries a logo for every token (2,846 of 2,846 on 2026-10-08)
+     while DexScreener had none for a quarter of the map. Kept as CoinGecko's
+     image path only, the shared prefix stripped, to keep the record small. */
+  const logos = {};
   for (const t of (list && list.tokens) || []) {
     const a = norm(t.address);
     if (!isAddr(a) || seen.has(a)) continue;
     seen.add(a);
     addrs.push(a);
+    const path = logoPath(t.logoURI);
+    if (path) logos[a] = path;
   }
   if (!addrs.length) return { universe: have ? have.addrs.length : 0, error: 'list empty' };
 
-  const next = { at: Date.now(), addrs };
+  const next = { at: Date.now(), addrs, logos };
   try { await store.put(UNIVERSE_KEY, next); } catch { /* next tick retries */ }
   return { universe: addrs.length, cached: false };
+}
+
+/* CoinGecko image paths: 'https://assets.coingecko.com/coins/images/53669/thumb/x.jpeg?…'
+   is kept as '53669/x.jpeg?…' and served at the large size — the thumb is 25
+   pixels, smaller than most bubbles draw it. */
+const CG_IMG = /^https:\/\/(?:assets|coin-images)\.coingecko\.com\/coins\/images\/(\d+)\/(?:thumb|small|large)\/([^\s]+)$/;
+export function logoPath(uri) {
+  const m = CG_IMG.exec(String(uri || ''));
+  return m ? m[1] + '/' + m[2] : '';
+}
+export function logoUrl(path) {
+  return path ? 'https://coin-images.coingecko.com/coins/images/' + path.replace('/', '/large/') : '';
 }
 
 /* -------------------------------------------------------------------- cache */
@@ -231,6 +250,9 @@ export async function sweep(store) {
 export async function baseTokens(store, limit = 220) {
   if (!store) return [];
   const c = await loadCache(store);
+  /* the list's logo where DexScreener has no picture */
+  const uni = await loadUniverse(store).catch(() => null);
+  const logos = (uni && uni.logos) || {};
   const rows = [];
   for (const [addr, v] of Object.entries(c.live)) {
     if (!v || !v.sym || !(v.mcap > 0)) continue;
@@ -244,7 +266,7 @@ export async function baseTokens(store, limit = 220) {
       addr,
       sym: v.sym,
       name: v.name || v.sym,
-      rawImg: v.img || '',
+      rawImg: v.img || logoUrl(logos[addr]),
       img: '',
       mcap: v.mcap,
       ath: 0,

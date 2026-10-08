@@ -3,56 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Embed the pump.fun bubble map — pumpbubble.fun</title>
-<meta name="description" content="Put a live pump.fun bubble map on your site. Free with attribution, or branded as yours on the partner tier.">
+<title>Partner with pumpbubble — live crypto maps, buy bot, swap</title>
+<meta name="description" content="Partner with pumpbubble.fun: put your GPU prices, your chain or your token in front of active traders, or embed our live maps in your own app.">
 <link rel="canonical" href="https://pumpbubble.fun/partners">
-<meta property="og:title" content="Embed the pump.fun bubble map">
-<meta property="og:description" content="A live bubble map of pump.fun on your site. Free to embed.">
+<meta property="og:title" content="Partner with pumpbubble">
+<meta property="og:description" content="Live maps of crypto, pump.fun, stocks, chains and compute — with a Telegram buy bot and a swap built in.">
 <meta property="og:image" content="https://pumpbubble.fun/og.png">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@pumpbubblefun">
 <link rel="icon" href="/favicon.png" type="image/png">
 <style>
 :root{
   --bg:#070910; --ink:#eef2f8; --dim:#8a93a6; --line:rgba(255,255,255,.10);
   --glass:rgba(255,255,255,.035); --glass2:rgba(255,255,255,.07);
-  --mint:#28e08c; --mint2:#3df09b; --gold:#ffc93c; --rose:#ff4d6d;
+  --mint:#28e08c; --mint2:#3df09b; --gold:#ffc93c; --rose:#ff4d6d; --violet:#8b7bff;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
-  -webkit-font-smoothing:antialiased}
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:-20% -10% auto auto;width:70vw;height:70vw;max-width:900px;max-height:900px;
+  background:radial-gradient(circle,rgba(40,224,140,.10),transparent 62%);pointer-events:none;z-index:-1}
 a{color:var(--mint2)}
-.wrap{max-width:940px;margin:0 auto;padding:0 20px 80px}
-header{padding:40px 0 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.mark{width:26px;height:26px;border-radius:50%;display:block;object-fit:cover;background:#000;
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+header{padding:28px 0 8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mark{width:28px;height:28px;border-radius:50%;display:block;object-fit:cover;background:#000;
   box-shadow:0 0 22px rgba(40,224,140,.45)}
 .wordmark{font-weight:900;font-size:19px;letter-spacing:-.02em}
 .wordmark i{font-style:normal;color:var(--dim)}
 .back{margin-left:auto;font-size:13px;font-weight:700;color:var(--dim);text-decoration:none}
 .back:hover{color:var(--ink)}
-h1{font-size:clamp(28px,5vw,42px);line-height:1.12;letter-spacing:-.03em;margin:18px 0 10px;font-weight:900}
-h2{font-size:20px;font-weight:900;letter-spacing:-.02em;margin:44px 0 12px}
-.lede{font-size:17px;color:var(--dim);max-width:62ch;margin:0 0 8px}
-.preview{margin:26px 0 0;border-radius:16px;overflow:hidden;border:1px solid var(--line);
-  background:#080a0f;box-shadow:0 24px 70px rgba(0,0,0,.5)}
-.preview iframe{display:block;width:100%;height:420px;border:0}
+.eyebrow{display:inline-block;margin-top:34px;font-size:12px;font-weight:900;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mint);background:rgba(40,224,140,.08);border:1px solid rgba(40,224,140,.25);
+  border-radius:999px;padding:5px 12px}
+h1{font-size:clamp(30px,5.4vw,52px);line-height:1.06;letter-spacing:-.035em;margin:16px 0 14px;font-weight:900}
+h1 em{font-style:normal;color:var(--mint)}
+h2{font-size:clamp(22px,3vw,28px);font-weight:900;letter-spacing:-.02em;margin:64px 0 8px}
+.sub{color:var(--dim);margin:0 0 22px;max-width:66ch}
+.lede{font-size:17.5px;color:#b5bdcc;max-width:64ch;margin:0}
+.cta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:12px;padding:12px 18px;font-weight:900;
+  font-size:14px;text-decoration:none;border:1px solid var(--line);color:var(--ink);background:var(--glass2)}
+.btn.primary{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0}
+.btn:hover{filter:brightness(1.08)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:34px}
+@media(min-width:760px){.stats{grid-template-columns:repeat(4,1fr)}}
+.stat{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--glass)}
+.stat b{display:block;font-size:24px;font-weight:900;letter-spacing:-.02em}
+.stat span{font-size:12.5px;color:var(--dim)}
 .grid{display:grid;gap:14px;grid-template-columns:1fr}
 @media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
-.card{border:1px solid var(--line);border-radius:16px;padding:20px;background:var(--glass)}
-.card.gold{border-color:rgba(255,201,60,.4);
-  background:linear-gradient(180deg,rgba(255,201,60,.08),rgba(255,201,60,.02))}
-.card h3{margin:0 0 2px;font-size:17px;font-weight:900}
-.card .price{font-size:13px;color:var(--dim);font-weight:700;margin-bottom:14px}
-.card.gold .price{color:var(--gold)}
-ul{list-style:none;padding:0;margin:0}
-li{padding:6px 0 6px 24px;position:relative;font-size:14.5px}
+.card{border:1px solid var(--line);border-radius:18px;padding:22px;background:var(--glass);position:relative}
+.card.feature{border-color:rgba(40,224,140,.35);background:linear-gradient(180deg,rgba(40,224,140,.07),rgba(40,224,140,.015))}
+.card .tag{font-size:11px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--mint)}
+.card h3{margin:6px 0 8px;font-size:19px;font-weight:900;letter-spacing:-.01em}
+.card p{margin:0 0 12px;color:#b5bdcc;font-size:14.5px}
+.give{display:grid;gap:10px;grid-template-columns:1fr}
+@media(min-width:520px){.give{grid-template-columns:1fr 1fr}}
+.give div{border-top:1px solid var(--line);padding-top:10px}
+.give b{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+ul{list-style:none;padding:0;margin:6px 0 0}
+li{padding:4px 0 4px 20px;position:relative;font-size:14px}
 li::before{content:"→";position:absolute;left:0;color:var(--mint);font-weight:900}
-.card.gold li::before{color:var(--gold)}
-li.no{color:var(--dim)}
-li.no::before{content:"·";color:var(--dim)}
+.ask li::before{content:"·";color:var(--dim);font-size:18px;line-height:1.1}
+.steps{counter-reset:s;display:grid;gap:12px;grid-template-columns:1fr}
+@media(min-width:760px){.steps{grid-template-columns:repeat(3,1fr)}}
+.step{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--glass)}
+.step::before{counter-increment:s;content:counter(s);display:inline-grid;place-items:center;width:28px;height:28px;
+  border-radius:50%;background:rgba(40,224,140,.12);color:var(--mint);font-weight:900;margin-bottom:8px}
+.step b{display:block;margin-bottom:4px}
+.step span{color:var(--dim);font-size:14px}
+.preview{margin:18px 0 0;border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  background:#080a0f;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.preview iframe{display:block;width:100%;height:440px;border:0}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 pre{background:#0b0e16;border:1px solid var(--line);border-radius:12px;padding:14px;
-  overflow-x:auto;font-size:12.5px;line-height:1.55;margin:12px 0 0}
+  overflow-x:auto;font-size:12.5px;line-height:1.55;margin:12px 0 0;white-space:pre-wrap;word-break:break-all}
 .builder{border:1px solid var(--line);border-radius:16px;padding:18px;background:var(--glass);margin-top:14px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 label{font-size:12px;font-weight:800;color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
@@ -61,12 +87,14 @@ select,input[type=number]{background:var(--glass2);border:1px solid var(--line);
 button{background:linear-gradient(180deg,#3df09b,#0fae66);color:#04210f;border:0;
   border-radius:10px;padding:10px 16px;font:900 13px ui-sans-serif,sans-serif;cursor:pointer}
 button:active{transform:scale(.98)}
-.tg{display:inline-flex;align-items:center;gap:8px;background:var(--glass2);
-  border:1px solid var(--line);border-radius:12px;padding:12px 16px;text-decoration:none;
-  color:var(--ink);font-weight:800;margin-top:14px}
-.tg:hover{border-color:rgba(61,240,155,.5)}
-footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
-  color:var(--dim);font-size:13px}
+.tiers{display:grid;gap:14px;grid-template-columns:1fr;margin-top:14px}
+@media(min-width:760px){.tiers{grid-template-columns:1fr 1fr}}
+.faq p{margin:0 0 16px;color:#b5bdcc;max-width:72ch}
+.faq b{color:var(--ink)}
+.contact{margin-top:64px;border:1px solid rgba(40,224,140,.35);border-radius:20px;padding:26px;
+  background:linear-gradient(135deg,rgba(40,224,140,.10),rgba(139,123,255,.06))}
+.contact h2{margin:0 0 6px}
+footer{margin-top:50px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}
 .note{font-size:13px;color:var(--dim);margin-top:10px}
 </style>
 </head>
@@ -74,34 +102,162 @@ footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
 <div class="wrap">
 
 <header>
-  <img class="mark" src="/mark.png" alt="" width="26" height="26">
+  <img class="mark" src="/mark.png" alt="" width="28" height="28">
   <div class="wordmark">pumpbubble<i>.fun</i></div>
   <a class="back" href="/">← back to the map</a>
 </header>
 
-<h1>Put the live pump.fun market on your site.</h1>
-<p class="lede">One iframe. Live market caps, real token art, updating every few seconds —
-straight from pump.fun. Free to embed, and it stays free.</p>
+<span class="eyebrow">Partners</span>
+<h1>Live maps of the market.<br><em>Built with partners.</em></h1>
+<p class="lede">pumpbubble.fun draws crypto, pump.fun, stocks, chains, launchpads, prediction markets and
+compute as live bubble maps — with a Telegram buy bot and a swap built in. We work with GPU networks,
+launchpads, chains, wallets and data providers that want to be where traders already look.</p>
+<div class="cta">
+  <a class="btn primary" href="https://t.me/casper_crypto" target="_blank" rel="noopener">Talk to us on Telegram →</a>
+  <a class="btn" href="https://x.com/pumpbubblefun" target="_blank" rel="noopener">DM us on X</a>
+</div>
 
+<div class="stats">
+  <div class="stat"><b>~8,000</b><span>visitors a month, and growing</span></div>
+  <div class="stat"><b>15</b><span>live maps, from pump.fun to GPU prices</span></div>
+  <div class="stat"><b>4</b><span>chains in the buy bot: Solana, Base, Ethereum, Robinhood</span></div>
+  <div class="stat"><b>Days</b><span>from idea to live: the Compute map shipped two days after CME's GPU futures</span></div>
+</div>
+
+<h2>Ways to work together</h2>
+<p class="sub">Every partnership is a trade both sides can measure. No invented numbers, no paid rankings
+dressed up as real ones — that is the whole value of the map.</p>
+
+<div class="grid">
+
+  <div class="card feature">
+    <div class="tag">GPU &amp; compute networks</div>
+    <h3>Your GPU prices on the board</h3>
+    <p>The Compute map shows what one GPU rents for, per hour, above a map of everyone who sells
+    compute — chips, memory, clouds and compute tokens. Compute just became a market; this is where
+    traders look at it.</p>
+    <div class="give">
+      <div><b>You get</b><ul>
+        <li>Your market's prices on the strip, beside Akash</li>
+        <li>Your token on the compute map</li>
+        <li>A place in our weekly "price of compute" post</li></ul></div>
+      <div class="ask"><b>We ask</b><ul>
+        <li>A public price feed, or permission to read yours</li>
+        <li>A co-post when it goes live</li></ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tag">Launchpads &amp; chains</div>
+    <h3>Your chain, mapped</h3>
+    <p>We built the first live map of Robinhood Chain and of Base: every token ranked by real market
+    cap, copycat swarms filtered, one bubble per ticker.</p>
+    <div class="give">
+      <div><b>You get</b><ul>
+        <li>A live map of your chain or launchpad</li>
+        <li>Buy alerts for your projects' Telegram groups</li>
+        <li>A swap for your tokens on our map</li></ul></div>
+      <div class="ask"><b>We ask</b><ul>
+        <li>A link from your site or docs</li>
+        <li>A co-announcement</li></ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tag">Wallets, apps &amp; trading tools</div>
+    <h3>Our maps in your app</h3>
+    <p>Any of our maps in one iframe, live, with real token art. Buy buttons can route into your
+    terminal or swap.</p>
+    <div class="give">
+      <div><b>You get</b><ul>
+        <li>A free embed, or a branded one</li>
+        <li>Your token or market pinned on screen</li>
+        <li>Buy traffic routed to you</li></ul></div>
+      <div class="ask"><b>We ask</b><ul>
+        <li>A referral or revenue share on routed trades</li></ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tag">Data providers</div>
+    <h3>Your index, in front of traders</h3>
+    <p>Indexes and benchmarks for GPU rental, prediction markets or on-chain flows, shown on a
+    free map with a link back to you.</p>
+    <div class="give">
+      <div><b>You get</b><ul>
+        <li>Your benchmark seen by an active trading audience</li>
+        <li>A link back on every view</li></ul></div>
+      <div class="ask"><b>We ask</b><ul>
+        <li>A licence to display it</li></ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tag">Projects &amp; tokens</div>
+    <h3>Be seen on the map</h3>
+    <p>Gold bubbles sized by what you pay, slots on the moving ad rail, and a line under every buy
+    alert in every group. Self-serve, paid in SOL, live in minutes. Paid is always marked as paid.</p>
+    <div class="give">
+      <div><b>You get</b><ul>
+        <li>Gold bubble, ad rail slot, buy-alert line</li>
+        <li>Free buy bot and captcha for your group</li></ul></div>
+      <div class="ask"><b>Start</b><ul>
+        <li><a href="/">Open the map</a> and press Boost</li></ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tag">Something else</div>
+    <h3>Build it with us</h3>
+    <p>A tool for your ecosystem, a map for your community, a feed for your bot. We ship fast and
+    we ship it in public.</p>
+    <div class="give">
+      <div><b>Recent</b><ul>
+        <li>Compute map and GPU price strip</li>
+        <li>Insiders: what Congress and CEOs trade</li>
+        <li>Calls: pump.fun callers ranked by hit rate</li></ul></div>
+      <div class="ask"><b>Also live</b><ul>
+        <li>Telegram buy bot with captcha</li>
+        <li>Our own swap on four chains</li></ul></div>
+    </div>
+  </div>
+
+</div>
+
+<h2>How it starts</h2>
+<div class="steps">
+  <div class="step"><b>Message us</b><span>Telegram or X. Say what you have and what you want to reach.</span></div>
+  <div class="step"><b>We scope it</b><span>Usually a feed, a link and a date. We tell you plainly what we can and cannot deliver.</span></div>
+  <div class="step"><b>It goes live</b><span>Most integrations ship within a week, and we announce them together.</span></div>
+</div>
+
+<h2>Embed a live map</h2>
+<p class="sub">One iframe, any map, live. Free with a small badge; branded on the partner tier.</p>
 <div class="preview">
-  <iframe src="/embed?limit=40&amp;real=1" loading="lazy" title="Live pump.fun bubble map"></iframe>
+  <iframe src="/embed?source=compute&amp;limit=40&amp;tf=h24" loading="lazy" title="Live compute bubble map"></iframe>
 </div>
 <p class="note">That frame is the real thing, live, right now — not a screenshot.</p>
 
-<h2>Get the code</h2>
 <div class="builder">
   <div class="row">
-    <label for="b-mode">Feed</label>
-    <select id="b-mode">
-      <option value="graduated">Graduated</option>
-      <option value="bonding">Bonding curve</option>
+    <label for="b-src">Map</label>
+    <select id="b-src">
+      <option value="pumpfun">pump.fun</option>
+      <option value="trending">Trending</option>
+      <option value="majors">Crypto</option>
+      <option value="stocks">Stocks</option>
+      <option value="compute" selected>Compute</option>
+      <option value="robinhood">Robinhood Chain</option>
+      <option value="base">Base</option>
+      <option value="chains">Chains</option>
+      <option value="pads">Launchpads</option>
+      <option value="prediction">Prediction markets</option>
     </select>
     <label for="b-tf">Timeframe</label>
     <select id="b-tf">
-      <option value="m5">5m</option>
-      <option value="h1" selected>1h</option>
-      <option value="h6">6h</option>
-      <option value="h24">24h</option>
+      <option value="h1">1h</option>
+      <option value="h24" selected>24h</option>
+      <option value="d7">7d</option>
     </select>
     <label for="b-limit">Bubbles</label>
     <input id="b-limit" type="number" min="10" max="200" value="60" style="width:90px">
@@ -112,58 +268,52 @@ straight from pump.fun. Free to embed, and it stays free.</p>
   <div class="row" style="margin:12px 0 0"><button id="copy">Copy embed code</button></div>
 </div>
 
-<h2>Free, and partner</h2>
-<div class="grid">
+<div class="tiers">
   <div class="card">
-    <h3>Free</h3>
-    <div class="price">$0 — no account, no key</div>
+    <h3>Free embed</h3>
     <ul>
-      <li>Live pump.fun data, same as the main site</li>
-      <li>Real token art and tickers</li>
-      <li>Graduated or bonding-curve feed</li>
-      <li>Pick timeframe and bubble count</li>
+      <li>Any map, live, same data as the site</li>
+      <li>Real token art, your timeframe and bubble count</li>
       <li>Unlimited page views</li>
-      <li class="no">Small “live on pumpbubble.fun” badge</li>
-      <li class="no">Our colours</li>
+      <li style="color:var(--dim)">Small "live on pumpbubble.fun" badge</li>
     </ul>
   </div>
-  <div class="card gold">
-    <h3>Partner</h3>
-    <div class="price">monthly · invoiced</div>
+  <div class="card feature">
+    <h3>Partner embed</h3>
     <ul>
       <li><b>No badge</b> — it reads as part of your site</li>
       <li><b>Your accent colour</b></li>
-      <li><b>Your token pinned</b>, always on screen whatever the ranking says</li>
-      <li>Everything in Free</li>
-      <li>Priority if the data source changes</li>
+      <li><b>Your token pinned</b>, on screen whatever the ranking</li>
+      <li>Priority if a data source changes</li>
     </ul>
-    <a class="tg" href="https://t.me/casper_crypto" target="_blank" rel="noopener">
-      Talk to us on Telegram →</a>
   </div>
 </div>
 
-<h2>Questions people actually ask</h2>
+<h2>Questions partners ask</h2>
+<div class="faq">
+  <p><b>How big is the audience?</b><br>About 8,000 visitors a month, mostly active crypto traders, plus
+  the Telegram groups running our buy bot. We are early and say so — partners get placement that is
+  priced for today, and grows with us.</p>
+  <p><b>Can a partner change what the data says?</b><br>No. You control presentation — which map,
+  colour, pinned token. Nothing lets anyone misstate a price or a market cap, because the day that is
+  possible the map is worth nothing to anyone, including you. Paid placement is always marked as paid.</p>
+  <p><b>Does the embed slow a page down?</b><br>It is a lazy-loaded iframe on its own origin, so it
+  cannot block your page, and token art comes through our CDN cache.</p>
+  <p><b>Do you hold users' funds?</b><br>Never. The swap and every Buy button hand the trade to the
+  user's own wallet to sign.</p>
+</div>
 
-<p class="lede" style="font-size:15px"><b>Does it slow my page down?</b><br>
-It is a lazy-loaded iframe on its own origin, so it cannot block your page. Token art is served
-through our CDN cache rather than hotlinked from IPFS.</p>
-
-<p class="lede" style="font-size:15px"><b>What happens if my key expires?</b><br>
-The embed keeps working and falls back to the free, badged tier. It never goes blank. A lapsed
-invoice should start a conversation, not take your page down.</p>
-
-<p class="lede" style="font-size:15px"><b>Can I change what the data says?</b><br>
-No, and that is deliberate. You control presentation — size, timeframe, feed, colour, which token is
-pinned. Nothing lets an embed misstate a market cap or a price change, because the moment that is
-possible the map is worth nothing to anyone, including you.</p>
-
-<p class="lede" style="font-size:15px"><b>Where does the data come from?</b><br>
-pump.fun directly for identity, art and market cap. Price change and liquidity come from
-DexScreener. Tokens whose market cap is not backed by liquidity, and copycat ticker swarms, are
-filtered by default.</p>
+<div class="contact">
+  <h2>Let's talk</h2>
+  <p class="sub" style="margin-bottom:0">Tell us what you have and who you want to reach.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://t.me/casper_crypto" target="_blank" rel="noopener">Telegram →</a>
+    <a class="btn" href="https://x.com/pumpbubblefun" target="_blank" rel="noopener">X @pumpbubblefun</a>
+  </div>
+</div>
 
 <footer>
-  <a href="/">pumpbubble.fun</a> · live bubble map for pump.fun ·
+  <a href="/">pumpbubble.fun</a> · live bubble maps of crypto, pump.fun, stocks, chains and compute ·
   <a href="https://x.com/pumpbubblefun" target="_blank" rel="noopener">X</a> · <a href="https://t.me/pumpbubble" target="_blank" rel="noopener">Telegram</a> · <a href="https://t.me/pumpbubblebot" target="_blank" rel="noopener">Free buy bot</a> ·
   <a href="https://t.me/casper_crypto" target="_blank" rel="noopener">Contact</a>
 </footer>
@@ -171,14 +321,14 @@ filtered by default.</p>
 </div>
 
 <script>
-/* The builder writes the same URL shape the docs describe, so what someone
-   copies here is exactly what we support. */
+/* The builder writes the same URL shape the map reads (?source=, ?tf=, ?limit=),
+   so what someone copies here is exactly what we support. */
 const $=id=>document.getElementById(id);
 const clampNum=(v,lo,hi,dflt)=>{const n=parseInt(v,10);return Number.isFinite(n)?Math.min(hi,Math.max(lo,n)):dflt};
 
 function build(){
   const p=new URLSearchParams();
-  if($('b-mode').value!=='graduated')p.set('mode',$('b-mode').value);
+  if($('b-src').value!=='pumpfun')p.set('source',$('b-src').value);
   if($('b-tf').value!=='h1')p.set('tf',$('b-tf').value);
   p.set('limit',clampNum($('b-limit').value,10,200,60));
   const h=clampNum($('b-h').value,240,1200,600);
@@ -186,9 +336,9 @@ function build(){
   $('snippet').textContent =
 `<iframe src="https://pumpbubble.fun/embed${q?'?'+q:''}"
         style="width:100%;height:${h}px;border:0;border-radius:16px"
-        loading="lazy" title="Live pump.fun bubble map"></iframe>`;
+        loading="lazy" title="Live bubble map by pumpbubble.fun"></iframe>`;
 }
-['b-mode','b-tf','b-limit','b-h'].forEach(id=>$(id).addEventListener('input',build));
+['b-src','b-tf','b-limit','b-h'].forEach(id=>$(id).addEventListener('input',build));
 build();
 
 $('copy').onclick=async()=>{

@@ -218,7 +218,10 @@ address is one request, so `SMART_WATCH` is now 10, down from 100; every buy of 
 group tracks is one too, which is the part that grows with the bot and the reason a busy bot needs
 Workers Paid — one hot token can trade 20,000–30,000 times a day); each delivery logs one
 `{ev:'tg-trade'}` line so the Logs split group buys from wallet swaps;
-a map open in a tab (a refresh every 15 s — now paused while the tab is hidden); the image proxy
+a map open in a tab (a refresh every 15 s — now paused while the tab is hidden; and the page's
+`<link rel="preload">` must name exactly the URL `fetchLive()` asks for first — it said
+`?mode=graduated` while the page asked `?source=pumpfun`, so every visit fetched the feed twice
+until 2026-10-08); the image proxy
 (one request per bubble's art on a first visit; the browser caches it after). `[observability]` is
 on at a tenth of requests, so the dashboard's Logs name the route that is spending it.
 
@@ -365,6 +368,11 @@ cache TTL and whether it is boostable.
   before it can appear at all — the cheapest scam filter available. Pricing 2,677 addresses is
   ninety requests, so `src/basechain.mjs` sweeps: a slice per cron tick, tokens with a pool
   refreshed often and the rest re-checked slowly, and the map reads the cache so it never waits.
+
+  **Art comes from the list where DexScreener has none** (2026-10-08): a quarter of the map (53 of
+  220) drew letters while the list carries a logo for all 2,846 tokens. The universe record keeps
+  each one as a short CoinGecko path (`logoPath`) and the map serves it at the large size
+  (`logoUrl`); a record from before logos were kept is re-read once.
 
   **A pinned token is never ranked off the map.** $MAC prices correctly at $256k and sat outside
   the top 220 by market cap, so pinning it put it in the cache and still not on screen — which is
@@ -973,6 +981,23 @@ a fill, the user signs, no custody). It needs the operator's builder wallet with
 Hyperliquid, a US block, a look at EU rules for derivatives, and — because Hyperliquid's orders are
 signed with an agent key in the browser — a signing library (secp256k1, keccak), which this
 project's no-dependency rule says to argue for first.
+
+## Partners
+
+`public/partners.html` at `/partners`, linked as **Partners** from the map's toolbar (it was "Embed")
+and from the other pages' navigation. Rebuilt 2026-10-08, asked for as "invite others to partner and
+how": what pumpbubble is, honest numbers (~8,000 visitors a month, the operator's figure — partners
+are told it is small and priced for today), six ways to work together each with *you get / we ask*
+(GPU networks, launchpads and chains, wallets and apps, data providers, projects, custom builds), how
+it starts, the embed builder for **every** map (`?source=` — the old builder offered only pump.fun
+and the bonding feed that no longer exists), and the free and partner embed tiers. The page claims
+only what is live; roadmap items stay off it until the operator approves them.
+
+The working list behind it — who to ask first, why each would care at our size, what to offer and
+ask, and first messages for the operator to send — is `docs/partners.md`. Compute comes first: Akash
+(already the strip's market; a grant for an open GPU-price API), Nosana (Solana-native, prices in NOS
+per second that nobody reads), io.net (prices; grant if Launch Studio runs on their GPUs), Ornn (a
+display licence), trade.xyz / Hyperliquid (builder fees).
 
 ## The generative card
 

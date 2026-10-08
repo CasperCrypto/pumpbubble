@@ -39,7 +39,8 @@
 <!-- Preconnect only to what the very first paint needs: the API call that
      fills the map, and the image host every token logo is proxied through
      (same origin, so this is really just a DNS/TLS hint for the CDN edge). -->
-<link rel="preload" href="/api/tokens?mode=graduated" as="fetch" crossorigin>
+<!-- the same URL fetchLive() asks for first, or the browser downloads the feed twice -->
+<link rel="preload" href="/api/tokens?source=pumpfun" as="fetch" crossorigin>
 
 
 <script type="application/ld+json">
@@ -976,7 +977,7 @@ body.embed #brandbadge.on{display:flex}
        traffic back. Worth a permanent link, not a buried footer. -->
   <a class="iconbtn sw" href="/swap" title="Swap any Solana token from your own wallet"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>Swap</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Market overview</a>
-  <a class="iconbtn" href="/partners" title="Put this map on your own site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Embed</a>
+  <a class="iconbtn" href="/partners" title="Partner with us, or embed a live map on your site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Partners</a>
   <a class="iconbtn" href="https://t.me/pumpbubblebot?startgroup=setup&amp;admin=delete_messages+restrict_members+pin_messages+invite_users" target="_blank" rel="noopener" title="Free buy alerts and a captcha for your Telegram group"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg>Free buy bot</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
@@ -1559,7 +1560,7 @@ async function refresh(first){
   try{
     merge(await fetchLive()); S.live=true;
     const s=Math.round((S.age||0)/1000);
-    setLive(true, S.serverStale ? 'live · '+s+'s old' : 'live');
+    setLive(true, S.serverStale ? 'live · '+(s<90?s+'s':Math.round(s/60)+'m')+' old' : 'live');
     tapbar();
   }
   catch(e){
