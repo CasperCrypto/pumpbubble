@@ -15,7 +15,7 @@
 
 import {
   GPUS, HIST_KEY, median, akashQuote, boardRow, pushHist, changeSince,
-  gpuBoard, COMPUTE_TOKENS, COMPUTE_STOCKS, ADS_OK, pickCompute, computeCgIds,
+  gpuBoard, COMPUTE_TOKENS, COMPUTE_STOCKS, ADS_OK, pickCompute, computeCgIds, gpuFeed,
 } from '../src/compute.mjs';
 import { refreshWindows as refreshCryptoWin } from '../src/cryptowin.mjs';
 
@@ -145,6 +145,21 @@ console.log('\nthe bubbles — the right assets, as copies');
   is('symbol → CoinGecko id for the long windows', computeCgIds(coins), { TAO: 'bittensor', IO: 'io' });
 }
 
+console.log('\nthe open feed — the strip numbers, nothing added');
+{
+  const board = { at: Date.UTC(2026, 9, 8, 12), gpus: [{ id: 'h100', label: 'H100', price: 2.72, from: 2.04, ch24: null, ch7: -1.5,
+    quotes: [{ p: 'akash', typical: 2.72, from: 2.04, avail: 20, total: 68 }] }] };
+  const f = gpuFeed(board, null);
+  is('one row per model, in the strip\'s numbers', f.gpus[0], { id: 'h100', model: 'H100', usdPerHour: 2.72, fromUsdPerHour: 2.04,
+    change24h: null, change7d: -1.5, gpusFree: 20, gpusListed: 68 });
+  is('says what the number is', /posted/i.test(f.what) && /not trades/.test(f.what), true);
+  is('timestamped', f.at, '2026-10-08T12:00:00.000Z');
+  is('no history unless asked', 'history' in f, false);
+  const h = gpuFeed(board, { pts: [{ t: Date.UTC(2026, 9, 8, 11), p: { h100: 2.7 } }] });
+  is('history on request', h.history, [{ at: '2026-10-08T11:00:00.000Z', usdPerHour: { h100: 2.7 } }]);
+  is('no board: not ok, nothing invented', [gpuFeed(null, null).ok, gpuFeed(null, null).gpus.length], [false, 0]);
+}
+
 console.log('\nthe lists themselves');
 {
   const syms = Object.values(COMPUTE_STOCKS).flat();
@@ -153,6 +168,10 @@ console.log('\nthe lists themselves');
   is('every token has a logo and a CoinGecko id', COMPUTE_TOKENS.every(t => /^https:\/\//.test(t.img) && t.cg), true);
   is('every admitted ADS is on a list', [...ADS_OK].every(s => syms.includes(s)), true);
   is('GPU ids unique', GPUS.length, new Set(GPUS.map(x => x.id)).size);
+  const evm = COMPUTE_TOKENS.filter(t => t.eth), sol = COMPUTE_TOKENS.filter(t => t.mint);
+  is('Ethereum contracts are addresses', evm.every(t => /^0x[0-9a-f]{40}$/.test(t.eth)), true);
+  is('Solana mints look like mints', sol.every(t => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t.mint)), true);
+  is('no token is on two chains here', COMPUTE_TOKENS.every(t => !(t.eth && t.mint)), true);
 }
 
 console.log('\nlong windows — a newly added coin does not wait a day');

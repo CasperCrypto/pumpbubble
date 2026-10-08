@@ -976,6 +976,19 @@ Chips, Memory, Servers & networks, Clouds & data centers, Tokens; `?grp=memory` 
 - The tab opens on 24H (`fixTf`): companies carry 24H, 1M and 1Y, coins those and 1H and 1W.
   `?source=compute|gpu|gpus`. Share top 10 works on it (`BOARD_SRC`).
 
+**Buy on the compute tokens** (2026-10-08): RENDER, IO and NOS carry their Solana mint, ATH, AIOZ,
+GLM, LPT, PHA and RLC their Ethereum contract (`mint` / `eth` in `COMPUTE_TOKENS`, read off
+CoinGecko's platform listing, each quoted with a route through Jupiter or Relay before it was
+added), so the card's Buy opens our swap with our fee. `chartUrl()` checks the `cg:` id before the
+mint, or RENDER's Chart would have opened a pump.fun page for a coin that is not one. Tokens on
+chains of their own (TAO, ICP, THETA, AKT, FLUX) have no Buy; CHIP, 0G and GAIB wait until their
+pools are checked.
+
+**The open feed** (`/api/compute/gpus`, `gpuFeed()`): the strip as free JSON, `?history=1` for the
+hourly points, CORS open, `cache-control` five minutes, 60 requests a minute per caller, read from the
+same `gpuBoardCached` the map uses so a caller costs no upstream call. It exists so the Akash grant
+application (`docs/grants/akash.md`) can point at a live product.
+
 **Not built yet, and why**: the Trade button on Hyperliquid's equity perps (builder codes: up to 0.1%
 a fill, the user signs, no custody). It needs the operator's builder wallet with 100 USDC on
 Hyperliquid, a US block, a look at EU rules for derivatives, and — because Hyperliquid's orders are

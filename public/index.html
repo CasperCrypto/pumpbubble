@@ -3018,9 +3018,12 @@ function openShare(t){
 function chartUrl(t){
   if(!t)return '';
   if((t.kind==='trader'||t.kind==='caller')&&t.wallet)return 'https://pump.fun/profile/'+encodeURIComponent(t.wallet);
+  const id=String(t.id||'');
+  /* A coin from the wider market charts where its numbers come from, even when
+     it carries a mint for the Buy button: RENDER's mint is not a pump.fun coin. */
+  if(id.startsWith('cg:'))return 'https://coinpaprika.com/coin/'+encodeURIComponent(id.slice(3))+'/';
   if(t.mint)return 'https://pump.fun/coin/'+encodeURIComponent(t.mint);
 
-  const id=String(t.id||'');
   if(t.addr){
     /* chain is stamped by the feed; the id prefix is the fallback for a token
        that arrived before that was carried. */

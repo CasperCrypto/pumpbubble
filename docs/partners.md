@@ -21,6 +21,28 @@ docs, a data feed or permission to show theirs, a grant, a revenue share, money 
 **Never offer**: invented traffic numbers, rankings for sale (paid placement is always marked as
 paid), anything built on Congress data for a fee (5 U.S.C. 13107).
 
+## What is live to point partners at (2026-10-08)
+
+- `/partners` — the public page, with the open GPU price API documented (`#api`).
+- `https://pumpbubble.fun/api/compute/gpus` — the strip as a free JSON feed (`?history=1` for the
+  hourly points). The Akash grant pitch says "live", not "planned".
+- Buy on the Compute map's tokens through our swap (1% fee): RENDER, IO, NOS on Solana; ATH, AIOZ,
+  GLM, LPT, PHA, RLC on Ethereum — every one quoted with a route on 2026-10-08.
+- The grant application: `docs/grants/akash.md`.
+
+## Contact routes (checked 2026-10-08)
+
+| Who | Route | Confidence |
+|---|---|---|
+| Akash | X @akashnet_, akash.network/grants, the Akash forum | good (third-party trackers) |
+| Ornn | X @OrnnExchange, ornn.com, data.ornn.com | good |
+| Nosana | the links on nosana.io — handle not confirmed | go via the site |
+| io.net | the links on io.net | go via the site |
+| Pons | the links on its own site — the founder is reported as @MEADGod; not the official account | go via the site |
+
+Ornn is a stronger target than it first looked: a $33M seed led by a16z crypto (June 2026), contracts
+on its index already live on Kalshi and Robinhood — retail crypto distribution is the gap we fill.
+
 ## Compute — the first wave
 
 | # | Who | Why they would care | We offer | We ask | Route |

@@ -224,6 +224,18 @@ dressed up as real ones — that is the whole value of the map.</p>
 
 </div>
 
+<h2 id="api">Free GPU price API</h2>
+<p class="sub">The Compute strip as an open feed: what one GPU rents for, per hour, on Akash's open
+market, with the day's and week's move. Free to use with a link back to the map.</p>
+<pre>GET https://pumpbubble.fun/api/compute/gpus
+GET https://pumpbubble.fun/api/compute/gpus?history=1   <span style="color:var(--dim)">// + hourly points, 8 days</span>
+
+{ "unit": "USD per GPU-hour", "market": "Akash Network",
+  "gpus": [ { "model": "H100", "usdPerHour": 2.72, "fromUsdPerHour": 2.04,
+              "change24h": …, "change7d": …, "gpusFree": 20, "gpusListed": 68 }, … ] }</pre>
+<p class="note">Posted rates, not trades. Cached five minutes; CORS open. GPU networks: send us your
+price feed and your market appears here and on the strip.</p>
+
 <h2>How it starts</h2>
 <div class="steps">
   <div class="step"><b>Message us</b><span>Telegram or X. Say what you have and what you want to reach.</span></div>

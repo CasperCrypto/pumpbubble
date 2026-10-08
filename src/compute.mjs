@@ -191,6 +191,31 @@ export async function gpuBoard({ store, now = Date.now(), fetchers = {} } = {}) 
   return { at: now, gpus: rows, errors };
 }
 
+/* The open feed (/api/compute/gpus): the board as anyone may read it. Every
+   number is one the strip shows; nothing is added for the API. */
+export function gpuFeed(board, hist) {
+  const gpus = ((board && board.gpus) || []).map(r => {
+    const ak = (r.quotes || []).find(q => q.p === 'akash') || {};
+    return {
+      id: r.id, model: r.label, usdPerHour: r.price, fromUsdPerHour: r.from,
+      change24h: r.ch24 ?? null, change7d: r.ch7 ?? null,
+      gpusFree: ak.total ? ak.avail : null, gpusListed: ak.total || null,
+    };
+  });
+  const out = {
+    ok: gpus.length > 0,
+    what: 'Posted on-demand rates for one GPU for one hour on Akash\'s open market — what providers ask, not trades.',
+    market: 'Akash Network', unit: 'USD per GPU-hour',
+    at: board ? new Date(board.at).toISOString() : null,
+    gpus,
+    terms: 'Free to use. Please link to https://pumpbubble.fun/?source=compute where you show it.',
+  };
+  if (hist) {
+    out.history = ((hist && hist.pts) || []).map(p => ({ at: new Date(p.t).toISOString(), usdPerHour: p.p }));
+  }
+  return out;
+}
+
 /* --------------------------------------------------------------- bubbles */
 /* Who sells compute, as bubbles beside the price board.
 
@@ -202,22 +227,28 @@ const CGI = 'https://coin-images.coingecko.com/coins/images/';
 export const COMPUTE_TOKENS = [
   { cp: 'tao-bittensor', cg: 'bittensor', img: CGI + '28452/large/ARUsPeNQ_400x400.jpeg' },
   { cp: 'icp-internet-computer', cg: 'internet-computer', img: CGI + '14495/large/Internet_Computer_logo.png' },
-  { cp: 'rndr-render-token', cg: 'render-token', img: CGI + '11636/large/rndr.png' },
+  { cp: 'rndr-render-token', cg: 'render-token', img: CGI + '11636/large/rndr.png', mint: 'rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof' },
   { cp: 'theta-theta-token', cg: 'theta-token', img: CGI + '2538/large/theta-token-logo.png' },
   { cp: 'akt-akash-network', cg: 'akash-network', img: CGI + '12785/large/akash-logo.png' },
-  { cp: 'ath14-aethir', cg: 'aethir', img: CGI + '36179/large/logogram_circle_dark_green_vb_green_%281%29.png' },
-  { cp: 'aioz-aioz-network', cg: 'aioz-network', img: CGI + '14631/large/aioz-logo-200.png' },
-  { cp: 'glm-golem', cg: 'golem', img: CGI + '542/large/Golem_Submark_Positive_RGB.png' },
+  { cp: 'ath14-aethir', cg: 'aethir', img: CGI + '36179/large/logogram_circle_dark_green_vb_green_%281%29.png', eth: '0xbe0ed4138121ecfc5c0e56b40517da27e6c5226b' },
+  { cp: 'aioz-aioz-network', cg: 'aioz-network', img: CGI + '14631/large/aioz-logo-200.png', eth: '0x626e8036deb333b408be468f951bdb42433cbf18' },
+  { cp: 'glm-golem', cg: 'golem', img: CGI + '542/large/Golem_Submark_Positive_RGB.png', eth: '0x7dd9c5cba05e151c895fde1cf355c9a1d5da6429' },
   { cp: 'chip-usdai', cg: 'chip-2', img: CGI + '102171777/large/CHIP_Token_Logo_Large.png' },
-  { cp: 'lpt-livepeer', cg: 'livepeer', img: CGI + '7137/large/badge-logo-circuit-green.png' },
-  { cp: 'io-ionet', cg: 'io', img: CGI + '37754/large/io_blackbg.png' },
+  { cp: 'lpt-livepeer', cg: 'livepeer', img: CGI + '7137/large/badge-logo-circuit-green.png', eth: '0x58b6a8a3302369daec383334672404ee733ab239' },
+  { cp: 'io-ionet', cg: 'io', img: CGI + '37754/large/io_blackbg.png', mint: 'BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K' },
   { cp: 'zero-gravity-0g', cg: 'zero-gravity', img: CGI + '69096/large/0G_1024x1024_Circular_Outlined.png' },
-  { cp: 'pha-phala-network', cg: 'pha', img: CGI + '12451/large/phala.png' },
-  { cp: 'nos-nosana', cg: 'nosana', img: CGI + '22553/large/POfb_I4u_400x400.jpg' },
-  { cp: 'rlc-iexec-rlc', cg: 'iexec-rlc', img: CGI + '646/large/pL1VuXm.png' },
+  { cp: 'pha-phala-network', cg: 'pha', img: CGI + '12451/large/phala.png', eth: '0x6c5ba91642f10282b576d91922ae6448c9d52f4e' },
+  { cp: 'nos-nosana', cg: 'nosana', img: CGI + '22553/large/POfb_I4u_400x400.jpg', mint: 'nosXBVoaCTtYdLvKY6Csb4AC8JCdQKKAaWYtx2ZMoo7' },
+  { cp: 'rlc-iexec-rlc', cg: 'iexec-rlc', img: CGI + '646/large/pL1VuXm.png', eth: '0x607f4c5bb672230e8672085532f7e901544a7375' },
   { cp: 'zel-zelcash', cg: 'zelcash', img: CGI + '5163/large/Flux_symbol_blue-white.png' },
   { cp: 'gaib-gaib', cg: 'gaib', img: CGI + '70737/large/gaib.png' },
 ];
+
+/* `mint` (Solana) and `eth` (an Ethereum contract) are where a token trades, read
+   off CoinGecko's own platform listing on 2026-10-08, so the card's Buy opens
+   our swap on the right asset. Tokens on chains of their own (TAO, ICP, THETA,
+   AKT, FLUX) have no Buy; CHIP, 0G and GAIB are left without one until their
+   pools are checked — a Buy that finds no route is worse than none. */
 
 /* Listed companies by what they sell: the chips, the memory, the boxes and
    networks around them, and the clouds and data centres that rent them out.
@@ -256,7 +287,11 @@ export function pickCompute(coins, stocks) {
   for (const t of COMPUTE_TOKENS) {
     const c = byCp.get(t.cp);
     if (!c) continue;
-    out.push({ ...c, pc: { ...c.pc }, rawImg: t.img || c.rawImg, grp: 'tokens' });
+    out.push({
+      ...c, pc: { ...c.pc }, rawImg: t.img || c.rawImg, grp: 'tokens',
+      ...(t.mint ? { mint: t.mint, chain: 'solana' } : {}),
+      ...(t.eth ? { addr: t.eth, chain: 'ethereum' } : {}),
+    });
   }
   const bySym = new Map();
   for (const s of stocks || []) {

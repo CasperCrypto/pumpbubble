@@ -39,7 +39,7 @@ import {
   refreshWindows as refreshCryptoWin,
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
-import { gpuBoard, COMPUTE_STOCKS, computeCgIds } from './compute.mjs';
+import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
@@ -900,6 +900,25 @@ export async function handle(req, ctx) {
   }
 
   try {
+    /* -------------------------------------------------- /api/compute/gpus */
+    /* The Compute strip as an open feed: what one GPU rents for, an hour, on
+       Akash's open market, with the day's and week's move and, on ?history=1,
+       the hourly points behind them. Free with a link back — it is what the
+       grant proposal to Akash offers, live before it is asked for. Read from
+       the same ten-minute board the map uses, so a caller costs no upstream
+       call; the edge and the caller may cache it five minutes. */
+    if (path === '/api/compute/gpus') {
+      const limited = rateLimit(req, 'gpuapi', 60, 60_000);
+      if (limited) return limited;
+      const board = await gpuBoardCached(ctx).catch(() => null);
+      let hist = null;
+      if (url.searchParams.get('history') === '1') {
+        try { hist = await ctx.store.get(GPU_HIST_KEY); } catch { /* none yet */ }
+      }
+      return json(gpuFeed(board, hist), board ? 200 : 503,
+        { 'cache-control': 'public, max-age=300' });
+    }
+
     /* ------------------------------------------------------- /api/tokens */
     if (path === '/api/tokens') {
       const limited = rateLimit(req, 'tokens', 180, 60_000);
