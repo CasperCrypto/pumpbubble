@@ -66,8 +66,8 @@ on its index already live on Kalshi and Robinhood — retail crypto distribution
 ## First messages (send from the operator's own accounts)
 
 **Akash**
-> Hi Akash team — we run pumpbubble.fun, live crypto maps with a Compute tab. Since CME listed GPU
-> futures we show what a GPU hour costs, and Akash is the market we price it from (H100 $2.72/h today,
+> Hi Akash team — we run pumpbubble.fun, live crypto maps with a Compute tab. With GPU futures on the
+> way (CME announced them) we show what a GPU hour costs, and Akash is the market we price it from (H100 $2.72/h today,
 > beside Ornn's $2.79). We'd like to open the board as a free API built on Akash data and apply for an
 > ecosystem grant to do it. Could we talk, and would you co-post when it's live?
 
