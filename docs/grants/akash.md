@@ -14,8 +14,8 @@ that day; refresh them before sending.
 
 ### Why now
 
-CME set October 5, 2026 as the launch of its first regulated GPU futures (H100 and B200 rental-index
-contracts). ICE has announced futures on Ornn's index. Compute is becoming a priced market, and the
+CME announced its first regulated GPU futures (H100 and B200 rental-index contracts) for October
+2026, with the regulator's review reportedly extended to November. ICE has announced futures on Ornn's index. Compute is becoming a priced market, and the
 reference prices behind those contracts are paid data: traders, builders and the press do not see
 them. The one GPU market whose prices are public by design is Akash — and today almost nobody outside
 Akash's own console sees them.

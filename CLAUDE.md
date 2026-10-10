@@ -901,9 +901,10 @@ House 200, companies 250) so a year of Congress cannot crowd out the rest. A 403
 ## Compute
 
 `src/compute.mjs`, source `compute`, the Compute tab (chip icon, after Insiders). Asked for on
-2026-10-07 as "compute power is now available to trade — what can we do in pumpbubble", two days
-after CME listed the first regulated compute futures (`GPU1` H100 and `GPU2` B200 rental-index
-futures, 730 GPU-hours a contract, settled on Silicon Data's index). Measured that day: the GPU-hour
+2026-10-07 as "compute power is now available to trade — what can we do in pumpbubble". CME had
+announced the first regulated compute futures for 5 October (`GPU1` H100 and `GPU2` B200 rental-index
+futures, 730 GPU-hours a contract, settled on Silicon Data's index); a later report says the CFTC
+extended its review to 9 November or later, and no first trade was confirmed — never say they trade. Measured that day: the GPU-hour
 contracts themselves barely trade (Kalshi's GPU markets showed no volume, Hyperliquid's `xyz:H100`
 perp no open interest), while the trades around them do (trade.xyz's AI, memory and chip perps
 ~$789M a day). So the tab shows both: **what a GPU hour costs**, as a strip above the map, and **who
