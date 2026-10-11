@@ -395,6 +395,27 @@ export const SOURCES = {
     chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
     fetch: () => [],
   },
+  /* KOLs: who pump.fun pays to call (src/kols.mjs), read from the CallersDO */
+  'kols-all': {
+    id: 'kols-all', label: 'KOLs', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'kols-1m': {
+    id: 'kols-1m', label: 'KOLs', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'kols-1w': {
+    id: 'kols-1w', label: 'KOLs', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
+  'kols-1d': {
+    id: 'kols-1d', label: 'KOLs', group: 'Callers',
+    chain: 'mixed', ttl: 60_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
   'traders-daily': {
     id: 'traders-daily', label: 'Traders', group: 'Traders',
     chain: 'mixed', ttl: 120_000, enrich: false, boostable: false, quality: 'major', history: false,

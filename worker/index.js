@@ -12,7 +12,8 @@
 import { Guard, runGuard } from '../src/guard.mjs';
 import { guardExpire, onEvmBuys, sendDm, formatCallAlert, onTrade as solTrade, tracked as solTracked } from '../src/tgbot.mjs';
 import { Endpoints, rpcList as solRpcs, watchList as solWatchList, poll as solPoll, solPolling, EVERY as SOL_EVERY, IDLE_EVERY as SOL_IDLE, QUIET_MS as SOL_QUIET } from '../src/solwatch.mjs';
-import { CallerBook, pollOnce, WINDOWS as CALL_WINDOWS } from '../src/callers.mjs';
+import { CallerBook, pollOnce, defaultHttp as callersHttp, WINDOWS as CALL_WINDOWS } from '../src/callers.mjs';
+import { KolBook, pollKols, KOL_PERIODS } from '../src/kols.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
@@ -693,10 +694,12 @@ export class TapArena {
    book is saved every two minutes: one storage write, not one per call. */
 const CALLERS_TICK_MS = 30_000;
 export class CallersDO {
-  constructor(state, env) { this.state = state; this.env = env; this.book = null; this.savedAt = Date.now(); }
+  constructor(state, env) { this.state = state; this.env = env; this.book = null; this.kols = null; this.savedAt = Date.now(); }
   async load() {
     if (this.book) return;
     this.book = CallerBook.from(await this.state.storage.get('book'));
+    /* the KOL board (src/kols.mjs) under its own key, so neither save carries the other */
+    this.kols = KolBook.from(await this.state.storage.get('kols'));
   }
   async fetch(req) {
     await this.load();
@@ -712,7 +715,12 @@ export class CallersDO {
     switch (b.op) {
       case 'board': out = { ok: true, window: win, rows: this.book.board(win, now), status: this.book.status(now) }; break;
       case 'live': out = { ok: true, rows: this.book.live(now, Math.min(200, Math.max(1, +b.limit || 150))), status: this.book.status(now) }; break;
-      case 'status': out = { ok: true, ...this.book.status(now) }; break;
+      case 'status': out = { ok: true, ...this.book.status(now), kols: this.kols.status(now) }; break;
+      case 'kols': {
+        const period = KOL_PERIODS[b.period] !== undefined ? b.period : 'all';
+        out = { ok: true, period, ...this.kols.board(period), status: this.kols.status(now) };
+        break;
+      }
       default: out = { ok: true };
     }
     return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json' } });
@@ -722,10 +730,13 @@ export class CallersDO {
     const now = Date.now();
     try { await pollOnce(this.book, now); }
     catch (e) { this.book.polls.lastError = String(e && e.message || e).slice(0, 120); }
+    try { await pollKols(this.kols, now, callersHttp()); }
+    catch (e) { this.kols.polls.lastError = String(e && e.message || e).slice(0, 120); }
     try { await this.sendAlerts(now); } catch { /* the next tick tries the next calls */ }
     if (now - this.savedAt > 120_000) {
       this.savedAt = now;
       try { await this.state.storage.put('book', this.book.toJSON(now)); } catch { /* next save */ }
+      try { await this.state.storage.put('kols', this.kols.toJSON()); } catch { /* next save */ }
     }
     await this.state.storage.setAlarm(Date.now() + CALLERS_TICK_MS);
   }

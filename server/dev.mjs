@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { handle } from '../src/api.mjs';
 import { memoryArena } from '../src/taps.mjs';
 import { memoryGuard } from '../src/guard.mjs';
-import { memoryCallers } from '../src/callers.mjs';
+import { memoryCallers, defaultHttp as callersHttp } from '../src/callers.mjs';
+import { withKols } from '../src/kols.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -64,7 +65,7 @@ const ctx = {
   /* the group guard, in memory — production keeps one Durable Object per group */
   guard: memoryGuard(),
   /* the callers' watcher, in memory — production keeps it in a Durable Object */
-  callers: memoryCallers(),
+  callers: withKols(memoryCallers(), callersHttp()),
   /* Lets the shared API render /market in dev the same way the worker does. */
   async readAsset(rel) {
     try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }
@@ -191,4 +192,12 @@ server.listen(PORT, () => {
   console.log(usingPublicRpc
     ? '  rpc           →  public endpoint (slow, rate-limited). Put your Helius URL in .env'
     : '  rpc           →  custom endpoint configured ✓');
+  /* The Calls tab's watcher is a Durable Object on its own alarm in production;
+     here it ticks only when asked, so a dev server does not poll pump.fun by
+     default. DEV_CALLERS=1 npm run dev */
+  if (process.env.DEV_CALLERS) {
+    const tick = () => ctx.callers('tick').catch(() => {});
+    tick(); setInterval(tick, 30_000);
+    console.log('  callers       →  polling pump.fun every 30 s (DEV_CALLERS)');
+  }
 });

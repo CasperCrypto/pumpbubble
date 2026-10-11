@@ -25,6 +25,17 @@ Unusual Whales (they sell this data, and copying their pages breaks their terms)
 SECForm4 (front-ends over the same SEC filings, read here directly); the House Clerk's PTR PDFs
 directly (they are encrypted PDFs with CID fonts — possible later, not needed while the API works).
 
+## Calls tab: KOLs (`src/kols.mjs`)
+
+| Data | Source | Notes, as read on 2026-10-11 |
+|---|---|---|
+| Callout rewards per caller (USDC paid, payouts, last paid) | pump.fun's public payout board, `frontend-api-v3.pump.fun/payouts/leaderboard` (top 500, `period` 1d / 1w / 1m or all-time) | keyless, what pump.fun shows on its own rewards page; 30 requests a minute |
+| Followers, X handle | pump.fun's public profile, `…/users/<wallet>` | keyless; the same profile pump.fun.com/profile shows |
+| A caller's last 100 calls (market cap at the call, peak, now) | `…/callout/list/<wallet>?limit=100` | keyless; 60 requests a minute; read at most every six hours per KOL |
+
+Nothing is stored that pump.fun does not publish itself; the medians, averages and "hold now" are
+computed here from those calls.
+
 ## Compute tab (`src/compute.mjs`)
 
 | Data | Source | Terms, as read on 2026-10-07 |

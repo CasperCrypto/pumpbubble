@@ -129,7 +129,8 @@ const caches = new Map();
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending', compute: 'compute',
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
   traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
-  callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly' };
+  callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly',
+  kols: 'kols-all', 'kols-all': 'kols-all', 'kols-1m': 'kols-1m', 'kols-1w': 'kols-1w', 'kols-1d': 'kols-1d' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H', compute: 'COMPUTE · 24H' };
 const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
@@ -148,6 +149,10 @@ const TEN_SHARE = {
   'smart-daily': 'What today\u2019s top pump.fun traders are holding',
   'smart-weekly': 'What this week\u2019s top pump.fun traders are holding',
   'smart-monthly': 'What this month\u2019s top pump.fun traders are holding',
+  'kols-all': 'Who pump.fun pays to call coins — and what their calls did for followers',
+  'kols-1m': 'Who pump.fun paid to call coins this month — and what their calls did for followers',
+  'kols-1w': 'Who pump.fun paid to call coins this week — and what their calls did for followers',
+  'kols-1d': 'Who pump.fun paid to call coins today — and what their calls did for followers',
   'callers-daily': 'The best callers on pump.fun today — by how often their calls reach 2×',
   'callers-weekly': 'The best callers on pump.fun this week — by how often their calls reach 2×',
   'callers-monthly': 'The best callers on pump.fun this month — by how often their calls reach 2×',
@@ -168,6 +173,7 @@ const TEN_SHARE = {
    dash where the number is the point. */
 function pickTen(tokens, tf) {
   if ((tokens || []).some(t => t && t.kind === 'caller')) return tokens.filter(t => t && t.caller && t.sym).slice(0, 10);
+  if ((tokens || []).some(t => t && t.kind === 'kol')) return tokens.filter(t => t && t.kol && t.sym).slice(0, 10);
   return (tokens || [])
     /* `!= null` first — Number(null) is 0, which is finite, and would have put
        an unmeasured window on the card's share page as "+0%" */
@@ -207,6 +213,7 @@ function resolveSource(url) {
   /* a link to the tab, with no period in it, is the daily board */
   if (q === 'traders') return SOURCES['traders-daily'];
   if (q === 'callers') return SOURCES['callers-weekly'];
+  if (q === 'kols' || q === 'kol' || q === 'rewards' || q === 'payouts') return SOURCES['kols-all'];
   const legacy = LEGACY_MODES[url.searchParams.get('mode') || ''];
   return SOURCES[legacy] || SOURCES[DEFAULT_SOURCE];
 }
@@ -415,7 +422,7 @@ let bhMem = { at: 0, v: null };
 const callCache = new Map();
 async function callersRead(ctx, op, body = {}) {
   if (!ctx.callers) return null;
-  const key = op + ':' + (body.window || '');
+  const key = op + ':' + (body.window || body.period || '');
   const c = callCache.get(key) || {};
   if (c.data && Date.now() - c.at < 20_000) return c.data;
   if (c.inflight) return c.inflight;
@@ -494,6 +501,33 @@ async function callersSnapshot(ctx, win) {
     tokens, callers: callersMeta(d),
   };
 }
+/* KOLs as people rows (src/kols.mjs): pump.fun's payout board, in its own
+   order, with each KOL's followers and the record of their last hundred calls
+   joined on. `mcap` is what pump.fun paid, so a size-sorted view agrees. */
+async function kolsSnapshot(ctx, period) {
+  const d = await callersRead(ctx, 'kols', { period });
+  const tokens = [];
+  for (const r of (d && d.rows) || []) {
+    tokens.push({
+      id: 'kol:' + (r.wallet || r.userId), kind: 'kol', mint: '', addr: '', wallet: r.wallet,
+      sym: r.name, name: r.xh ? '@' + r.xh : r.name, xh: r.xh || '', verified: !!r.verified,
+      img: await signedImg(ctx, r.avatar),
+      mcap: Math.max(1, Math.round(r.paid || 0)), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'kol', rank: r.rank, period,
+      kol: { paid: r.paid, payouts: r.payouts, perPayout: r.perPayout, lastPaidAt: r.lastPaidAt, followers: r.followers,
+        n: r.n, avgMcap: r.avgMcap, medMcap: r.medMcap, under100k: r.under100k, medPeak: r.medPeak, avgPeak: r.avgPeak,
+        hit2: r.hit2, medNow: r.medNow, inProfit: r.inProfit, firstAt: r.firstAt, lastAt: r.lastAt },
+    });
+  }
+  const st = d && d.status;
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
+    sampleArt: '', solid: tokens.length, signed: true, source: 'kols-' + period, sourceLabel: 'KOLs', boostable: false,
+    tokens,
+    kols: st ? { at: d.at || 0, earners: d.total || 0, withRecord: st.withHist, withProfile: st.withProfile,
+      lastOk: st.lastOk, lastError: String(st.lastError || '').slice(0, 120), backoffS: Math.round((st.backoff || 0) / 1000) } : null,
+  };
+}
 /* Insiders as rows: one trade each, from Congress, the White House or a
    company's insiders (src/insiders.mjs). No mint and no address, so nothing
    here is boosted or bought; the row links to the filing itself. `name`
@@ -519,10 +553,11 @@ async function insidersSnapshot(ctx) {
   };
 }
 /* feeds whose empty answer is a state (nothing yet), not an outage */
-const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders']);
+const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
+  'kols-all', 'kols-1m', 'kols-1w', 'kols-1d']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */
-const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id.startsWith('callers-') || id.startsWith('traders-');
+const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id.startsWith('callers-') || id.startsWith('traders-') || id.startsWith('kols-');
 
 async function snapshot(ctx, source, force = false) {
   const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
@@ -623,6 +658,8 @@ async function snapshot(ctx, source, force = false) {
         ? await insidersSnapshot(ctx)
         : src.id.startsWith('callers-')
         ? await callersSnapshot(ctx, src.id.slice(8))
+        : src.id.startsWith('kols-')
+        ? await kolsSnapshot(ctx, src.id.slice(5))
         : await buildSnapshot({
             source: src,
             hist: ctx.hist,
@@ -1132,6 +1169,7 @@ export async function handle(req, ctx) {
         /* Trending only: whether pump.fun's board answered, and how fast. */
         movers: snap.movers || undefined,
         callers: snap.callers || undefined,
+        kols: snap.kols || undefined,
         insiders: snap.insiders || undefined,
         /* Compute only: the GPU-hour price board */
         compute: gpus || undefined,
@@ -1447,7 +1485,7 @@ export async function handle(req, ctx) {
          per source, window, hour and names, like the bubble card. */
       if (url.searchParams.get('kind') === 'table') {
         const srcId = BOARD_SRC[url.searchParams.get('source') || 'smart'];
-        if (!srcId || !(srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers'))) {
+        if (!srcId || !(srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers') || srcId.startsWith('kols'))) {
           return json({ ok: false, error: 'the table card is for Smart money and Callers' }, 400);
         }
         const snap = await snapshot(ctx, sourceOf(srcId));
@@ -1475,7 +1513,30 @@ export async function handle(req, ctx) {
         const logos = await Promise.all(top.map(t => logoDataUri(t, via).catch(() => null)));
         const period = { h24: '24H', d7: '7D', d30: '30D', h1: '1H' }[tf] || '24H';
         let spec;
-        if (srcId.startsWith('callers')) {
+        if (srcId.startsWith('kols')) {
+          /* pump.fun's order — money received — then what that money bought a
+             follower: how big the coins were at the call, the median peak, and
+             the median now, which is what holding through got */
+          const win = { 'kols-all': 'ALL TIME', 'kols-1m': '30D', 'kols-1w': '7D', 'kols-1d': '24H' }[srcId] || 'ALL TIME';
+          const x = v => v == null || !Number.isFinite(+v) ? '—' : (+v >= 10 ? Math.round(+v) : (+v).toFixed(+v < 1 ? 2 : 1)) + '×';
+          const mcCol = v => v == null ? T_DIM : v >= 1e6 ? T_UP : v >= 1e5 ? '#ffc93c' : T_DN;
+          const pkCol = v => v == null ? T_DIM : v >= 2.5 ? T_UP : v >= 1.5 ? '#ffc93c' : T_DN;
+          const nowCol = v => v == null ? T_DIM : v >= 1 ? T_UP : T_DN;
+          const fol = v => v == null ? '—' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : String(v);
+          spec = {
+            title: 'PUMP.FUN KOLS BY CALLOUT REWARDS', sub: win + ' · LAST 100 CALLS', nameLabel: 'KOL',
+            cols: [{ label: 'PAID', x: 610 }, { label: 'AVG MCAP', x: 745 }, { label: 'FOLLOWERS', x: 880 },
+                   { label: 'MEDIAN PEAK', x: 1022 }, { label: 'HOLD NOW', x: 1152 }],
+            rows: top.map((t, i) => ({
+              title: t.xh ? '@' + t.xh : t.sym, subtitle: t.xh ? t.sym : '', logo: logos[i],
+              values: [{ text: mcapLabel(t.kol.paid || 0) || '$0', color: T_UP },
+                       { text: t.kol.avgMcap ? mcapLabel(t.kol.avgMcap) : '—', color: mcCol(t.kol.avgMcap) },
+                       { text: fol(t.kol.followers), color: '#c9d3de' },
+                       { text: x(t.kol.medPeak), color: pkCol(t.kol.medPeak) },
+                       { text: x(t.kol.medNow), color: nowCol(t.kol.medNow) }],
+            })),
+          };
+        } else if (srcId.startsWith('callers')) {
           /* the hit rate is the ranking, so it leads; median peak says how big,
              calls says how much of a record it is */
           const win = { 'callers-daily': '24H', 'callers-weekly': '7D', 'callers-monthly': '30D' }[srcId] || '7D';

@@ -821,6 +821,46 @@ same paced fan-out queue the wallet tracker uses, with Buy (our swap), Chart and
 is considered once per call and only while under 15 minutes old — a restart does not replay the
 past hour.
 
+## KOLs
+
+`src/kols.mjs`, sources `kols-all|1m|1w|1d`, the third view of the Calls tab (Live calls · Top
+callers · **KOLs**). Asked for on 2026-10-11 with a screenshot of somebody's KOL table — callout
+rewards, average market cap of the last 100 calls, followers, median and average gain — as "we need
+cool data about callers, traders, rankings". Every column of that picture turned out to be public,
+on three pump.fun endpoints nobody joins:
+
+| what | endpoint | measured |
+|---|---|---|
+| callout rewards: USDC paid, payout count, last paid, wallets | `GET /payouts/leaderboard?page=0&pageSize=100[&period=1d\|1w\|1m]` — pump.fun's own confirmed-payout board, top 500, found in the app bundle's API contract | chairman $310,013 over 60 payouts at #1; 30 requests/min |
+| followers, X handle | `GET /users/<wallet>` (`followers`) | Yennii56 92,122 |
+| the last 100 calls | `GET /callout/list/<wallet>?limit=100`: market cap at the call, `multiple` (now), `maxMultiplier` (peak) | 60 requests/min |
+
+**Paid is not good, so the board says both.** The order is pump.fun's (money received); the columns
+after it are what that caller's last hundred calls did: average market cap at the call (red under
+$100k, amber to $1M, green above — the first analysis of these rewards found 80% of the top earners
+calling coins under $100k), median and average peak (the average is one moonshot; both shown), the
+2× hit rate, and **Hold now** — the median multiple today for a follower who bought at the call and
+never sold. On the first live read chairman, #1 by rewards, had a 2.2× median peak and **0.06×**
+hold-now: whoever held his calls is down 94% at the median. That column is the reason to visit.
+
+- **Polled by the CallersDO beside the calls** (`pollKols`, its own storage key `kols`): the four
+  boards every 30 minutes, then KOLs' records coldest-first and best-paid first, 5 a tick while
+  warming and 2 once warm (2 on a tick that read the boards), each refreshed every 6 hours
+  (followers every 12). Two requests per KOL, so a tick adds at most 12 to the calls' ~21. A 429
+  stops the tick and pauses ten minutes.
+- **The Solana wallet is the key.** A payout row can list an EVM wallet first; `shapePayout` takes
+  the Solana one from `wallets`. A row with no Solana wallet stays on the board without a record.
+- **No record yet is a dash, not a zero.** A fresh deploy shows the board within a tick and fills
+  the records over about ten minutes.
+- **An empty payout answer never replaces a board**, and a board missing for a window falls back to
+  all-time.
+- Perp calls carry no market cap and are left out of the record.
+- KOL rows are `kind: 'kol'` people rows: the card's button is Profile, Share opens the top-10
+  table card (`/api/card?kind=table&source=kols-all`: PAID / AVG MCAP / FOLLOWERS / MEDIAN PEAK /
+  HOLD NOW, colours as the table), `?source=kols|rewards|payouts` and `kols-1w` deep-link.
+- `DEV_CALLERS=1 npm run dev` polls pump.fun from the dev server so the Calls tab has data locally;
+  without it the dev watcher stays quiet.
+
 ## Insiders
 
 `src/insiders.mjs`, the `InsidersDO` in `worker/index.js` (`env.INSIDERS`), source `insiders`, the

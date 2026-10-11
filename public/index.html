@@ -362,6 +362,7 @@ h3 .ic{vertical-align:-.12em}
   background:rgba(255,201,60,.14);color:var(--gold);vertical-align:1px}
 #smTable .hbar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;min-width:56px}
 #smTable .hbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#1fb877,#5ff7b4)}
+#smTable .mid{color:#f5c542}
 #smTable .i-ph{display:none}
 /* Insiders: one person's header, and the source icon */
 #smTable .inPerson{max-width:1100px;margin:4px auto 2px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--glass);
@@ -1002,6 +1003,13 @@ body.embed #brandbadge.on{display:flex}
   <div class="seg" id="clView">
     <button data-cv="calls" class="on"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg>Live calls</button>
     <button data-cv="callers"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg>Top callers</button>
+    <button data-cv="kols"><svg class="ic" aria-hidden="true"><use href="#i-banknote"/></svg>KOLs</button>
+  </div>
+  <div class="seg" id="kolWin">
+    <button data-kw="all" class="on"><span class="sb-full">All time</span><span class="sb-short">All</span></button>
+    <button data-kw="1m"><span class="sb-full">30 days</span><span class="sb-short">30D</span></button>
+    <button data-kw="1w"><span class="sb-full">7 days</span><span class="sb-short">7D</span></button>
+    <button data-kw="1d"><span class="sb-full">24 hours</span><span class="sb-short">24H</span></button>
   </div>
   <div class="seg" id="clWin">
     <button data-cw="daily"><span class="sb-full">Today</span><span class="sb-short">Today</span></button>
@@ -1281,8 +1289,8 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
    nothing shorter — DefiLlama has no five-minute candle for a chain. */
 const FLOW_MODES=new Set(['chains','pads','prediction','casinos']);
 /* tabs drawn as tables rather than bubbles, and tabs allowed to be empty */
-const TABLE_MODES=new Set(['smart','traders','calls','callers','insiders']);
-const EMPTY_MODES=new Set(['taps','calls','callers','insiders']);
+const TABLE_MODES=new Set(['smart','traders','calls','callers','kols','insiders']);
+const EMPTY_MODES=new Set(['taps','calls','callers','kols','insiders']);
 const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
 /* The Traders tab asks pump.fun for one period at a time, so its timeframe
    pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
@@ -1292,17 +1300,18 @@ function feedId(){
   if(S.mode==='traders')return 'traders-'+(TRADER_PERIOD[S.tf]||'daily');
   if(S.mode==='calls')return 'calls';
   if(S.mode==='callers')return 'callers-'+(S.callWin||'weekly');
+  if(S.mode==='kols')return 'kols-'+(S.kolWin||'all');
   if(S.mode==='smart')return S.smartBoard&&S.smartBoard!=='all'?'smart-'+S.smartBoard:'smart';
   return S.mode;
 }
 /* Top traders lives under the Smart money tab, so either view lights it */
 function lightMode(){
-  const m=S.mode==='traders'?'smart':S.mode==='callers'?'calls':S.mode;
+  const m=S.mode==='traders'?'smart':(S.mode==='callers'||S.mode==='kols')?'calls':S.mode;
   document.querySelectorAll('#mode [data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
 }
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
-  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers',ins=S.mode==='insiders',cp=S.mode==='compute';
+  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers'||S.mode==='kols',ins=S.mode==='insiders',cp=S.mode==='compute';
   renderGpuBoard();
   el.hidden=!(sm||cl||ins||cp);if(el.hidden)return;
   document.getElementById('cpGrp').style.display=cp?'':'none';
@@ -1310,6 +1319,7 @@ function subbar(){
   document.getElementById('smBoard').style.display=S.mode==='smart'?'':'none';
   document.getElementById('clView').style.display=cl?'':'none';
   document.getElementById('clWin').style.display=S.mode==='callers'?'':'none';
+  document.getElementById('kolWin').style.display=S.mode==='kols'?'':'none';
   document.getElementById('inMode').style.display=ins?'':'none';
   document.getElementById('inView').style.display=ins?'':'none';
   document.getElementById('inTheme').style.display=ins?'':'none';
@@ -1332,8 +1342,11 @@ function subbar(){
   if(cl){
     document.querySelectorAll('#clView [data-cv]').forEach(b=>b.classList.toggle('on',b.dataset.cv===S.mode));
     document.querySelectorAll('#clWin [data-cw]').forEach(b=>b.classList.toggle('on',b.dataset.cw===(S.callWin||'weekly')));
+    document.querySelectorAll('#kolWin [data-kw]').forEach(b=>b.classList.toggle('on',b.dataset.kw===(S.kolWin||'all')));
     document.getElementById('smNote').textContent=S.mode==='calls'
       ?'new calls on pump.fun from callers with a record \u00b7 peak is what a perfect seller got, now is what a holder has'
+      :S.mode==='kols'
+      ?'what pump.fun paid each caller in USDC \u00b7 their last 100 calls: market cap at the call, the median peak, and now \u2014 what a follower who held has \u00b7 not financial advice'
       :'ranked by how often their calls reach 2\u00d7, adjusted for how many they made \u00b7 not by one lucky call';
     return;
   }
@@ -1509,6 +1522,7 @@ async function fetchLive(){
     /* a call and its caller, or a caller's record: objects from our own API,
        escaped wherever they are written */
     call:t.call&&typeof t.call==='object'?t.call:null, caller:t.caller&&typeof t.caller==='object'?t.caller:null,
+    kol:t.kol&&typeof t.kol==='object'?t.kol:null,
     /* an insider's trade (src/insiders.mjs), escaped wherever it is written */
     ins:t.ins&&typeof t.ins==='object'?t.ins:null,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
@@ -1694,6 +1708,7 @@ function renderSmartTable(list){
   if(S.mode==='traders')return renderTraderTable(box,list);
   if(S.mode==='calls')return renderCallsTable(box,list);
   if(S.mode==='callers')return renderCallerTable(box,list);
+  if(S.mode==='kols')return renderKolTable(box,list);
   if(S.mode==='insiders')return renderInsidersTable(box,list);
   const key={held:t=>(t.smartN||0)*1e3+(t.heat||0),mcap:t=>t.mcap||0,
              h24:t=>t.pc&&t.pc.h24!=null?t.pc.h24:-1e9,h1:t=>t.pc&&t.pc.h1!=null?t.pc.h1:-1e9,vol:t=>t.vol||0}[SM_SORT];
@@ -1824,6 +1839,68 @@ function renderCallerTable(box,list){
         +`<td class="num c-ph stk"><b class="up">${pct}% hit 2×</b><small>median ${mult(c.med)} · ${esc(String(c.n||0))} calls</small></td></tr>`;
     }).join('')
     +'</tbody></table>';
+}
+/* KOLs: pump.fun's callout-rewards board, in its order (what pump.fun paid),
+   beside what each KOL's last hundred calls did for whoever followed them.
+   Colours follow the screenshot the operator brought: green for a caller of
+   real coins (average market cap at the call of $1M+) and big medians, amber
+   in between, red for dust calls and medians under 1.5×. "Hold now" is
+   ours: the median multiple today for a follower who bought at the call and
+   never sold — paid is not the same as good. */
+let KL_SORT='paid';
+const kolMc=v=>v==null?'':v>=1e6?'up':v>=1e5?'mid':'dn';
+const kolPk=v=>v==null?'':v>=2.5?'up':v>=1.5?'mid':'dn';
+const kolAvg=v=>v==null?'':v>=5?'up':v>=2.5?'mid':'dn';
+const fmtK=v=>v==null||!isFinite(v)?'—':v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e4?Math.round(v/1e3)+'K':v>=1e3?(v/1e3).toFixed(1)+'K':String(Math.round(v));
+function renderKolTable(box,list){
+  const nn=v=>v==null||!isFinite(v)?-1:+v;
+  const key={paid:t=>t.kol.paid||0,rank:t=>-(t.rank||1e9),mcap:t=>nn(t.kol.avgMcap),fol:t=>nn(t.kol.followers),
+             med:t=>nn(t.kol.medPeak),avg:t=>nn(t.kol.avgPeak),now:t=>nn(t.kol.medNow),hit:t=>nn(t.kol.hit2)}[KL_SORT]||(t=>0);
+  const rows=list.filter(t=>t.kol).sort((a,b)=>key(b)-key(a));
+  if(!rows.length){box.innerHTML=emptyNote('Reading pump.fun’s payout board… KOLs appear within a minute of a fresh start, their records over the next few.');return}
+  const th=(k,label,cls='',tip='')=>`<th class="${cls}${KL_SORT===k?' on':''}" ${k?'data-ksort="'+k+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}${KL_SORT===k?' ↓':''}</th>`;
+  const sp=(k,label)=>`<span class="${KL_SORT===k?'on':''}" data-ksort="${k}">${label}${KL_SORT===k?' ↓':''}</span>`;
+  const dash='<span style="color:var(--dim)">—</span>';
+  box.innerHTML='<table><thead><tr>'+th('rank','#')+th('','KOL')
+    +th('paid','Rewards','num c-dt','USDC pump.fun has paid this caller in callout rewards')
+    +th('mcap','Avg mcap at call','num c-dt','Average market cap when they called, over their last 100 calls. Under $100K is red: tiny coins, little room for a follower')
+    +th('fol','Followers','num c-vol','Followers on pump.fun')
+    +th('med','Median peak','num c-dt','Half of their last 100 calls peaked above this')
+    +th('avg','Avg peak','num c-h1','The average peak. One moonshot lifts it; the median is the honest one')
+    +th('now','Hold now','num c-dt','The median multiple today for someone who bought at the call and held')
+    +th('hit','Hit 2×','num c-vol','Share of the last 100 calls that peaked at 2× or more')
+    +'<th class="num c-ph">'+sp('paid','Paid')+' · '+sp('now','Now')+'</th>'
+    +'</tr></thead><tbody>'
+    +rows.map(t=>{
+      const k=t.kol,handle=t.xh?'@'+t.xh:'';
+      const sub=[handle,k.followers!=null?fmtK(k.followers)+' followers':''].filter(Boolean).join(' · ');
+      const hit=k.hit2!=null?Math.round(k.hit2*100):null;
+      return `<tr class="row" data-id="${esc(t.id)}"><td>${esc(String(t.rank||''))}</td>`
+        +`<td><div class="tk">${avatarOf(t.img,t.sym)}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc(sub||(k.payouts?k.payouts+' payouts':''))}</small></div></div></td>`
+        +`<td class="num c-dt"><b class="up">${esc(fmtUsd(k.paid||0))}</b><br><span class="htxt">${esc(String(k.payouts||0))} payouts</span></td>`
+        +`<td class="num c-dt">${k.avgMcap!=null?'<b class="'+kolMc(k.avgMcap)+'">'+esc(fmtUsd(k.avgMcap))+'</b>':dash}${k.under100k!=null?'<br><span class="htxt">'+Math.round(k.under100k*100)+'% under $100K</span>':''}</td>`
+        +`<td class="num c-vol">${k.followers!=null?esc(fmtK(k.followers)):dash}</td>`
+        +`<td class="num c-dt"><b class="${kolPk(k.medPeak)}">${mult(k.medPeak)}</b></td>`
+        +`<td class="num c-h1"><span class="${kolAvg(k.avgPeak)}">${mult(k.avgPeak)}</span></td>`
+        +`<td class="num c-dt"><b class="${multCls(k.medNow)}">${mult(k.medNow)}</b>${k.inProfit!=null?'<br><span class="htxt">'+Math.round(k.inProfit*100)+'% in profit</span>':''}</td>`
+        +`<td class="num c-vol">${hit!=null?'<b class="up">'+hit+'%</b><span class="hbar"><i style="width:'+Math.min(100,Math.max(0,hit))+'%"></i></span>':dash}</td>`
+        +`<td class="num c-ph stk"><b class="up">${esc(fmtUsd(k.paid||0))}</b><small>peak <span class="${kolPk(k.medPeak)}">${mult(k.medPeak)}</span> · now <span class="${multCls(k.medNow)}">${mult(k.medNow)}</span></small></td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+}
+function kolLine(t){
+  const k=t.kol||{};
+  const win={all:'all time','1m':'30 days','1w':'7 days','1d':'24 hours'}[t.period]||'all time';
+  return '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' on pump.fun’s callout-rewards board ('+esc(win)+')'
+    +(k.payouts?' · '+esc(String(k.payouts))+' payouts'+(k.lastPaidAt?', last paid '+esc(since(k.lastPaidAt)):''):'')
+    +'</div>'
+    +(k.n?'<div class="warn" style="opacity:.9">'+ic('megaphone')+'Last '+esc(String(k.n))+' calls'
+      +(k.avgMcap!=null?' · called at <b class="'+kolMc(k.avgMcap)+'">'+esc(fmtUsd(k.avgMcap))+'</b> on average'+(k.under100k!=null?' ('+Math.round(k.under100k*100)+'% under $100K)':''):'')
+      +' · median peak <b>'+mult(k.medPeak)+'</b>, average <b>'+mult(k.avgPeak)+'</b>'
+      +(k.hit2!=null?' · '+Math.round(k.hit2*100)+'% hit 2×':'')
+      +' · a follower who held has <b class="'+multCls(k.medNow)+'">'+mult(k.medNow)+'</b> at the median'
+      +(k.inProfit!=null?' ('+Math.round(k.inProfit*100)+'% of calls above the call price)':'')
+      +'</div>':'<div class="warn" style="opacity:.7">ⓘ reading this KOL’s calls…</div>');
 }
 /* Insiders: one trade a row, newest filing first. The amount is what the
    filing says — a range for Congress and the White House (all the law asks
@@ -1988,6 +2065,8 @@ document.getElementById('smTable').addEventListener('click',e=>{
   if(hc){CL_SORT=hc.dataset.csort;rebuild();return}
   const hr=e.target.closest('[data-rsort]');
   if(hr){CR_SORT=hr.dataset.rsort;rebuild();return}
+  const hk=e.target.closest('[data-ksort]');
+  if(hk){KL_SORT=hk.dataset.ksort;rebuild();return}
   const ht=e.target.closest('[data-tsort]');
   if(ht){TR_SORT=ht.dataset.tsort;rebuild();return}
   const h=e.target.closest('[data-sort]');
@@ -2043,6 +2122,17 @@ function stats(){
     document.getElementById('stCap').textContent=String(rs.length);
     document.getElementById('stGR').innerHTML=`<span class="up">${buys}</span> / <span class="dn">${rs.length-buys}</span>`;
     document.getElementById('stTop').innerHTML=big?`${esc(String(big.ins.who||'').split(' ').slice(-1)[0])} <span class="${big.ins.side==='buy'?'up':'dn'}">${esc(insAmount(big.ins))}</span>`:'<span class="sb">\u2014</span>';
+    return;
+  }
+  if(S.mode==='kols'){
+    const ks=S.tokens.filter(t=>t.kol);
+    lab('stCap','Paid to these KOLs');lab('stGR','Median hold now');lab('stTop','Top earner');
+    const nows=ks.map(t=>t.kol.medNow).filter(v=>v!=null).sort((a,b)=>a-b);
+    const md=nows.length?nows[nows.length>>1]:null;
+    const top=ks.find(t=>t.rank===1)||ks[0];
+    document.getElementById('stCap').textContent=fmtUsd(ks.reduce((s,t)=>s+(t.kol.paid||0),0));
+    document.getElementById('stGR').innerHTML=md!=null?`<span class="${multCls(md)}">${mult(md)}</span>`:'<span class="sb">—</span>';
+    document.getElementById('stTop').innerHTML=top?`${esc(top.xh?'@'+top.xh:top.sym)} <span class="up">${esc(fmtUsd(top.kol.paid||0))}</span>`:'<span class="sb">—</span>';
     return;
   }
   if(S.mode==='callers'){
@@ -2741,16 +2831,16 @@ function openCard(t){
   /* "Chart" is wrong for a chain: chartUrl sends it to its DefiLlama page,
      which is where the number came from and what the reader wants next. */
   const co=e('cOpen');
-  if(co)co.textContent=(t.kind==='trader'||t.kind==='caller')?'Profile':FLOW_KINDS.has(t.kind)?'Open':'Chart';
+  if(co)co.textContent=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')?'Profile':FLOW_KINDS.has(t.kind)?'Open':'Chart';
   e('cSym').innerHTML=esc(t.sym)+(t.boost>0?' '+ic('star','f gold'):'');
   /* A venue's subtitle says what it is and where it runs, so "Off Chain" is
      said out loud on the ones that are not crypto at all. */
-  e('cName').textContent=(t.kind==='trader'||t.kind==='caller')
-    ? ((t.xh?'@'+t.xh:(t.kind==='caller'?'pump.fun caller':'pump.fun trader'))+(t.verified?' · verified':''))
+  e('cName').textContent=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')
+    ? ((t.xh?'@'+t.xh:(t.kind==='caller'?'pump.fun caller':t.kind==='kol'?'pump.fun KOL':'pump.fun trader'))+(t.verified?' · verified':''))
     : (t.kind==='pm'||t.kind==='casino')
     ? ((t.kind==='casino'?(t.via==='hot'?'hot wallets':'on-chain casino'):'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
     : (t.name||'').slice(0,32);
-  if(t.verified&&(t.kind==='trader'||t.kind==='caller'))e('cName').insertAdjacentHTML('beforeend',' '+ic('verified','up'));
+  if(t.verified&&(t.kind==='trader'||t.kind==='caller'||t.kind==='kol'))e('cName').insertAdjacentHTML('beforeend',' '+ic('verified','up'));
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
   e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
@@ -2785,6 +2875,17 @@ function openCard(t){
     e('cVol').innerHTML=signed(t.unrealized);
     e('cA').innerHTML=signed(t.total);
     e('cB').innerHTML=t.positions!=null?esc(String(t.positions)):dash;
+  }else if(t.kind==='kol'&&t.kol){
+    /* what pump.fun paid, and what following them did */
+    const k=t.kol;
+    lab('cMc','Callout rewards');
+    lab('cVol','Followers');
+    lab('cA','Median peak');
+    lab('cB','Hold now');
+    e('cMc').innerHTML='<span class="up">'+esc(fmtUsd(k.paid||0))+'</span>';
+    e('cVol').textContent=k.followers!=null?fmtK(k.followers):'—';
+    e('cA').innerHTML=esc(mult(k.medPeak));
+    e('cB').innerHTML='<span class="'+multCls(k.medNow)+'">'+esc(mult(k.medNow))+'</span>';
   }else if(t.kind==='caller'&&t.caller){
     /* a caller's record, in pump.fun's own numbers */
     const c=t.caller;
@@ -2910,7 +3011,7 @@ function openCard(t){
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
+  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
@@ -2927,7 +3028,7 @@ scrim.onclick=closeAll;
    with no way back to the map. */
 document.getElementById('cShare').onclick=()=>{const t=S.target;closeAll();
   /* a trader has no ticker card; their share is the board they are on */
-  if(t&&(t.kind==='trader'||t.kind==='caller')){openTen();return}
+  if(t&&(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')){openTen();return}
   openShare(t)};
 
 /* Timeframe in prose, for tweet text and the no-data message. The pills
@@ -3017,7 +3118,7 @@ function openShare(t){
    403 to anything that is not a browser anyway. */
 function chartUrl(t){
   if(!t)return '';
-  if((t.kind==='trader'||t.kind==='caller')&&t.wallet)return 'https://pump.fun/profile/'+encodeURIComponent(t.wallet);
+  if((t.kind==='trader'||t.kind==='caller'||t.kind==='kol')&&t.wallet)return 'https://pump.fun/profile/'+encodeURIComponent(t.wallet);
   const id=String(t.id||'');
   /* A coin from the wider market charts where its numbers come from, even when
      it carries a mint for the Buy button: RENDER's mint is not a pump.fun coin. */
@@ -3695,7 +3796,11 @@ document.getElementById('subbar').addEventListener('click',e=>{
   if(b.dataset.is){S.insSide=b.dataset.is;subbar();rebuild();return}
   if(b.dataset.cv&&b.dataset.cv!==S.mode){
     S.mode=b.dataset.cv;subbar();lightMode();shareTenBtn();
-    setLive(false,'loading '+(S.mode==='calls'?'live calls':'top callers')+'\u2026');refresh(true);return;
+    setLive(false,'loading '+(S.mode==='calls'?'live calls':S.mode==='kols'?'KOLs':'top callers')+'\u2026');refresh(true);return;
+  }
+  if(b.dataset.kw&&b.dataset.kw!==(S.kolWin||'all')){
+    S.kolWin=b.dataset.kw;subbar();
+    setLive(false,'loading KOLs\u2026');refresh(true);return;
   }
   if(b.dataset.cw&&b.dataset.cw!==(S.callWin||'weekly')){
     S.callWin=b.dataset.cw;subbar();
@@ -3724,6 +3829,7 @@ function tenRows(){
   const tf=S.tf;
   /* a board of callers has no price window: its ten are its first ten */
   if(S.mode==='callers')return S.tokens.filter(t=>t&&t.caller&&t.sym).sort((a,b)=>(a.rank||1e9)-(b.rank||1e9)).slice(0,10);
+  if(S.mode==='kols')return S.tokens.filter(t=>t&&t.kol&&t.sym).sort((a,b)=>(a.rank||1e9)-(b.rank||1e9)).slice(0,10);
   /* `!= null` first: `+null` is 0 and 0 is finite, so a window nobody measured
      passed as "flat" and the post printed +0.0% for all ten. */
   return S.tokens.filter(t=>t&&t.sym&&t.solid!==false&&t.pc&&t.pc[tf]!=null&&Number.isFinite(+t.pc[tf])).slice(0,10);
@@ -3756,6 +3862,13 @@ function readyPost(link){
     return '\ud83d\udcb0 Top 10 traders on pump.fun '+when+'\n'
       +'Ranked by realized PnL, not paper gains\n\n'
       +lines.join('\n')+'\n\n'+link;
+  }
+  if(S.mode==='kols'){
+    const when={all:'',  '1m':' this month','1w':' this week','1d':' today'}[S.kolWin||'all']||'';
+    const ls=rows.map((t,i)=>(i+1)+'. '+(X_HANDLE.test(t.xh||'')?'@'+t.xh:t.sym)+' — '+fmtUsd(t.kol.paid||0)
+      +(t.kol.medNow!=null?', holders at '+mult(t.kol.medNow):''));
+    return '💸 Who pump.fun paid to call coins'+when+'\n'
+      +'Callout rewards in USDC — and the median a follower who bought the call and held has today\n\n'+ls.join('\n')+'\n\n'+link;
   }
   if(S.mode==='callers'){
     const when={daily:'today',weekly:'this week',monthly:'this month'}[S.callWin||'weekly']||'this week';
@@ -3808,7 +3921,7 @@ function showPost(txt){
    ten is a claim somebody would repost. Chains, launchpads, prediction and
    casinos are venues rather than projects — a "top 10 trending" of them is not
    a thing, and the card's shape (ticker, logo, percentage) is not theirs. */
-const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,compute:1,traders:1,smart:1,callers:1};
+const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,compute:1,traders:1,smart:1,callers:1,kols:1};
 function shareTenBtn(){
   const b=document.getElementById('shareTen');
   if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
@@ -3817,7 +3930,7 @@ document.getElementById('shareTen').onclick=()=>openTen();
 function openTen(){
   const src=feedId(),tf=S.tf;
   const page=location.origin+'/s/top10?source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
-  const kind=(S.mode==='smart'||S.mode==='traders'||S.mode==='callers')?'table':'bubbles';
+  const kind=(S.mode==='smart'||S.mode==='traders'||S.mode==='callers'||S.mode==='kols')?'table':'bubbles';
   const card='/api/card?kind='+kind+'&source='+encodeURIComponent(src)+'&tf='+encodeURIComponent(tf);
   document.getElementById('shTk').textContent='top 10';
   document.getElementById('shActs').style.display='';
@@ -3855,7 +3968,9 @@ function openTen(){
   }else{
     /* visitors: a one-line caption and the link, which brings the card */
     showPost('');
-    const label=S.mode==='callers'
+    const label=S.mode==='kols'
+      ? 'Who pump.fun pays to call coins \u2014 and what holding their calls got'
+      : S.mode==='callers'
       ? 'The best callers on pump.fun \u2014 by how often their calls reach 2\u00d7'
       : S.mode==='smart'
       ? 'What pump.fun\u2019s best traders are holding right now'
@@ -4020,7 +4135,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
 (function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const src=q.get('source')||q.get('mode');
-  const OK={calls:'calls',callouts:'calls',callers:'callers',smart:'smart',smartmoney:'smart',whales:'smart',traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
+  const OK={calls:'calls',callouts:'calls',callers:'callers',kols:'kols',kol:'kols',rewards:'kols',payouts:'kols',smart:'smart',smartmoney:'smart',whales:'smart',traders:'traders',pnl:'traders',leaderboard:'traders',trending:'trending',taps:'taps',tap:'taps',tapwars:'taps',arena:'taps',chains:'chains',pads:'pads',
             prediction:'prediction',predictions:'prediction',bets:'prediction',
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',crypto:'majors',market:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
@@ -4047,6 +4162,8 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   if(brd[src]){S.mode='smart';S.smartBoard=brd[src]}
   const cw={'callers-daily':'daily','callers-weekly':'weekly','callers-monthly':'monthly'};
   if(cw[src]){S.mode='callers';S.callWin=cw[src]}
+  const kw={'kols-all':'all','kols-1m':'1m','kols-1w':'1w','kols-1d':'1d'};
+  if(kw[src]){S.mode='kols';S.kolWin=kw[src]}
   fixTf();
   /* ?pin= keeps one token on screen whatever the ranking says, and ?boost=
      opens the boost box with that address already resolved. Both exist for
