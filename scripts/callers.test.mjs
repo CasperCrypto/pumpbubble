@@ -178,5 +178,36 @@ console.log('\nthe watcher');
   is('the record expires hourly', b.needStats(NOW + 10 * 60_000 + STATS_TTL + 1).length > 0, true);
 }
 
+console.log('\nsaving — the object is recycled between ticks, so what is saved is all there is');
+{
+  const b = new CallerBook();
+  b.due = { feed: NOW, board: NOW, coins: NOW - 5 };
+  const back = CallerBook.from(JSON.parse(JSON.stringify(b.toJSON(NOW))));
+  is('the schedule survives a save', JSON.stringify(back.due), JSON.stringify({ feed: NOW, board: NOW, coins: NOW - 5 }));
+  is('an old save without a schedule still loads', CallerBook.from({ calls: [], callers: [] }).due, undefined);
+
+  /* a full book: every call kept and every caller with a three-window record */
+  const full = new CallerBook();
+  const stats = { totalCallouts: 40, twoXPercent: 37.5, onePointFiveXPercent: 55, averageMultiple: 3.1, medianMultiple: 1.8,
+    averageTimeToPeakMs: 3_600_000, distribution: [{ min: 1, max: 2, count: 20 }, { min: 2, max: 5, count: 15 }, { min: 20, max: null, count: 5 }] };
+  for (let i = 0; i < 2500; i++) {
+    const w = addr(i, String.fromCharCode(97 + (i % 26)));
+    full.callers.set(w, { wallet: w + i, name: 'caller' + i, xh: 'handle' + i, avatar: 'https://pump.mypinata.cloud/ipfs/bafkreihurb5i3zehb33kbczkmhtzy53hbsrdvq4mtjxmlg3vzptxaslyiq',
+      verified: true, calls: 77, seenAt: NOW - i * 1000, stats: i < 1800 ? shapeStats({ daily: stats, weekly: stats, monthly: stats }) : undefined,
+      statsAt: NOW, board: i < 300 ? { weekly: { rank: i + 1, realized: 12345.67, at: NOW } } : undefined });
+  }
+  for (let i = 0; i < 1200; i++) {
+    full.calls.set('c' + i, { id: 'c' + i, mint: addr(i, 'm'), sym: 'TOKEN' + i, name: 'A token with a long name ' + i,
+      rawImg: 'https://ipfs.io/ipfs/bafybeibwqtgrrykgejgpyuc25daspisdfhqdbxklgkgcpxnu7yzwmi2fse', wallet: addr(i), at: NOW - i * 60_000,
+      mcapAtCall: 35554, mcapNow: 59093.91, mcapAt: NOW, multiple: 1.6874, peak: 2.1944, peakAt: NOW, thesis: 'x'.repeat(180),
+      views: 2827, likes: 6, replies: 2, held: 26733712.81, heldUsd: 1590.83, pnlUsd: 908.13, realizedUsd: 0, costUsd: 682.7, seenAt: NOW, src: 'feed' });
+  }
+  const saved = full.toJSON(NOW);
+  const bytes = new TextEncoder().encode(JSON.stringify(saved)).length;
+  ok('a full book fits one storage value (2 MB) with room to spare', bytes < 1.6 * 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : (no('size', bytes), ''));
+  is('at most SAVE_CALLERS callers are written', saved.callers.length, 1000);
+  ok('callers with a record are written first', saved.callers.every(p => p.stats || p.board) ? '' : (no('priority'), ''));
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

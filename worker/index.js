@@ -694,7 +694,11 @@ export class TapArena {
    book is saved every two minutes: one storage write, not one per call. */
 const CALLERS_TICK_MS = 30_000;
 export class CallersDO {
-  constructor(state, env) { this.state = state; this.env = env; this.book = null; this.kols = null; this.savedAt = Date.now(); }
+  /* savedAt starts at zero, so a fresh instance saves after its first tick.
+     Measured 2026-10-11: the runtime recycles this object between alarms, and
+     with the first save two minutes in, no instance ever saved — Top callers
+     sat at 15 records for days and the KOL board never passed its first two. */
+  constructor(state, env) { this.state = state; this.env = env; this.book = null; this.kols = null; this.savedAt = 0; }
   async load() {
     if (this.book) return;
     this.book = CallerBook.from(await this.state.storage.get('book'));
@@ -735,8 +739,11 @@ export class CallersDO {
     try { await this.sendAlerts(now); } catch { /* the next tick tries the next calls */ }
     if (now - this.savedAt > 120_000) {
       this.savedAt = now;
-      try { await this.state.storage.put('book', this.book.toJSON(now)); } catch { /* next save */ }
-      try { await this.state.storage.put('kols', this.kols.toJSON()); } catch { /* next save */ }
+      /* a failed save names itself in /api/health/do instead of vanishing */
+      try { await this.state.storage.put('book', this.book.toJSON(now)); }
+      catch (e) { this.book.polls.lastError = 'save: ' + String(e && e.message || e).slice(0, 100); }
+      try { await this.state.storage.put('kols', this.kols.toJSON()); }
+      catch (e) { this.kols.polls.lastError = 'save: ' + String(e && e.message || e).slice(0, 100); }
     }
     await this.state.storage.setAlarm(Date.now() + CALLERS_TICK_MS);
   }

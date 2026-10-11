@@ -54,6 +54,7 @@ export const KEEP_MS = 72 * 3600_000;        // calls kept at all
 export const LIVE_MS = 48 * 3600_000;        // calls in the live table
 export const MAX_CALLS = 1200;
 export const MAX_CALLERS = 2500;
+export const SAVE_CALLERS = 1000;            // callers written to storage (see toJSON)
 export const STATS_TTL = 60 * 60_000;        // a caller's record, refreshed hourly
 export const STATS_PER_TICK = 6;
 export const STATS_WARM = 15;                // per tick until this many have a record
@@ -182,14 +183,24 @@ export class CallerBook {
       for (const c of saved.calls || []) if (c && c.id) b.calls.set(c.id, c);
       for (const p of saved.callers || []) if (p && p.wallet) b.callers.set(p.wallet, p);
       for (const id of saved.alerted || []) b.alerted.add(id);
+      /* the schedule too: an object recycled between ticks must not refetch
+         the PnL boards on every one of them */
+      if (saved.due && typeof saved.due === 'object') b.due = { feed: +saved.due.feed || 0, board: +saved.due.board || 0, coins: +saved.due.coins || 0 };
     }
     return b;
   }
+  /* Saved as one value, and a SQLite-backed object's value tops out at 2 MB:
+     the callers kept are the ones with a record first, at most SAVE_CALLERS. */
   toJSON(now = Date.now()) {
+    const keep = [...this.callers.values()]
+      .filter(p => p.stats || p.board || now - (p.seenAt || 0) < 7 * 86_400_000)
+      .sort((a, b) => (b.board ? 2 : 0) + (b.stats ? 1 : 0) - (a.board ? 2 : 0) - (a.stats ? 1 : 0) || (b.seenAt || 0) - (a.seenAt || 0))
+      .slice(0, SAVE_CALLERS);
     return {
       calls: [...this.calls.values()].filter(c => now - c.at < LIVE_MS),
-      callers: [...this.callers.values()].filter(p => p.stats || p.board || now - (p.seenAt || 0) < 7 * 86_400_000),
+      callers: keep,
       alerted: [...this.alerted].slice(-1500),
+      due: this.due || null,
     };
   }
 

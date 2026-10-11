@@ -858,6 +858,13 @@ hold-now: whoever held his calls is down 94% at the median. That column is the r
 - KOL rows are `kind: 'kol'` people rows: the card's button is Profile, Share opens the top-10
   table card (`/api/card?kind=table&source=kols-all`: PAID / AVG MCAP / FOLLOWERS / MEDIAN PEAK /
   HOLD NOW, colours as the table), `?source=kols|rewards|payouts` and `kols-1w` deep-link.
+- **The CallersDO is recycled between alarms, so it saves on its first tick** (2026-10-11). It used
+  to save two minutes after it started; measured live, every instance reported one tick, so none ever
+  saved — Top callers sat at 15 records for days and this board never passed its first two. Now
+  `savedAt` starts at 0, the poll schedule (`due`) is saved with the book so a fresh instance does not
+  refetch the PnL boards every tick, a failed save shows in `/api/health/do` as `save: …`, and the
+  book writes at most `SAVE_CALLERS` (1,000) callers, records first — a full book measured 1.46 MB
+  against the 2 MB value limit.
 - `DEV_CALLERS=1 npm run dev` polls pump.fun from the dev server so the Calls tab has data locally;
   without it the dev watcher stays quiet.
 
