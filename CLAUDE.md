@@ -821,6 +821,29 @@ same paced fan-out queue the wallet tracker uses, with Buy (our swap), Chart and
 is considered once per call and only while under 15 minutes old — a restart does not replay the
 past hour.
 
+## Pages to be found (SEO and AI assistants)
+
+`src/pages.mjs`, routed in `handle()` before the share pages: `/kols`, `/kol/<name>` (one per KOL on
+the all-time board), `/callers`, `/traders`, `/trending`, `/robinhood`, `/gpu-prices`, plus a dynamic
+`/sitemap.xml` (every board and KOL page; the static file is gone so the Worker serves it) and
+`/llms.txt` (llmstxt.org) with today's headline numbers. `/market` and `/board` stay in `seo.mjs`.
+
+**Why:** the map is a canvas and its tables are JavaScript, so a crawler reading HTML found almost
+nothing, and most AI crawlers run no JavaScript at all. ChatGPT search reads Bing's index and its own
+OAI-SearchBot, Claude its Claude-SearchBot, Perplexity its own — they quote pages that answer a
+question in text with a date and a number. So each page leads with a dated answer that carries the
+numbers ("pump.fun has paid its top 100 KOLs $7.23M … holders at 0.16× at the median"), then the
+table, "How this is measured", an FAQ, and JSON-LD (BreadcrumbList, FAQPage, Dataset on /kols).
+The homepage carries a `<noscript>` summary and links for crawlers that do not run scripts.
+
+- **Measured 2026-10-12:** Cloudflare answers **403 to GPTBot, ClaudeBot and CCBot** (its AI-crawler
+  blocking — the operator's dashboard switch, Security → Bots / AI Crawl Control), while
+  OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Googlebot and Bingbot get
+  200. robots.txt now names them all with Allow; it cannot override the dashboard.
+- Every username and ticker is escaped, and `<` is escaped inside JSON-LD — a pump.fun username can
+  carry `</script>`. A missing record is a dash. A KOL not on the board is a 404, not an empty page.
+- Hidden tokens (the console's hide list) stay hidden here too.
+
 ## KOLs
 
 `src/kols.mjs`, sources `kols-all|1m|1w|1d`, the third view of the Calls tab (Live calls · Top

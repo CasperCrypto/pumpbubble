@@ -40,6 +40,7 @@ import {
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
+import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
@@ -1707,6 +1708,39 @@ export async function handle(req, ctx) {
        repost instead of one, which is the whole reason it is published. */
     /* The page behind the generative card. Same shape as /s/top: crawlers get
        the picture, people get a way through to the map. */
+    /* ------------------------------------------------- pages to be found */
+    /* The boards as server-rendered pages (src/pages.mjs), one page per KOL,
+       the sitemap that lists them all, and llms.txt. A crawler that runs no
+       JavaScript gets the numbers as text; people get a way to the live map. */
+    if (req.method === 'GET' && (isSeoPath(path) || path === '/sitemap.xml' || path === '/llms.txt')) {
+      const now = Date.now();
+      const html = (body, status = 200) => new Response(body, { status, headers: {
+        'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });
+      const feed = async id => { try { return ((await snapshot(ctx, sourceOf(id))) || {}).tokens || []; } catch { return []; } };
+      const hid = await hiddenSet(ctx).catch(() => null);
+      const shown = list => hid ? list.filter(t => !isHidden(hid, t)) : list;
+      if (path === '/sitemap.xml' || path === '/llms.txt') {
+        const kols = await feed('kols-all');
+        if (path === '/llms.txt') {
+          return new Response(llmsTxt({ kols, now }), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=600' } });
+        }
+        const slugs = [...new Set(kols.map(t => kolSlug(t.sym)).filter(Boolean))];
+        return new Response(sitemapXml(slugs, now), { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600' } });
+      }
+      if (path.startsWith('/kol/')) {
+        const all = await feed('kols-all');
+        const t = all.find(x => kolSlug(x.sym) === path.slice(5));
+        if (!t) return html('<!doctype html><meta charset="utf-8"><title>Not on the board — pumpbubble.fun</title><p>This KOL is not on pump.fun\'s callout-rewards board right now. <a href="/kols">See the leaderboard</a>.</p>', 404);
+        return html(kolPage(t, all, now));
+      }
+      if (path === '/kols') return html(kolsPage(await feed('kols-all'), now));
+      if (path === '/callers') return html(callersPage(shown(await feed('callers-weekly')), now));
+      if (path === '/traders') return html(tradersPage(await feed('traders-weekly'), now));
+      if (path === '/trending') return html(trendingPage(shown(await feed('trending')), now));
+      if (path === '/robinhood') return html(robinhoodPage(shown((await feed('robinhood')).filter(t => t.solid !== false)), now));
+      if (path === '/gpu-prices') return html(gpuPage(gpuFeed(await gpuBoardCached(ctx), null), now));
+    }
+
     if (path === '/s/top10') {
       const tf = url.searchParams.get('tf') || 'h24';
       const srcId = BOARD_SRC[url.searchParams.get('source') || 'trending'];
@@ -1717,9 +1751,11 @@ export async function handle(req, ctx) {
       if (top.length < 3) return Response.redirect(url.origin + '/', 302);
 
       const qs = (srcId === 'trending' ? '' : '?source=' + srcId);
-      const q = 'kind=' + (srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers') ? 'table' : 'bubbles')
+      const q = 'kind=' + (srcId.startsWith('smart') || srcId.startsWith('traders') || srcId.startsWith('callers') || srcId.startsWith('kols') ? 'table' : 'bubbles')
         + '&source=' + srcId + '&tf=' + tf;
-      const desc = srcId.startsWith('callers')
+      const desc = srcId.startsWith('kols')
+        ? top.slice(0, 5).map(t => (t.xh ? '@' + t.xh : t.sym) + ' ' + (mcapLabel(t.kol.paid) || '$0') + (t.kol.medNow != null ? ', holders ' + (+t.kol.medNow).toFixed(2) + '×' : '')).join(' · ')
+        : srcId.startsWith('callers')
         ? top.slice(0, 5).map(t => (t.xh ? '@' + t.xh : t.sym) + ' ' + Math.round((t.caller.hit2 || 0) * 100) + '% hit 2\u00d7').join(' · ')
         : srcId.startsWith('traders')
         ? top.slice(0, 6).map(t => (t.xh ? '@' + t.xh : t.sym) + ' +' + (mcapLabel(t.realized) || '$0')).join(' · ')
