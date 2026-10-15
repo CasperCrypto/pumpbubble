@@ -135,6 +135,10 @@ export function normalizeCoin(c) {
     nsfw: !!c.nsfw,
     banned: !!c.is_banned,
     twitter: c.twitter || '',
+    /* the project's own links, typed by whoever launched it: shown only as
+       https links and always escaped (the console's outreach list reads them) */
+    telegram: typeof c.telegram === 'string' ? c.telegram.slice(0, 200) : '',
+    website: typeof c.website === 'string' ? c.website.slice(0, 200) : '',
     boost: 0,                                // our paid boost, applied by the worker
   };
 }

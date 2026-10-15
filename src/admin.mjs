@@ -260,6 +260,16 @@ code{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:1
   </div>
 
   <div class="card">
+    <h2>Outreach — projects to invite to the bot</h2>
+    <div class="dim" style="font-size:12px;margin-bottom:6px">Graduated pump.fun coins with a live community (traded in the last 30 minutes, 2 hours to 30 days old, $50K–$50M, backed) that list a Telegram or X link and do not run our bot yet. Telegram first. <b>Best channel: a public reply on their X post or community</b> — an unrequested promotional DM needs prior consent under Polish law (Art. 398 PKE); DM only where a project asks for partnership messages. One message per project; never post into their group. <b>Check the link is the coin's own</b> — copycats paste a real project's Telegram (a pump.fun "NOS" listed Nosana's).</div>
+    <div class="row" style="margin-top:0"><button id="oRefresh">Refresh</button><span class="dim" id="oSum"></span>
+      <label class="dim" style="margin-left:auto"><input type="checkbox" id="oHideDone"> hide contacted</label></div>
+    <div class="dim" style="font-size:12px;margin-top:8px">Message — <b>{sym}</b> becomes the ticker. Edits are kept in this browser.</div>
+    <textarea id="oTpl" rows="3" style="width:100%;margin-top:4px"></textarea>
+    <div style="overflow-x:auto;margin-top:8px"><table id="oTable"></table></div>
+  </div>
+
+  <div class="card">
     <h2>Mass DM</h2>
     <div class="dim" id="dmCount">—</div>
     <textarea id="bText" rows="5" placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;. Goes to everyone who pressed Start on the bot; every message carries an Unsubscribe button." style="width:100%;margin-top:8px;background:#0d1117;color:inherit;border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;font-size:13px"></textarea>
@@ -367,6 +377,44 @@ async function grpLoad(fresh){
   }catch(e){$('gSum').textContent=e.message}
 }
 $('gRefresh').onclick=()=>grpLoad(true);
+
+/* Outreach: who to invite, a message ready to copy, and which ones are done.
+   "Done" lives in this browser only — nothing about it is stored on the server. */
+const O_TPL_DEFAULT='{sym} holders would love this: a free buy bot for your Telegram — alerts with your GIF, a 🧠 tag when a top pump.fun trader buys, whale reactions and a captcha. 30-second setup, and {sym} goes gold on pumpbubble.fun for an hour. pumpbubble.fun/bot';
+const oStore=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(_){return null}};
+let O={leads:[],done:{}};
+try{O.done=JSON.parse(oStore('pb_out_done')||'{}')||{}}catch(_){O.done={}}
+$('oTpl').value=oStore('pb_out_tpl')||O_TPL_DEFAULT;
+$('oTpl').oninput=()=>oStore('pb_out_tpl',$('oTpl').value);
+$('oHideDone').onchange=()=>oRender();
+const oMsg=l=>$('oTpl').value.split('{sym}').join('$'+l.sym);
+const oUsd=n=>n>=1e6?'$'+(n/1e6).toFixed(1)+'M':n>=1e3?'$'+Math.round(n/1e3)+'K':'$'+Math.round(n||0);
+function oRender(){
+  const hide=$('oHideDone').checked;
+  const rows=O.leads.filter(l=>!(hide&&O.done[l.mint]));
+  const done=O.leads.filter(l=>O.done[l.mint]).length;
+  $('oSum').textContent=O.leads.length+' projects · '+O.leads.filter(l=>l.telegram).length+' with Telegram · '+done+' contacted';
+  $('oTable').innerHTML=rows.length?'<tr><th>Token</th><th>Mcap</th><th>24h vol</th><th>Age</th><th>Community</th><th></th><th></th></tr>'+rows.map(l=>{
+    const tk='<a href="https://pump.fun/coin/'+encodeURIComponent(l.mint)+'" target="_blank" rel="noopener">$'+esc(l.sym)+'</a> <span class="dim">'+esc((l.name||'').slice(0,24))+'</span>';
+    const links=[l.telegram?'<a href="'+esc(l.telegram)+'" target="_blank" rel="noopener">Telegram</a>':'',l.twitter?'<a href="'+esc(l.twitter)+'" target="_blank" rel="noopener">X</a>':'',l.website?'<a href="'+esc(l.website)+'" target="_blank" rel="noopener">site</a>':''].filter(Boolean).join(' · ');
+    const age=l.ageH>=48?Math.round(l.ageH/24)+'d':Math.round(l.ageH)+'h';
+    const dn=!!O.done[l.mint];
+    return '<tr'+(dn?' style="opacity:.45"':'')+'><td>'+tk+'</td><td>'+esc(oUsd(l.mcap))+'</td><td>'+esc(l.vol?oUsd(l.vol):'—')+'</td><td>'+esc(age)+'</td><td>'+links+'</td>'
+      +'<td><button class="go" data-ocopy="'+esc(l.mint)+'">Copy message</button></td>'
+      +'<td><button data-odone="'+esc(l.mint)+'">'+(dn?'Undo':'Contacted')+'</button></td></tr>'}).join('')
+    :'<tr><td class="dim">'+(O.leads.length?'all contacted — refresh later for new ones':'nothing matches right now — refresh in a while')+'</td></tr>';
+}
+async function oLoad(){
+  try{const r=await api('outreach.leads');O.leads=r.leads||[];oRender()}
+  catch(e){$('oSum').textContent=e.message}
+}
+$('oRefresh').onclick=oLoad;
+$('oTable').onclick=async e=>{
+  const c=e.target.closest('[data-ocopy]'),d=e.target.closest('[data-odone]');
+  if(c){const l=O.leads.find(x=>x.mint===c.dataset.ocopy);if(!l)return;
+    try{await navigator.clipboard.writeText(oMsg(l));c.textContent='Copied'}catch(_){prompt('Copy the message:',oMsg(l))}}
+  if(d){const m=d.dataset.odone;if(O.done[m])delete O.done[m];else O.done[m]=Date.now();oStore('pb_out_done',JSON.stringify(O.done));oRender()}
+};
 
 /* The DM list itself: the newest first, or everyone a page at a time. */
 const SRC={start:'Start',chat:'messaged the bot',v:'group captcha',boost:'boost link',optin:'old opt-in list',ad:'ad link',buy:'buy link'};
@@ -503,7 +551,7 @@ document.addEventListener('click',async e=>{
 
 $('in').onclick=async()=>{
   PW=$('pw').value;
-  try{ await load(); dmLoad(); grpLoad(); uLoad('newest'); $('login').classList.add('hide'); $('app').classList.remove('hide');
+  try{ await load(); dmLoad(); grpLoad(); oLoad(); uLoad('newest'); $('login').classList.add('hide'); $('app').classList.remove('hide');
     /* unlock ready posts on the map, in this browser */
     try{localStorage.setItem('pb_op','1')}catch(_){}
     opState(); }

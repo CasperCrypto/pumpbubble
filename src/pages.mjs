@@ -56,6 +56,7 @@ export const PAGES = [
   { path: '/trending', nav: 'Trending', src: 'trending' },
   { path: '/robinhood', nav: 'Robinhood Chain', src: 'robinhood' },
   { path: '/gpu-prices', nav: 'GPU prices', src: null },
+  { path: '/bot', nav: 'Buy bot', src: null },
 ];
 export const isSeoPath = p => PAGES.some(x => x.path === p) || /^\/kol\/[a-z0-9_-]{1,40}$/.test(p);
 
@@ -82,7 +83,7 @@ th.n,td.n{text-align:left}td.r,th.r{color:var(--dim);width:40px}td.n small{displ
 .faq h3{margin-top:18px}.faq p{margin:4px 0 0;color:#c9d1de}
 footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}`;
 
-function layout({ path, title, desc, h1, lead, stats = [], body = '', method = '', faq = [], jsonld = [], live, ogImage, now }) {
+function layout({ path, title, desc, h1, lead, stats = [], body = '', method = '', faq = [], jsonld = [], live, ogImage, now, ctaText, dated = true }) {
   const url = ORIGIN + path;
   const ld = [
     { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
@@ -116,8 +117,8 @@ ${ldText}
 <header><a href="/" aria-label="pumpbubble.fun"><img class="mark" src="/mark.png" alt="" width="26" height="26"></a><a class="wordmark" href="/">pumpbubble.fun</a><nav>${navHtml}</nav></header>
 <h1>${esc(h1)}</h1>
 <p class="lede">${lead}</p>
-<a class="cta" href="${esc(live)}">Open the live board →</a>
-<p class="updated">Updated <time datetime="${new Date(now).toISOString()}">${esc(day(now))}, ${new Date(now).toISOString().slice(11, 16)} UTC</time> · refreshed continuously on the live board</p>
+<a class="cta" href="${esc(live)}">${esc(ctaText || 'Open the live board →')}</a>
+${dated ? `<p class="updated">Updated <time datetime="${new Date(now).toISOString()}">${esc(day(now))}, ${new Date(now).toISOString().slice(11, 16)} UTC</time> · refreshed continuously on the live board</p>` : ''}
 ${stats.length ? `<div class="stats">${stats.map(([v, l]) => `<div class="stat"><b>${v}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''}
 ${body}
 ${method ? `<h2>How this is measured</h2>${method}` : ''}
@@ -304,6 +305,53 @@ export function gpuPage(feed, now = Date.now()) {
   });
 }
 
+/* ------------------------------------------------------------ the bot */
+/* What a project admin needs to decide in thirty seconds: what it does, that
+   it is free (and the one sponsored line that pays for it), how to set it
+   up, and what an alert looks like. The example alert is labelled as one. */
+export const BOT_ADD = 'https://t.me/pumpbubblebot?startgroup=setup&admin=delete_messages+restrict_members+pin_messages+invite_users';
+export function botPage(now = Date.now()) {
+  const feat = [
+    ['Buy alerts your community already knows', 'The classic format — your emoji per $ bought, your GIF or video, a minimum buy, Chart · Buy · Bubble buttons. A cleaner style is one tap away.'],
+    ['🧠 when a top trader buys', 'If the buyer is one of pump.fun\'s top traders by profit actually banked, the alert says so — "#3 on pump.fun this week". Nobody else\'s bot knows who they are.'],
+    ['📣 when a top KOL buys', 'The same for the week\'s best callers, ranked by how often their calls reach 2×.'],
+    ['Whale buys that land', 'Big buys get a whale headline, your second GIF, and Telegram\'s full-screen animated reaction for everyone in the chat.'],
+    ['Captcha, welcome, clean joins', 'New members are muted until they tap the right emoji; raids bounce. Welcome message and join-line cleanup included — no second bot needed.'],
+    ['Solana, Base, Ethereum, Robinhood Chain', 'pump.fun coins on the curve and after graduation, and tokens on Base, Ethereum and Robinhood Chain.'],
+  ];
+  const mock = `<div class="tg"><div class="tgh">Example alert</div><div class="tgm"><b>🟢 $EXAMPLE Buy!</b><br>🟢🟢🟢🟢🟢🟢🟢🟢<br><br>💵 2.50 SOL ($412)<br>🪙 1,234,567 EXAMPLE<br>👤 7xKX…a91f | Txn<br>🧠 <b>SMART BUY</b> — #3 on pump.fun this week by profit banked<br>📊 MCap $1.24M<br><br><span class="tgb">Chart</span><span class="tgb">Bubble</span><span class="tgb">Buy</span><span class="tgb">Boost</span></div></div>`;
+  const body = `<p class="muted">Or open <a href="https://t.me/pumpbubblebot" rel="noopener">@pumpbubblebot</a> in Telegram to see it first.</p>
+<style>.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:18px 0}.feat div{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:rgba(255,255,255,.03)}.feat b{display:block;margin-bottom:4px}.feat span{color:#c9d1de;font-size:14px}
+.tg{max-width:420px;margin:18px 0;border-radius:16px;background:#17212b;border:1px solid var(--line);overflow:hidden}.tgh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:10px 14px 0}.tgm{padding:8px 14px 14px;font-size:14px;line-height:1.5}.tgb{display:inline-block;margin:4px 6px 0 0;padding:5px 12px;border-radius:8px;background:#2b5278;font-size:13px}
+ol.steps{padding-left:20px}ol.steps li{margin:8px 0}</style>
+<h2>What it does</h2>
+<div class="feat">${feat.map(([h, p]) => `<div><b>${esc(h)}</b><span>${esc(p)}</span></div>`).join('')}</div>
+${mock}
+<h2>Set up in 30 seconds</h2>
+<ol class="steps"><li><a href="${BOT_ADD}" rel="noopener">Add @pumpbubblebot to your group</a> — Telegram asks for the admin rights the captcha needs.</li>
+<li>In the group, send <code>/setup</code> followed by your token's contract address.</li>
+<li>Tap <b>Test alert</b>, then set your GIF, emoji and minimum buy with the buttons. Done — and on its first setup your token turns gold on pumpbubble.fun's live map for an hour.</li></ol>`;
+  return layout({
+    path: '/bot', now, live: BOT_ADD, ctaText: 'Add it to your group — free →', dated: false,
+    title: 'Free Telegram buy bot for pump.fun, Base and Robinhood Chain tokens — pumpbubble',
+    desc: 'Free buy alerts for your token\'s Telegram group: top-trader and KOL tags, whale reactions, captcha. Solana (pump.fun), Base, Ethereum, Robinhood Chain. 30-second setup.',
+    h1: 'A free buy bot that knows who is buying',
+    lead: 'Buy alerts for your token\'s Telegram group in the format your holders know — plus what no other buy bot can tell them: when one of pump.fun\'s <b>top traders</b> or <b>top KOLs</b> just bought. Free, with a captcha guard built in, for pump.fun, Base, Ethereum and Robinhood Chain tokens.',
+    stats: [['Free', 'one sponsored line under alerts pays for it'], ['30 s', 'to set up'], ['4 chains', 'Solana, Base, Ethereum, Robinhood'], ['1 hour', 'gold on the live map on first setup']],
+    body,
+    faq: [
+      ['Is the buy bot free?', 'Yes. Alerts, the smart-money and KOL tags, whale reactions and the captcha are free. One sponsored line sits under each alert; that is what pays for it.'],
+      ['How do I add a buy bot to my Telegram group?', 'Add @pumpbubblebot to the group, then send /setup followed by your token\'s contract address. A test alert confirms it works.'],
+      ['Which chains does it support?', 'Solana (pump.fun tokens on the bonding curve and after graduation), Base, Ethereum and Robinhood Chain.'],
+      ['What admin rights does it need?', 'Deleting messages, restricting members, pinning and inviting — what the captcha and the join cleanup use. Alerts alone need only the right to post.'],
+      ['Does it message my members?', 'No. It posts in the group. Only people who open the bot\'s own chat and press Start get messages from it, and they can stop them at any time.'],
+    ],
+    jsonld: [{ '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'pumpbubble buy bot', applicationCategory: 'CommunicationApplication',
+      operatingSystem: 'Telegram', url: ORIGIN + '/bot', offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      description: 'Free Telegram buy bot with top-trader and KOL tags, whale reactions and a captcha, for Solana, Base, Ethereum and Robinhood Chain tokens.' }],
+  });
+}
+
 /* -------------------------------------------------------- sitemap, llms */
 export function sitemapXml(kols = [], now = Date.now()) {
   const lm = new Date(now).toISOString();
@@ -346,7 +394,7 @@ ${k.length ? `\nAs of ${day(now)}: pump.fun has paid its top ${k.length} KOLs ${
 ## Tools
 
 - [Swap](${ORIGIN}/swap): swap Solana tokens (Jupiter) and Base, Ethereum and Robinhood Chain tokens (Relay) from your own wallet.
-- [Telegram buy bot](https://t.me/pumpbubblebot): free buy alerts for token communities on Solana, Base, Ethereum and Robinhood Chain, with a captcha guard and smart-money tags.
+- [Telegram buy bot](${ORIGIN}/bot): free buy alerts for token communities on Solana, Base, Ethereum and Robinhood Chain, with a captcha guard and smart-money tags.
 - [Free GPU price API](${ORIGIN}/api/compute/gpus): JSON, free with a link back.
 
 ## Contact

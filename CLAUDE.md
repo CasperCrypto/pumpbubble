@@ -844,6 +844,27 @@ The homepage carries a `<noscript>` summary and links for crawlers that do not r
   carry `</script>`. A missing record is a dash. A KOL not on the board is a 404, not an empty page.
 - Hidden tokens (the console's hide list) stay hidden here too.
 
+## Outreach and /bot (2026-10-15)
+
+Asked as "we have features, data, a bot, a swap — but no users and nobody paying". Measured that day:
+the bot in **1 group, 0 subscribers**, its Solana watcher at **0 polls** (no `ALCHEMY_KEY` /
+`SOL_POLL_RPC` — the keyless RPCs refuse Cloudflare). The plan: the bot is the distribution, so get
+it into groups.
+
+- **Console → Outreach** (`src/outreach.mjs`, action `outreach.leads`): graduated pump.fun coins,
+  backed, $50K–$50M, 2 h–30 days old, traded in the last 30 min, linking a Telegram or X community,
+  not already running the bot; Telegram first, then 24h volume. A message template with `{sym}`
+  (kept in the operator's browser), Copy message, and a Contacted mark (localStorage only — nothing
+  stored server-side). The feed now keeps each coin's `telegram` and `website` (core.mjs normaliser);
+  links are kept only as plain https to t.me / x.com / twitter.com, any other scheme is nothing.
+  Measured: 42 leads, 5 with Telegram — most communities live on X now. **Copycats paste a real
+  project's links** (a pump.fun "NOS" listed Nosana's Telegram), so the card says to check.
+- **The card tells him the legal line**: unrequested promotional DMs need prior consent under Polish
+  Art. 398 PKE; a public reply on the project's X post is the safe channel.
+- **`/bot`** (pages.mjs `botPage`, in the nav and sitemap): the bot in thirty seconds — features,
+  an example alert labelled as one, three setup steps, an FAQ that says what pays for it (one
+  sponsored line under alerts), SoftwareApplication JSON-LD. The outreach message links here.
+
 ## KOLs
 
 `src/kols.mjs`, sources `kols-all|1m|1w|1d`, the third view of the Calls tab (Live calls · Top

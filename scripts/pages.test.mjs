@@ -14,7 +14,7 @@
      - only the pages that exist are routed.
    ========================================================================== */
 
-import { kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, sitemapXml, llmsTxt,
+import { kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, BOT_ADD, sitemapXml, llmsTxt,
   slug, isSeoPath, money, mult, median, PAGES } from '../src/pages.mjs';
 
 let pass = 0, fail = 0;
@@ -66,6 +66,18 @@ console.log('\nthe other boards');
   const gpu = gpuPage({ gpus: [{ id: 'h100', model: 'H100', usdPerHour: 2.72, fromUsdPerHour: 1.9, change24h: null, change7d: 1.5, gpusFree: 12, gpusListed: 40 }] }, NOW);
   ok('gpu: H100 price in the answer', gpu.includes('<b>$2.72 an hour</b>') && gpu.includes('12 / 40'));
   ok('gpu: no board, no invented price', gpuPage({ gpus: [] }, NOW).includes('being read'));
+}
+
+console.log('\nthe bot page');
+{
+  const html = botPage(NOW);
+  ok('leads with the add-to-group button', html.includes('class="cta" href="' + BOT_ADD.replace(/&/g, '&amp;') + '"'));
+  ok('says what is free and what pays for it', html.includes('One sponsored line sits under each alert'));
+  ok('shows an example alert, labelled as one', html.includes('Example alert'));
+  ok('three setup steps', (html.match(/<li>/g) || []).length >= 3 && html.includes('/setup'));
+  ok('app and FAQ structured data', html.includes('"@type":"SoftwareApplication"') && html.includes('"@type":"FAQPage"'));
+  ok('no live-board timestamp on a static page', !html.includes('refreshed continuously'));
+  ok('routed and in the nav', isSeoPath('/bot') && html.includes('href="/bot" class="on"'));
 }
 
 console.log('\nsitemap, llms.txt, routing');

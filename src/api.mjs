@@ -18,8 +18,9 @@ import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from 
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
   onTrade as tgTrade, ensureWebhook as tgEnsure, status as tgStatus, broadcast as tgBroadcast, notifyPaid as tgNotifyPaid, tokenLinks as tgTokenLinks, setChannel as tgSetChannel,
-  syncHelius as tgSyncHelius, groupList as tgGroups, sendDm as tgSendDm,
+  syncHelius as tgSyncHelius, groupList as tgGroups, sendDm as tgSendDm, tracked as tgTracked,
 } from './tgbot.mjs';
+import { leads as outreachLeads } from './outreach.mjs';
 import { deliveryAuth as heliusAuth } from './helius.mjs';
 import { solPolling } from './solwatch.mjs';
 import { sweepCasinos, loadHot as loadCasinoHot, totals as casinoTotals } from './casinos.mjs';
@@ -40,7 +41,7 @@ import {
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
-import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
+import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
@@ -1739,6 +1740,7 @@ export async function handle(req, ctx) {
       if (path === '/trending') return html(trendingPage(shown(await feed('trending')), now));
       if (path === '/robinhood') return html(robinhoodPage(shown((await feed('robinhood')).filter(t => t.solid !== false)), now));
       if (path === '/gpu-prices') return html(gpuPage(gpuFeed(await gpuBoardCached(ctx), null), now));
+      if (path === '/bot') return html(botPage(now));
     }
 
     if (path === '/s/top10') {
@@ -2496,6 +2498,13 @@ export async function handle(req, ctx) {
             : json({ ok: false, error: r === 'gone' ? 'that person has not pressed Start or has blocked the bot' : 'Telegram refused the message — check the HTML tags' }, 400);
         }
         /* every group the bot is in, set up or not, and the ones it left */
+        /* projects worth inviting to the bot: graduated, alive, linking a
+           Telegram or X community, not already running it (src/outreach.mjs) */
+        if (action === 'outreach.leads') {
+          const snap = await snapshot(ctx, sourceOf('pumpfun')).catch(() => null);
+          const t = await tgTracked(ctx.store).catch(() => ({ set: new Set() }));
+          return json({ ok: true, leads: outreachLeads((snap && snap.tokens) || [], t.set || new Set(), Date.now()), at: (snap && snap.ts) || 0 });
+        }
         if (action === 'tg.groups') {
           if (!tgEnabled(ctx.env)) return json({ ok: false, error: 'bot is not configured' }, 400);
           return json({ ok: true, groups: await tgGroups(ctx, { fresh: !!body.fresh }) });
