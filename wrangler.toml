@@ -182,6 +182,16 @@ class_name = "InsidersDO"
 tag = "v7-insiders"
 new_sqlite_classes = ["InsidersDO"]
 
+# The buy card's renderer: cards cost hundreds of ms of CPU, which a Durable
+# Object has and a free-plan Worker request does not (src/buycard.mjs).
+[[durable_objects.bindings]]
+name = "CARDS"
+class_name = "CardDO"
+
+[[migrations]]
+tag = "v8-cards"
+new_sqlite_classes = ["CardDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

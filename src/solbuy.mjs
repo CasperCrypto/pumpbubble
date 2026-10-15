@@ -152,6 +152,7 @@ export function parseBuys(tx, tracked) {
       tokens: gained,
       decimals: decimalsOf(meta.postTokenBalances, mint) || decimalsOf(meta.preTokenBalances, mint),
       newHolder: !(pre.get(buyer) > 0),
+      pre: pre.get(buyer) || 0,
       sig,
       slot: num(tx.slot),
       blockTime: num(tx.blockTime),

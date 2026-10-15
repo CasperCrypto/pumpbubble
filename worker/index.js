@@ -22,6 +22,9 @@ import { histToJSON, histFromJSON, pruneHistory, altGateways, fetchSolPrice } fr
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
 import { Arena } from '../src/taps.mjs';
+import { buildBuyCardSvg, BUY_W } from '../src/buycard.mjs';
+import { svgToPng } from '../src/png.mjs';
+import { logoDataUri } from '../src/share.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -289,6 +292,38 @@ export class SolWatch {
 const INS_TICK_MS = 60_000;
 const INS_DAY = 864e5;
 const isoAgo = d => new Date(Date.now() - d * INS_DAY).toISOString().slice(0, 10);
+/* The buy card's renderer (src/buycard.mjs). A card is hundreds of
+   milliseconds of CPU — a Durable Object has thirty seconds of it per request
+   on the free plan, a Worker request ten milliseconds — so the bot asks this
+   object for the PNG and uploads it itself. One object for every group; a
+   token's art is kept for an hour, because a busy token buys every few
+   seconds and its picture does not change. */
+const ART_TTL = 3600_000;
+export class CardDO {
+  constructor(state, env) { this.state = state; this.env = env; this.art = new Map(); }
+  async logo(img) {
+    if (!img) return null;
+    const hit = this.art.get(img);
+    if (hit && Date.now() - hit.at < ART_TTL) return hit.v;
+    let v = null;
+    try { v = await logoDataUri({ img }); } catch { v = null; }
+    this.art.set(img, { at: Date.now(), v });
+    if (this.art.size > 300) this.art.delete(this.art.keys().next().value);
+    return v;
+  }
+  async fetch(req) {
+    let spec = null;
+    try { spec = await req.json(); } catch { spec = null; }
+    if (!spec || typeof spec !== 'object') return new Response('bad request', { status: 400 });
+    try {
+      const png = await svgToPng(buildBuyCardSvg(spec, await this.logo(String(spec.img || ''))), BUY_W);
+      return new Response(png, { headers: { 'content-type': 'image/png' } });
+    } catch (e) {
+      return new Response(String((e && e.message) || e).slice(0, 200), { status: 500 });
+    }
+  }
+}
+
 export class InsidersDO {
   constructor(state, env) { this.state = state; this.env = env; this.c = null; this.w = null; this.f = null; this.dirty = new Set(); }
   async load() {

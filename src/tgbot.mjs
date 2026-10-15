@@ -39,6 +39,7 @@ import { TTLS, KICK_S } from './guard.mjs';
 import { TIERS as BOOST_TIERS, AD_TIERS, welcomeGold } from './boosts.mjs';
 import { UNSUB, MAX_FOLLOWS } from './audience.mjs';
 import { smartWallets, topSmart, smartSignal } from './smartset.mjs';
+import { buyCardSpec } from './buycard.mjs';
 import { BOT_BONUS } from './taps.mjs';
 import { TOP_N as CALL_TOP_N } from './callers.mjs';
 
@@ -984,7 +985,8 @@ async function sendTest(ctx, chatId, g, { whale = false } = {}) {
     const bot = await me(env, store).catch(() => ({ username: '' }));
     const token = { sym: g.sym, mcap: t && t.mcap, addr: g.token };
     const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: eth, botName: bot.username, env, test: true, ad: await alertAd(store) });
-    return sendAlert(env, store, chatId, g, caption, keyboard, opts(buy.usd));
+    return sendAlert(env, store, chatId, g, caption, keyboard, { ...opts(buy.usd),
+      card: buyCardSpec({ buy: { ...buy, newHolder: true }, token: { ...token, img: (t && t.img) || '' }, usd: buy.usd, payWith: 'ETH', whale: buy.usd >= whaleAt(g) }) });
   }
   const t = await tokenInfo(env, g.mint);
   const solUsd = num(ctx.solUsd);
@@ -996,7 +998,8 @@ async function sendTest(ctx, chatId, g, { whale = false } = {}) {
   };
   const bot = await me(env, store).catch(() => ({ username: '' }));
   const { caption, keyboard } = formatBuy({ buy, token: t || g, group: g, solUsd, botName: bot.username, env, test: true, ad: await alertAd(store) });
-  return sendAlert(env, store, chatId, g, caption, keyboard, opts(sol * solUsd));
+  return sendAlert(env, store, chatId, g, caption, keyboard, { ...opts(sol * solUsd),
+    card: buyCardSpec({ buy, token: t || g, usd: sol * solUsd, payWith: 'SOL', whale: sol * solUsd >= whaleAt(g) }) });
 }
 
 /* ================================================================ EVM */
@@ -1123,8 +1126,10 @@ export async function onEvmBuys(ctx, chain, buys, chatsByToken, ethPrice) {
       const buy = { sol: b.eth, usd: b.usd, tokens: b.tokens, buyer: b.buyer || '', sig: b.tx };
       const token = { sym: g.sym, mcap: b.mcap, addr: b.token };
       const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd: ethPrice, botName: bot.username, env, ad: await alertAd(store) });
+      const art = await tokenInfo(env, b.token).catch(() => null);
       if (await sendAlert(env, store, chatId, g, caption, keyboard,
-        { whale: num(b.usd) >= whaleAt(g), react: buyReaction({ usd: b.usd, group: g }) })) {
+        { whale: num(b.usd) >= whaleAt(g), react: buyReaction({ usd: b.usd, group: g }),
+          card: buyCardSpec({ buy, token: { ...token, img: (art && art.img) || '' }, usd: num(b.usd), payWith: 'ETH', whale: num(b.usd) >= whaleAt(g) }) })) {
         sent++;
         if (b.ts) {
           const lat = Date.now() / 1000 - b.ts;
@@ -1557,9 +1562,12 @@ export function settingsView(g, page = 'main') {
         + `<b>Bubble</b>${classic ? '' : ' ✅'} — how big the buy is, by name and a meter:\n`
         + `🐬 <b>${sym} BUY</b> · <b>$620</b>\n<b>${buyMeter(620)}</b> DOLPHIN\n\n`
         + `<b>Classic</b>${classic ? ' ✅' : ''} — one ${tgEsc(g.emoji || '🟢')} per $${step}, like other buy bots:\n`
-        + `${emojiRow(620, g.emoji, step)}`,
+        + `${emojiRow(620, g.emoji, step)}\n\n`
+        + `<b>Buy card picture</b>${g.card === false ? '' : ' ✅'} — every buy drawn as a picture with your token's art, `
+        + `market cap and the buyer's position; a 🧠 top trader or 📣 top KOL is named on it. Used only when you have not set your own media.`,
       kb: [[{ text: (classic ? '' : '✅ ') + '🫧 Bubble', callback_data: 'cfg:style:bubble' },
             { text: (classic ? '✅ ' : '') + '😀 Classic', callback_data: 'cfg:style:classic' }],
+           [{ text: (g.card === false ? '⬜' : '✅') + ' Buy card picture', callback_data: 'cfg:card' }],
            [{ text: '🧪 Test alert', callback_data: 'cfg:test' }], back],
     };
   }
@@ -1638,6 +1646,12 @@ async function onSettings(ctx, q, act) {
     await putGroup(store, chat.id, g);
     await ack('Whales from ' + fmtUsd(WHALES[i]));
     return show(settingsView(g, 'whale'));
+  }
+  if (what === 'card') {
+    g = { ...g, card: g.card === false };
+    await putGroup(store, chat.id, g);
+    await ack(g.card ? 'Buy card on — when no media is set' : 'Buy card off');
+    return show(settingsView(g, 'style'));
   }
   if (what === 'react') {
     g = { ...g, react: g.react === false };
@@ -2309,15 +2323,59 @@ function fresh(sig) {
   return true;
 }
 
-async function sendAlert(env, store, chatId, g, caption, keyboard, { whale = false, react = '' } = {}) {
+/* The buy card (src/buycard.mjs) is drawn in the CardDO — hundreds of
+   milliseconds of CPU, which a free-plan Worker request does not have and a
+   Durable Object does. Anything short of a PNG back is no card. */
+export async function buyCardPng(env, spec) {
+  if (!env.CARDS || !spec) return null;
+  try {
+    const stub = env.CARDS.get(env.CARDS.idFromName('cards'));
+    const r = await stub.fetch('https://cards/', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(spec), signal: AbortSignal.timeout(12000) });
+    if (!r.ok || !/image\/png/.test(r.headers.get('content-type') || '')) return null;
+    const buf = await r.arrayBuffer();
+    return buf.byteLength > 1000 ? buf : null;
+  } catch { return null; }
+}
+
+/* A photo upload: Telegram takes a new file only as multipart. */
+export async function tgUpload(env, method, fields, fileField, bytes, filename) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) if (v != null) form.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+  form.append(fileField, new Blob([bytes], { type: 'image/png' }), filename);
+  const res = await fetch('https://api.telegram.org/bot' + env.TG_BOT_TOKEN + '/' + method, { method: 'POST', body: form, signal: AbortSignal.timeout(20000) });
+  let j = null;
+  try { j = await res.json(); } catch { /* below */ }
+  if (!j || !j.ok) {
+    const e = new Error(method + ': ' + ((j && j.description) || res.status));
+    e.description = (j && j.description) || '';
+    throw e;
+  }
+  return j.result;
+}
+
+/* A group's own media always wins; the card is for the groups that set none,
+   and any group can switch it off (⚙️ Settings → 🎨 Style). */
+const wantsCard = (g, m) => !m && g.card !== false;
+
+export async function sendAlert(env, store, chatId, g, caption, keyboard, { whale = false, react = '', card = null } = {}) {
   const base = { chat_id: chatId, caption, parse_mode: 'HTML', reply_markup: keyboard };
   const useWhale = !!(whale && g.whaleMedia);
   const m = useWhale ? g.whaleMedia : g.media;
+  const png = card && wantsCard(g, m) ? await buyCardPng(env, card) : null;
   let sent = null;
   try {
     if (m && m.kind === 'photo') sent = await tg(env, 'sendPhoto', { ...base, photo: m.id });
     else if (m && m.kind === 'animation') sent = await tg(env, 'sendAnimation', { ...base, animation: m.id });
     else if (m && m.kind === 'video') sent = await tg(env, 'sendVideo', { ...base, video: m.id });
+    else if (png) {
+      /* a card that Telegram refuses is the text alert, never a missed buy */
+      sent = await tgUpload(env, 'sendPhoto', base, 'photo', png, 'buy.png').catch(e => {
+        if (/kicked|not a member|chat not found|CHAT_WRITE_FORBIDDEN|deactivated|not enough rights/i.test(String(e.description || e.message || ''))) throw e;
+        return null;
+      });
+      if (!sent) sent = await tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } });
+    }
     else sent = await tg(env, 'sendMessage', { chat_id: chatId, text: caption, parse_mode: 'HTML', reply_markup: keyboard, link_preview_options: { is_disabled: true } });
   } catch (e) {
     const d = String(e.description || e.message || '');
@@ -2396,7 +2454,8 @@ export async function onTrade(ctx, payload, solUsd, { wallets = true, buys: with
       const { caption, keyboard } = formatBuy({ buy, token, group: g, solUsd, botName: bot.username, env, ad: await alertAd(store), smart, caller,
         rank: ctx.mapRank ? ctx.mapRank(buy.mint) : null });
       if (await sendAlert(env, store, chatId, g, caption, keyboard,
-        { whale: usd >= whaleAt(g), react: buyReaction({ usd, smart, caller, group: g }) })) {
+        { whale: usd >= whaleAt(g), react: buyReaction({ usd, smart, caller, group: g }),
+          card: buyCardSpec({ buy, token, usd, payWith: 'SOL', smart, caller, rank: ctx.mapRank ? ctx.mapRank(buy.mint) : null, whale: usd >= whaleAt(g) }) })) {
         sent++;
         /* block time to alert posted, in seconds — the number that decides
            whether this feels live next to Bobby; read with wrangler tail */

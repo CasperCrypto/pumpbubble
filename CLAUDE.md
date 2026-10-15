@@ -2122,6 +2122,22 @@ the wow is what Telegram itself can do that other buy bots do not use:
 Both styles carry the same facts, the same escaped strings and the same buttons; Bubble keeps the
 trending rank and short numbers, and a media caption is capped at 1,024 characters either way.
 
+**The buy card** (2026-10-15, `src/buycard.mjs`, the `CardDO`): asked for after a competitor's
+alerts (Peak's) arrived with a generated picture per buy — which makes every buy an advert for the
+bot that drew it. Ours draws the token as the map draws it (its own art as a lit bubble, a seeded sky
+of small ones), the money, what was swapped, market cap, **new holder or how much the position grew**
+(`pre` on a parsed buy: gained / pre), its place on the map, and — what no other buy bot knows —
+**TOP TRADER BUY / TOP KOL BUY** with the board line on the image. Gold for a whale.
+- **A group's own media always wins**; the card is for groups that set none, and ⚙️ Settings → 🎨 Style
+  → *Buy card picture* turns it off (`g.card === false`).
+- **Rendered in the `CardDO`, never in a Worker request**: 150–500 ms of CPU a card measured in Node,
+  where a free-plan Worker request has 10 ms and a Durable Object 30 s. The bot posts the PNG itself
+  as a multipart `sendPhoto` (`tgUpload`); the art is kept an hour per URL in the object.
+- **A card is never a missed buy**: no renderer, a failed render, or Telegram refusing the upload all
+  fall back to the text alert (`scripts/buycard.test.mjs` drives each path against a fake Telegram).
+- One font, no emoji on the image (Archivo Black has none) — badges are drawn shapes; a ticker the
+  font cannot draw becomes `$TOKEN`, every string is escaped.
+
 **Standard format first; bubble posts later.** The buy alert's facts are deliberately the ones the
 communities compare against, because that is what they judge a buybot by. What is *ours* — rank
 changes, milestones, a daily map with their token lit, the Bubble Index — goes out as separate
