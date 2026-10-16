@@ -241,6 +241,20 @@ re-armed only when `getAlarm()` was null, so nothing ever re-armed it. Now:
   on its own) and saves cursors when a poll posted or every two minutes, Calls ticks every 30 s,
   Insiders writes its company state only when it learned something.
 
+**The keys that must save live in a Durable Object, not KV** (2026-10-16, `src/dostore.mjs`, the
+`StoreDO`, `env.STORE`). A group's `/setup` answered *"KV put() limit exceeded for the day"* at
+18:28 UTC — the background jobs had spent the 1,000 free KV writes, and every write after that
+failed until midnight, the bot's and a paid boost's included. Now every `tg:` key and what money
+buys (`boosts`, `pending`, `ads`, `alertads`, `dmads`, `bids`, `hidden`, `welcomed`, `ourtoken`,
+`affiliates`) goes through `makeStore()` to the object, whose storage allows 100,000 rows a day; the
+rest stays in KV. A key the object never had is read from KV, so nothing was migrated by hand —
+which also means **`wrangler kv key get` shows a stale copy of these keys** once they have been
+written again. Reads are kept 30 s per isolate and cloned; a write that cannot reach the object
+throws rather than landing in KV, where the object's older copy would shadow it. Until 2026-10-16
+the webhook swallowed every update error, so a broken `/setup` said nothing at all: it now replies
+with the failing step and logs `tg-setup-error` / `tg-update-error`, and `/api/tg/status` carries
+`webhook` (whether Telegram reaches us, its pending count and last error).
+
 **A second Cloudflare account for the bot is not the fix**: the bot shares KV and Durable Objects
 with the site, its shop calls the site's own routes (those would land on the site's account anyway),
 and a second free account opened to get round a limit risks both. Workers Paid ($5/month, ten

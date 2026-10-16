@@ -25,6 +25,7 @@ import { Arena } from '../src/taps.mjs';
 import { buildBuyCardSvg, BUY_W } from '../src/buycard.mjs';
 import { svgToPng } from '../src/png.mjs';
 import { logoDataUri } from '../src/share.mjs';
+import { objectStore, StoreDO } from '../src/dostore.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -835,7 +836,24 @@ let histDirtyAt = 0;
    quarter of an hour only dulls the colours. */
 const HIST_SAVE_EVERY = 15 * 60 * 1000;
 
+/* The bot's keys and the ones money buys live in the StoreDO (src/dostore.mjs),
+   out of reach of the free plan's 1,000 KV writes a day; the rest stay in KV.
+   Reads of those keys are kept per isolate for 30 s. */
+export { StoreDO };
+const STORE_MEM = new Map();
 function makeStore(env) {
+  const base = kvStore(env);
+  if (!env.STORE) return base;
+  const call = async body => {
+    const r = await env.STORE.get(env.STORE.idFromName('store')).fetch('https://store/', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('store ' + r.status + ': ' + (await r.text().catch(() => '')).slice(0, 120));
+    return r.json();
+  };
+  return objectStore(base, call, { mem: STORE_MEM });
+}
+
+function kvStore(env) {
   const kv = env.BUBBLE_KV;
   return {
     /* No binding means boosts cannot be persisted, so the API refuses to sell

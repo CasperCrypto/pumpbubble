@@ -192,6 +192,16 @@ class_name = "CardDO"
 tag = "v8-cards"
 new_sqlite_classes = ["CardDO"]
 
+# The keys that must save after the day's KV writes are spent: the bot's,
+# and what money buys (src/dostore.mjs).
+[[durable_objects.bindings]]
+name = "STORE"
+class_name = "StoreDO"
+
+[[migrations]]
+tag = "v9-store"
+new_sqlite_classes = ["StoreDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"
