@@ -250,10 +250,13 @@ function receivedLamports(tx, treasury) {
 
 /* One failed lookup must not abort the scan: public RPCs 429 constantly, and
    giving up on the first one would strand a payment that already landed. */
+/* Version 1, not 0: Solana's v1 transactions arrived in 2026 (measured on
+   2026-10-16, about half of a busy pool's trades) and a read capped at 0 is
+   refused outright — a payment sent as one would never be found. */
 async function getTx(rpcUrl, sig) {
   try {
     return await rpc(rpcUrl, 'getTransaction',
-      [sig, { maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' }]);
+      [sig, { maxSupportedTransactionVersion: 1, encoding: 'jsonParsed' }]);
   } catch { return null; }
 }
 

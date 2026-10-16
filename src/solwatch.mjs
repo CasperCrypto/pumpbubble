@@ -64,7 +64,11 @@ export const TX_MAX = 10;
 export const MAX_AGE_S = 180;       // a buy older than this is history, not an alert
 export const BENCH_MS = 60_000;     // a failing endpoint sits out this long…
 export const LIMIT_BENCH_MS = 15_000; // …and a rate-limited one this long
-const TX_OPTS = { encoding: 'json', maxSupportedTransactionVersion: 0, commitment: 'confirmed' };
+/* Version 1: Solana's v1 transactions (2026) are refused by a read capped at
+   0 — "Transaction version (1) is not supported" — and on 2026-10-16 were 8 of
+   10 reads on PUMP's pool. Their JSON has the same accountKeys, header,
+   loadedAddresses and balances as v0, so parseBuys reads them unchanged. */
+export const TX_OPTS = { encoding: 'json', maxSupportedTransactionVersion: 1, commitment: 'confirmed' };
 
 /* Who delivers Solana buys: this watcher, unless SOL_BUYS is "helius" — the
    switch back for the day there is a paid plan and the webhook's speed is

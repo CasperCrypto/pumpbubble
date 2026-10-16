@@ -13,8 +13,9 @@
    ========================================================================== */
 
 import { watchList, pickNew, rpcCall, Endpoints, readTxs, readSpread, poll, rpcList, solPolling, host, LIMIT_BENCH_MS,
-  RPCS, MAX_AGE_S, TX_MAX, SINGLE_MAX } from '../src/solwatch.mjs';
-import { buysFromPayload } from '../src/solbuy.mjs';
+  RPCS, MAX_AGE_S, TX_MAX, SINGLE_MAX, TX_OPTS } from '../src/solwatch.mjs';
+import { buysFromPayload, parseBuys } from '../src/solbuy.mjs';
+import { readFileSync } from 'node:fs';
 import { addrHash } from '../src/helius.mjs';
 
 let pass = 0, fail = 0;
@@ -240,6 +241,18 @@ console.log('\nHelius set fingerprint');
   is('order and repeats do not change it', addrHash(['b', 'a', 'a']), addrHash(['a', 'b']));
   is('a different set does', addrHash(['a', 'b']) === addrHash(['a', 'c']), false);
   is('empty is stable', addrHash([]), addrHash([]));
+}
+
+/* Solana's v1 transactions (2026): a read capped at version 0 is refused
+   outright, and on 2026-10-16 that was 8 of 10 reads on PUMP's pool. */
+console.log('\nversion 1 transactions');
+{
+  is('the watcher asks for version 1', TX_OPTS.maxSupportedTransactionVersion, 1);
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/sol-v1-buy.json', import.meta.url), 'utf8'));
+  is('the fixture is a v1 transaction', fx.tx.version, 1);
+  const b = parseBuys(fx.tx, new Set([fx.mint]));
+  is('a real v1 buy is read as one buy', b.length, 1);
+  is('with what was paid and what was bought', b[0] && [+b[0].sol.toFixed(4), Math.round(b[0].tokens), b[0].newHolder], [0.6481, 18416, false]);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

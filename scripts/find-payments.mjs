@@ -40,7 +40,7 @@ console.log(`${sigs.length} signatures on the account, ${recent.length} inside t
 let found = 0;
 for (const s of recent) {
   const tx = await rpc('getTransaction',
-    [s.signature, { maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' }]);
+    [s.signature, { maxSupportedTransactionVersion: 1, encoding: 'jsonParsed' }]);
   if (!tx) continue;
 
   const keys = (tx.transaction?.message?.accountKeys || [])

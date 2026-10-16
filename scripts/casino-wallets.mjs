@@ -116,7 +116,7 @@ async function tronSide(hash) {
   return v && v.owner_address && v.to_address ? { from: hex2b58(v.owner_address), to: hex2b58(v.to_address) } : null;
 }
 async function solSide(hash) {
-  const tx = await rpc(RPC.solana, 'getTransaction', [hash, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }]);
+  const tx = await rpc(RPC.solana, 'getTransaction', [hash, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }]);
   if (!tx) return null;
   const meta = tx.meta || {}; const pre = new Map(), post = new Map();
   for (const b of meta.preTokenBalances || []) pre.set(b.owner + '|' + b.mint, num(b.uiTokenAmount.uiAmount));
