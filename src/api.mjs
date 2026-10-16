@@ -2688,7 +2688,11 @@ export async function handle(req, ctx) {
           headers: { 'content-type': 'application/json', 'cf-connecting-ip': 'tg-' + who },
           body: body ? JSON.stringify(body) : undefined,
         }), { ...ctx, fromBot: true }).then(r => r ? r.json() : null);
-        const work = tgUpdate(ctx, update).catch(() => {});
+        /* a failure is logged, never retried: Telegram would redeliver the
+           same update until it stopped failing, which is a loop, not a fix */
+        const work = tgUpdate(ctx, update).catch(e => console.log(JSON.stringify({
+          ev: 'tg-update-error', kind: Object.keys(update || {}).find(k => k !== 'update_id') || '',
+          error: String((e && e.message) || e).slice(0, 300) })));
         if (ctx.waitUntil) ctx.waitUntil(work); else await work;
         return json({ ok: true });
       }
@@ -2776,7 +2780,11 @@ export async function handle(req, ctx) {
           warn: s.warnAt && Date.now() - s.warnAt < 600_000 ? s.warn : '' };
       }
       tgStatusMem = { at: Date.now(), v: { ok: true, enabled: !!st.enabled, groups: st.groups || 0, subscribers: st.subscribers || 0, mints: st.mints || 0, sol, evm,
-        profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null } };
+        profile: st.profile ? { ok: st.profile.ok, photo: st.profile.photo } : null,
+        /* whether Telegram can reach us — never the URL's secret or the token */
+        webhook: st.telegram ? (st.telegram.error ? { ok: false, error: String(st.telegram.error).slice(0, 160) }
+          : { ok: !!st.telegram.url && st.telegram.url.endsWith('/tg/webhook'), pending: st.telegram.pending || 0,
+              lastError: st.telegram.lastError || '', lastErrorAgoS: st.telegram.lastErrorAt ? Math.round(Date.now() / 1000 - st.telegram.lastErrorAt) : null }) : null } };
       return json(tgStatusMem.v);
     }
 

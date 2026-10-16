@@ -877,6 +877,28 @@ async function onGroup(ctx, msg) {
   if (c.cmd === 'setup') {
     const [addr = '', wantChain = ''] = c.arg.split(/\s+/);
     if (!isCA(addr)) return say(env, chatId, 'Send the contract address after the command:\n<code>/setup &lt;address&gt;</code>');
+    /* A setup that broke half-way used to say nothing at all — the webhook
+       swallows errors — so an admin could only report that it "does not
+       work". Now the group is told which step failed, and the log says it too. */
+    try {
+      return await setupToken(ctx, msg, addr, wantChain);
+    } catch (e) {
+      const why = String((e && e.message) || e).replace(/bot\d+:[\w-]+/g, 'bot…').slice(0, 200);
+      console.log(JSON.stringify({ ev: 'tg-setup-error', chat: chatId, addr, error: why }));
+      return say(env, chatId, `⚠️ Setup did not finish: <code>${tgEsc(why)}</code>\n`
+        + `Run the same /setup again in a minute — if it fails again, tell us in <a href="${community(env)}">our Telegram group</a>.`);
+    }
+  }
+
+  const g = await getGroup(store, chatId);
+  if (!g) return say(env, chatId, 'Run /setup <code>&lt;contract address&gt;</code> first.');
+  return groupCommand(ctx, msg, c, g);
+}
+
+async function setupToken(ctx, msg, addr, wantChain) {
+  const { env, store } = ctx;
+  const chatId = msg.chat.id;
+  {
     if (isEvmAddr(addr)) return setupEvm(ctx, msg, addr.toLowerCase(), wantChain.toLowerCase());
     const t = await resolveAnyToken(addr, env.IMG_SECRET);
     if (!t) return say(env, chatId, 'No token found at that address.');
@@ -920,10 +942,12 @@ async function onGroup(ctx, msg) {
       + `Questions or ideas: <a href="${community(env)}">our Telegram group</a> · news on <a href="${xProfile(env)}">X</a>.` + warn,
       settingsMarkup());
   }
+}
 
-  const g = await getGroup(store, chatId);
-  if (!g) return say(env, chatId, 'Run /setup <code>&lt;contract address&gt;</code> first.');
-
+/* Every admin command but /setup, on a group that has run it. */
+async function groupCommand(ctx, msg, c, g) {
+  const { env, store } = ctx;
+  const chatId = msg.chat.id;
   if (c.cmd === 'stop') {
     await untrackOld(ctx, chatId, g, '');
     await removeGroup(store, chatId);
@@ -2480,8 +2504,8 @@ export async function status(env, store) {
   try { users = (await store.get(K.users)) || []; } catch {}
   try { mints = (await store.get(K.mints)) || []; } catch {}
   out.groups = groups.length; out.subscribers = users.length; out.mints = mints.length;
-  try { const info = await tg(env, 'getWebhookInfo'); out.telegram = { url: info.url || '', pending: info.pending_update_count || 0, lastError: info.last_error_message || '' }; }
-  catch (e) { out.telegram = { error: String(e.message) }; }
+  try { const info = await tg(env, 'getWebhookInfo'); out.telegram = { url: info.url || '', pending: info.pending_update_count || 0, lastError: info.last_error_message || '', lastErrorAt: info.last_error_date || 0 }; }
+  catch (e) { out.telegram = { error: String(e.message).replace(/bot\d+:[\w-]+/g, 'bot…') }; }
   out.helius = await webhookInfo(env, store);
   try { const pr = await store.get(K.profile); if (pr) out.profile = { ok: !!pr.ok, photo: pr.photo || '', at: pr.at, errors: pr.errors || [] }; } catch {}
   if (LAT.length) {

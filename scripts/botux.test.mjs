@@ -26,10 +26,12 @@ const is = (n, got, want) => (got === want ? ok(n) : no(n, `got ${JSON.stringify
 /* ------------------------------------------------------- a fake Telegram */
 const calls = [];
 let photos = 0;
+const MINT = 'HeLLqoYv5ANb8mPo1sQzXcX5HNSFTnxqh7Jr3LNrpump';
 const real = globalThis.fetch;
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   if (u.endsWith('/bot-avatar.jpg')) return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { status: 200 });
+  if (u.includes('pump.fun/coins') && u.includes(MINT)) return new Response(JSON.stringify({ mint: MINT, symbol: 'HELL', name: 'Hell', usd_market_cap: 1_580_000, complete: true }), { status: 200 });
   const m = u.match(/api\.telegram\.org\/bot[^/]+\/(\w+)$/);
   if (!m) return new Response('{}', { status: 404 });
   const method = m[1];
@@ -160,6 +162,23 @@ try {
     old_chat_member: { status: 'left', user: { id: 42 } }, new_chat_member: { status: 'administrator', user: { id: 42 } } } });
   msg = take().find(c => c.method === 'sendMessage');
   is('being added to a group says what to do next', !!msg && msg.body.text.includes('/setup') && msg.body.text.includes('Type /'), true);
+
+  /* A /setup that broke half-way said nothing at all (2026-10-16: "I can't set
+     a new token") — the webhook swallows errors. Now it says what failed. */
+  console.log('\nsetting up a token');
+  const full = { ...mem(), put: async () => { throw new Error('KV put() limit exceeded for the day.'); } };
+  await handleUpdate({ env, store: full }, gm('/setup ' + MINT, 400));
+  msg = take().find(c => c.method === 'sendMessage');
+  is('a setup that fails says so, and why', !!msg && msg.body.text.includes('Setup did not finish') && msg.body.text.includes('limit exceeded'), true);
+  is('and never prints the bot token', !!msg && !msg.body.text.includes('1:TEST'), true);
+  const gctx = { env, store: mem() };
+  await handleUpdate(gctx, gm('/setup ' + MINT, 401));
+  msg = take().find(c => c.method === 'sendMessage');
+  is('a setup that works confirms the token', !!msg && msg.body.text.includes('Tracking <b>HELL</b>'), true);
+  for (const [i, cmd] of ['/status', '/emoji 🔥', '/step 10', '/minbuy 5', '/settings', '/media', '/x https://x.com/hell', '/test', '/stop'].entries()) {
+    await handleUpdate(gctx, gm(cmd, 410 + i));
+    is(`${cmd.split(' ')[0]} on a set-up group gets an answer`, take().some(x => x.method === 'sendMessage'), true);
+  }
 
   /* --------------------------------------------------------- the menu text */
   const m = mainMenu(env, { username: 'pumpbubblebot' });
