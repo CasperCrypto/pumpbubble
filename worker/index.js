@@ -26,6 +26,7 @@ import { buildBuyCardSvg, BUY_W } from '../src/buycard.mjs';
 import { svgToPng } from '../src/png.mjs';
 import { logoDataUri } from '../src/share.mjs';
 import { objectStore, StoreDO } from '../src/dostore.mjs';
+import { meterClass } from '../src/dometer.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -290,7 +291,10 @@ export class SolWatch {
    then one official whose filing date moved), reads one company's insider
    feed (each of the 27 about every half hour) and up to eight new Form 4s.
    Each source's rows are saved under their own key, only when they change. */
-const INS_TICK_MS = 60_000;
+/* Three minutes, not one (2026-10-17): every object shares the free plan's
+   13,000 GB-s a day and they ran out before 18:00 UTC. Filings arrive days
+   late by law; a sweep taking three times as long changes nothing on the tab. */
+const INS_TICK_MS = 180_000;
 const INS_DAY = 864e5;
 const isoAgo = d => new Date(Date.now() - d * INS_DAY).toISOString().slice(0, 10);
 /* The buy card's renderer (src/buycard.mjs). A card is hundreds of
@@ -728,7 +732,10 @@ export class TapArena {
    thing once however many people are looking. Any request (the cron's
    `tick` every five minutes) restarts the alarm if a deploy lost it. The
    book is saved every two minutes: one storage write, not one per call. */
-const CALLERS_TICK_MS = 30_000;
+/* A minute, not thirty seconds (2026-10-17, the shared DO allowance ran out):
+   the ranked feed is read once a minute anyway; records and KOLs warm at half
+   the pace. */
+const CALLERS_TICK_MS = 60_000;
 export class CallersDO {
   /* savedAt starts at zero, so a fresh instance saves after its first tick.
      Measured 2026-10-11: the runtime recycles this object between alarms, and
@@ -985,6 +992,7 @@ async function makeCtx(env, execCtx) {
     insiders: insidersClient(env),
     audience: audienceClient(env),
     callers: callersClient(env),
+    busy: () => doBusy(env),
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),
@@ -996,6 +1004,26 @@ async function makeCtx(env, execCtx) {
       }
     },
   };
+}
+
+/* Every object class is metered (src/dometer.mjs): the free plan's 13,000
+   GB-s a day is shared by all of them, and on 2026-10-17 it ran out before
+   18:00 UTC with nothing to say which object spent it. */
+for (const C of [GroupGuard, EvmWatch, SolWatch, CardDO, InsidersDO, AudienceDO, TapArena, CallersDO, StoreDO]) meterClass(C);
+
+async function doBusy(env) {
+  const list = [['sol', env.SOL, 'solana'], ['callers', env.CALLERS, 'callers'], ['insiders', env.INSIDERS, 'insiders'],
+    ['store', env.STORE, 'store'], ['cards', env.CARDS, 'cards'], ['audience', env.AUDIENCE, 'audience'], ['arena', env.ARENA, 'arena'],
+    ['evmBase', env.EVM, 'base'], ['evmEthereum', env.EVM, 'ethereum'], ['evmRobinhood', env.EVM, 'robinhood']];
+  const out = {};
+  await Promise.all(list.map(async ([k, ns, name]) => {
+    if (!ns) return;
+    try {
+      const r = await ns.get(ns.idFromName(name)).fetch('https://meter/__busy');
+      out[k] = r.ok ? await r.json() : { error: 'status ' + r.status };
+    } catch (e) { out[k] = { error: String((e && e.message) || e).slice(0, 100) }; }
+  }));
+  return out;
 }
 
 export default {

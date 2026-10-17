@@ -2732,7 +2732,12 @@ export async function handle(req, ctx) {
       const [sol, callers, insiders] = await Promise.all([
         ask(ctx.sol, 'diag'), ask(ctx.callers, 'diag'), ask(ctx.insiders, 'diag'),
       ]);
-      doHealthMem = { at: Date.now(), v: { ok: true, sol: pick(sol), callers: pick(callers), insiders: pick(insiders) } };
+      /* how long each object has been awake today, against the free plan's
+         13,000 GB-s shared by all of them (src/dometer.mjs) */
+      const busy = ctx.busy ? await ctx.busy().catch(() => null) : null;
+      const used = busy ? Object.values(busy).reduce((n, b) => n + ((b && b.gbs) || 0), 0) : null;
+      doHealthMem = { at: Date.now(), v: { ok: true, sol: pick(sol), callers: pick(callers), insiders: pick(insiders),
+        busy: busy ? { gbsToday: used, gbsFree: 13_000, objects: busy } : null } };
       return json(doHealthMem.v);
     }
 

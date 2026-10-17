@@ -255,6 +255,16 @@ the webhook swallowed every update error, so a broken `/setup` said nothing at a
 with the failing step and logs `tg-setup-error` / `tg-update-error`, and `/api/tg/status` carries
 `webhook` (whether Telegram reaches us, its pending count and last error).
 
+**The objects' shared run time ran out too** (2026-10-17): every object answered *"Exceeded allowed
+duration in Durable Objects free tier"* before 18:00 UTC — the day after `ALCHEMY_KEY` let the
+Solana watcher poll every 8 s instead of backing off to three minutes against refusing RPCs. That
+stops the buy alerts, Calls/KOLs, Insiders *and the StoreDO above* at once, until 00:00 UTC. Every
+object class is now metered (`src/dometer.mjs`: wall time of each alarm and request per UTC day,
+saved under `__busy`), and `/api/health/do` → `busy` lists each object's GB-s today against the
+13,000 free — read it before guessing which one to slow down. Insiders now ticks every 3 minutes
+(was 1) and Calls every minute (was 30 s). The Solana watcher was left at 8 s: alert speed is the
+bot's product. Workers Paid bills overage here instead of stopping (400,000 GB-s a month included).
+
 **A second Cloudflare account for the bot is not the fix**: the bot shares KV and Durable Objects
 with the site, its shop calls the site's own routes (those would land on the site's account anyway),
 and a second free account opened to get round a limit risks both. Workers Paid ($5/month, ten
