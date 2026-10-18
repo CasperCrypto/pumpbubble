@@ -19,6 +19,7 @@ import { memoryArena } from '../src/taps.mjs';
 import { memoryGuard } from '../src/guard.mjs';
 import { memoryCallers, defaultHttp as callersHttp } from '../src/callers.mjs';
 import { withKols } from '../src/kols.mjs';
+import { readAkashSites } from '../src/computemap.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -66,6 +67,8 @@ const ctx = {
   guard: memoryGuard(),
   /* the callers' watcher, in memory — production keeps it in a Durable Object */
   callers: withKols(memoryCallers(), callersHttp()),
+  /* Akash's providers for /compute-map — production reads them in the ComputeDO */
+  computeSites: (() => { let m = null; return async () => (m && Date.now() - m.at < 30 * 60_000) ? m : (m = await readAkashSites()); })(),
   /* Lets the shared API render /market in dev the same way the worker does. */
   async readAsset(rel) {
     try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }

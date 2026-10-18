@@ -879,6 +879,7 @@ body.embed #brandbadge.on{display:flex}
 <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3.5 10h17L12 4.5zM5.5 10v7M9.5 10v7M14.5 10v7M18.5 10v7M4.5 17.5h15M3 20.5h18"/></symbol>
 <symbol id="i-brief" viewBox="0 0 24 24"><path d="M4 8h16a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 4 8zM9 8V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2M2.5 12.5h19"/></symbol>
 <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5.5 21V4M5.5 4.5h11.5l-2.2 4 2.2 4H5.5"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM3.5 9h17M3.5 15h17M12 3c2.6 2.4 3.9 5.4 3.9 9s-1.3 6.6-3.9 9c-2.6-2.4-3.9-5.4-3.9-9s1.3-6.6 3.9-9z"/></symbol>
 <symbol id="i-chip" viewBox="0 0 24 24"><path d="M8 7h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM10 10h4v4h-4zM10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
 <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14"/></symbol>
 <symbol id="i-bot" viewBox="0 0 24 24"><path d="M6.5 9h11A2.5 2.5 0 0 1 20 11.5v5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-5A2.5 2.5 0 0 1 6.5 9zM12 5.5V9M12 3.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM9 13.5v1M15 13.5v1M2 12.5v3M22 12.5v3"/></symbol>
@@ -1050,6 +1051,7 @@ body.embed #brandbadge.on{display:flex}
     <button data-cg="hardware"><span class="sb-full">Servers &amp; networks</span><span class="sb-short">Servers</span></button>
     <button data-cg="clouds"><span class="sb-full">Clouds &amp; data centers</span><span class="sb-short">Clouds</span></button>
     <button data-cg="tokens">Tokens</button>
+    <button data-cmap="1" title="World map of GPU providers, data centers and power prices"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> Map</button>
   </div>
   <span class="subnote" id="smNote"></span>
 </div>
@@ -3790,6 +3792,7 @@ async function railOpen(key){
 /* ------------------------------------------------------------ Smart money tabs */
 document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cmap){location.href='/compute-map';return}
   if(b.dataset.cg){S.cpGrp=b.dataset.cg;subbar();rebuild();return}
   if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.iv){S.insWho=b.dataset.iv;S.insPerson='';subbar();rebuild();return}

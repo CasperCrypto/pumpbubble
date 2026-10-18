@@ -41,6 +41,7 @@ import {
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
+import { computeMapPage, mapPayload, MAP_CSP } from './computemap.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -814,6 +815,18 @@ async function gpuBoardCached(ctx) {
     if (ctx.waitUntil) ctx.waitUntil(p);
   }
   return within(gpuMem.inflight, GPU_WAIT, gpuMem.data);
+}
+
+/* Akash's GPU providers for /compute-map, read by the ComputeDO (a 3.8 MB
+   answer is more parsing than a Worker request's CPU allows) and kept here
+   ten minutes; six seconds of waiting at most, then the last copy or none. */
+let sitesMem = { at: 0, v: null };
+async function computeSitesCached(ctx) {
+  if (sitesMem.v && Date.now() - sitesMem.at < 10 * 60_000) return sitesMem.v;
+  if (!ctx.computeSites) return sitesMem.v;
+  const v = await within(ctx.computeSites().catch(e => ({ ...(sitesMem.v || { sites: [] }), error: String((e && e.message) || e).slice(0, 120) })), 6000, null);
+  if (v && Array.isArray(v.sites) && v.sites.length) sitesMem = { at: Date.now(), v };
+  return v || sitesMem.v;
 }
 
 /* A promise, or `fallback` once `ms` have passed — whichever comes first. */
@@ -1741,6 +1754,13 @@ export async function handle(req, ctx) {
       if (path === '/robinhood') return html(robinhoodPage(shown((await feed('robinhood')).filter(t => t.solid !== false)), now));
       if (path === '/gpu-prices') return html(gpuPage(gpuFeed(await gpuBoardCached(ctx), null), now));
       if (path === '/bot') return html(botPage(now));
+      if (path === '/compute-map') {
+        const [sites, board] = await Promise.all([computeSitesCached(ctx), gpuBoardCached(ctx).catch(() => null)]);
+        const res = html(computeMapPage(mapPayload({ sites, feed: gpuFeed(board, null), error: (sites && sites.error) || '', now }), now));
+        /* provider names on this page are written by strangers: no script but ours */
+        res.headers.set('content-security-policy', MAP_CSP);
+        return res;
+      }
     }
 
     if (path === '/s/top10') {

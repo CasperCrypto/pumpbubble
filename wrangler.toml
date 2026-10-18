@@ -202,6 +202,16 @@ class_name = "StoreDO"
 tag = "v9-store"
 new_sqlite_classes = ["StoreDO"]
 
+# Akash's GPU providers for /compute-map: a 3.8 MB list parsed where there is
+# CPU for it (src/computemap.mjs).
+[[durable_objects.bindings]]
+name = "COMPUTE"
+class_name = "ComputeDO"
+
+[[migrations]]
+tag = "v10-compute"
+new_sqlite_classes = ["ComputeDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

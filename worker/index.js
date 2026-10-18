@@ -27,6 +27,7 @@ import { svgToPng } from '../src/png.mjs';
 import { logoDataUri } from '../src/share.mjs';
 import { objectStore, StoreDO } from '../src/dostore.mjs';
 import { meterClass } from '../src/dometer.mjs';
+import { readAkashSites, SITES_TTL } from '../src/computemap.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -993,6 +994,7 @@ async function makeCtx(env, execCtx) {
     audience: audienceClient(env),
     callers: callersClient(env),
     busy: () => doBusy(env),
+    computeSites: env.COMPUTE ? async () => (await env.COMPUTE.get(env.COMPUTE.idFromName('compute')).fetch('https://compute/sites')).json() : null,
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
     waitUntil: p => execCtx.waitUntil(p),
@@ -1006,15 +1008,39 @@ async function makeCtx(env, execCtx) {
   };
 }
 
+/* Akash's GPU providers for /compute-map (src/computemap.mjs). Their list is
+   a 3.8 MB answer: parsing it needs the CPU a Durable Object has and a
+   Worker request does not. Read on request, at most every 30 minutes, kept
+   in memory and storage; no alarm, so it costs nothing while nobody looks.
+   A failed read serves the last good copy with the error attached. */
+export class ComputeDO {
+  constructor(state, env) { this.state = state; this.env = env; this.mem = null; this.inflight = null; this.fail = null; }
+  async fetch() {
+    const now = Date.now();
+    if (!this.mem) { try { this.mem = (await this.state.storage.get('sites')) || null; } catch { /* none yet */ } }
+    if (this.mem && now - this.mem.at < SITES_TTL) return Response.json(this.mem);
+    /* a failed read waits two minutes before the next try, or every page
+       view would start another 25-second read of a refusing upstream */
+    if (this.fail && now - this.fail.at < 120_000) return Response.json({ ...(this.mem || { at: 0, sites: [] }), error: this.fail.error });
+    if (!this.inflight) {
+      this.inflight = readAkashSites(fetch, now)
+        .then(async v => { this.mem = v; this.fail = null; try { await this.state.storage.put('sites', v); } catch { /* next read */ } return v; })
+        .catch(e => { this.fail = { at: Date.now(), error: String((e && e.message) || e).slice(0, 160) }; return { ...(this.mem || { at: 0, sites: [] }), error: this.fail.error }; })
+        .finally(() => { this.inflight = null; });
+    }
+    return Response.json(await this.inflight);
+  }
+}
+
 /* Every object class is metered (src/dometer.mjs): the free plan's 13,000
    GB-s a day is shared by all of them, and on 2026-10-17 it ran out before
    18:00 UTC with nothing to say which object spent it. */
-for (const C of [GroupGuard, EvmWatch, SolWatch, CardDO, InsidersDO, AudienceDO, TapArena, CallersDO, StoreDO]) meterClass(C);
+for (const C of [GroupGuard, EvmWatch, SolWatch, CardDO, InsidersDO, AudienceDO, TapArena, CallersDO, StoreDO, ComputeDO]) meterClass(C);
 
 async function doBusy(env) {
   const list = [['sol', env.SOL, 'solana'], ['callers', env.CALLERS, 'callers'], ['insiders', env.INSIDERS, 'insiders'],
     ['store', env.STORE, 'store'], ['cards', env.CARDS, 'cards'], ['audience', env.AUDIENCE, 'audience'], ['arena', env.ARENA, 'arena'],
-    ['evmBase', env.EVM, 'base'], ['evmEthereum', env.EVM, 'ethereum'], ['evmRobinhood', env.EVM, 'robinhood']];
+    ['compute', env.COMPUTE, 'compute'], ['evmBase', env.EVM, 'base'], ['evmEthereum', env.EVM, 'ethereum'], ['evmRobinhood', env.EVM, 'robinhood']];
   const out = {};
   await Promise.all(list.map(async ([k, ns, name]) => {
     if (!ns) return;

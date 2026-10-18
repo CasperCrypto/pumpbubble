@@ -56,6 +56,7 @@ export const PAGES = [
   { path: '/trending', nav: 'Trending', src: 'trending' },
   { path: '/robinhood', nav: 'Robinhood Chain', src: 'robinhood' },
   { path: '/gpu-prices', nav: 'GPU prices', src: null },
+  { path: '/compute-map', nav: 'Compute map', src: null },
   { path: '/bot', nav: 'Buy bot', src: null },
 ];
 export const isSeoPath = p => PAGES.some(x => x.path === p) || /^\/kol\/[a-z0-9_-]{1,40}$/.test(p);
@@ -83,7 +84,7 @@ th.n,td.n{text-align:left}td.r,th.r{color:var(--dim);width:40px}td.n small{displ
 .faq h3{margin-top:18px}.faq p{margin:4px 0 0;color:#c9d1de}
 footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}`;
 
-function layout({ path, title, desc, h1, lead, stats = [], body = '', method = '', faq = [], jsonld = [], live, ogImage, now, ctaText, dated = true }) {
+export function layout({ path, title, desc, h1, lead, stats = [], body = '', method = '', faq = [], jsonld = [], live, ogImage, now, ctaText, dated = true }) {
   const url = ORIGIN + path;
   const ld = [
     { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
@@ -128,7 +129,7 @@ ${navHtml.replace(/ class="on"/g, '')} · <a href="/market">Crypto market</a> ·
 </div></body></html>`;
 }
 
-const table = (head, rows) => `<div class="tw"><table><thead><tr>${head.map(([h, c]) => `<th class="${c || ''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+export const table = (head, rows) => `<div class="tw"><table><thead><tr>${head.map(([h, c]) => `<th class="${c || ''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 const who = t => t.xh ? `${esc(t.sym)}<small>@${esc(t.xh)}</small>` : esc(t.sym);
 const kolMc = v => v == null ? '' : v >= 1e6 ? 'up' : v >= 1e5 ? 'mid' : 'dn';
 
@@ -385,6 +386,7 @@ ${k.length ? `\nAs of ${day(now)}: pump.fun has paid its top ${k.length} KOLs ${
 - [Trending tokens](${ORIGIN}/trending): pump.fun's trending list plus Base, Robinhood Chain and majors by turnover × movement.
 - [Robinhood Chain tokens](${ORIGIN}/robinhood): every token on Robinhood Chain (chain id 4663), one per ticker, unbacked caps filtered.
 - [GPU rental prices](${ORIGIN}/gpu-prices): H100, A100, RTX PRO 6000, RTX 5090, RTX 4090 per hour on Akash's open market.
+- [Compute map](${ORIGIN}/compute-map): a world map of Akash's GPU providers (live), AWS / Google Cloud / Azure regions and AI megaprojects, shaded by industrial electricity price by country and US state; the cheapest GPU hour and the cheapest power.
 - [Crypto market overview](${ORIGIN}/market): the top 250 coins with 1h to 1y changes.
 
 ## Live maps
