@@ -63,11 +63,11 @@ console.log('\npower');
   ok('the country\'s when the state is unknown', powerAt('US', '').usd === POWER.countries.US.usd);
   ok('Europe is industrial, in dollars, by ISO code', powerAt('DE').kind === 'industrial' && powerAt('GR') && !powerAt('EL') && powerAt('DE').usd > 0.05 && powerAt('DE').usd < 0.5);
   ok('wholesale only where no industrial price exists', powerAt('JP').kind === 'wholesale' && powerAt('JP').usd === WHOLESALE.JP.usd);
-  ok('nothing known is nothing, not a guess', powerAt('CN') === null && powerAt('ZZ') === null);
+  ok('nothing known is nothing, not a guess', powerAt('RU') === null && powerAt('ZZ') === null);
   const c = countryData();
   ok('a country carries both kinds when it has both, apart', c.DE.ind > 0 && c.DE.whl === undefined && c.JP.whl > 0 && c.JP.ind === undefined);
   ok('periods are said in words', /^H[12] 20\d\d$/.test(c.DE.indP) && /^[A-Z][a-z]{2} 20\d\d – [A-Z][a-z]{2} 20\d\d$/.test(c.JP.whlP), c.DE.indP + ' / ' + c.JP.whlP);
-  ok('the grid for countries with no price too', c.CN && c.CN.co2 > 0 && c.CN.ind === undefined);
+  ok('the grid for countries with no price too', c.RU && c.RU.co2 > 0 && c.RU.ind === undefined && c.RU.tar === undefined);
   ok('every price is dollars per kWh, not cents or euros', Object.values(POWER.countries).every(x => x.usd > 0.02 && x.usd < 0.6) && Object.values(WHOLESALE).every(x => x.usd > 0.005 && x.usd < 0.6));
   ok('the grid data covers the world', Object.keys(GRID).length > 150);
 }
@@ -121,6 +121,44 @@ console.log('\nthe build scripts');
   ok('the last, cut-off month is not averaged in', r && r.to === '2025-01' && r.usd === 0.1, JSON.stringify(r));
   const gl = latest('entity,code,year,v\nPoland,POL,2023,600\nPoland,POL,2025,589.4\nWorld,,2025,450\n"Bonaire, Sint Eustatius",BES,2024,100\n');
   ok('the grid\'s newest year wins, aggregates are dropped', gl.POL.year === 2025 && gl.POL.v === 589.4 && !gl[''] && gl.BES.v === 100);
+}
+
+console.log('\npublished tariffs');
+{
+  const { TARIFFS } = await import('../src/tariffs.mjs');
+  const { toUsd, rateAt } = await import('./tariffs.mjs');
+  ok('China is a published tariff, with its provinces', powerAt('CN').kind === 'tariff' && TARIFFS.regions.CN.length >= 25);
+  ok('provinces cheapest first', TARIFFS.regions.CN.every((r, i, a) => !i || a[i - 1].usd <= r.usd));
+  ok('a tariff outranks a wholesale price (Korea)', powerAt('KR').kind === 'tariff' && WHOLESALE.KR && powerAt('KR').usd === TARIFFS.countries.KR.usd);
+  ok('statistics outrank a tariff', !TARIFFS.countries.DE && powerAt('DE').kind === 'industrial');
+  ok('every tariff says what it is and where it was read', Object.values(TARIFFS.countries).every(t => t.what && /^https:\/\//.test(t.src) && t.usd > 0.01 && t.usd < 0.5));
+  const c = countryData();
+  ok('a country\'s card carries the tariff apart', c.CN.tar === TARIFFS.countries.CN.usd && c.CN.tarWhat && c.CN.ind === undefined);
+  const rates = { USD: { '2025-04': 1.1, '2025-06': 1.2 }, CNY: { '2025-04': 8, '2025-06': 8.5 } };
+  ok('a month with no rate uses the newest before it', rateAt(rates.CNY, '2025-05') === 8 && rateAt(rates.CNY, '2025-01') === null);
+  ok('local money to dollars through the euro', Math.abs(toUsd(0.8, 'CNY', '2025-05', rates) - 0.8 / 8 * 1.1) < 1e-12 && toUsd(0.04, 'USD', 'x', rates) === 0.04);
+}
+
+console.log('\nearnings data');
+{
+  const { akashUtil, hashprice, MINERS, AKASH_FEE } = await import('../src/computemap.mjs');
+  const u = akashUtil([
+    { date: '2026-10-18T00:00:00Z', model: 'a100', totalGpus: 100, leasedGpus: 10 },
+    { date: '2026-10-19T00:00:00Z', model: 'a100', totalGpus: 80, leasedGpus: 40 },
+    { date: '2026-10-19T00:00:00Z', model: 'a100', totalGpus: 20, leasedGpus: 20 },
+    { date: '2026-10-19T00:00:00Z', model: '<b>', totalGpus: 5, leasedGpus: 5 },
+    { date: '2026-10-19T00:00:00Z', model: 'h200', totalGpus: 0, leasedGpus: 0 },
+  ]);
+  ok('a model\'s rows on its newest day are summed', u.a100.total === 100 && u.a100.leased === 60 && u.a100.util === 0.6, JSON.stringify(u.a100));
+  ok('bad names and empty models are left out', !u['<b>'] && !u.h200);
+  const hp = hashprice({ rewardSats: 451.8e8, blocks: 144, priceUsd: 82755, hashrateHs: 1.018e21 });
+  ok('hashprice: a day of rewards at today\'s price over the network', Math.abs(hp.usdPerThDay - 451.8 * 82755 / 1.018e9) < 1e-9 && Math.round(hp.hashrateEh) === 1018);
+  ok('a window of other than 144 blocks is scaled to a day', Math.abs(hashprice({ rewardSats: 100e8, blocks: 72, priceUsd: 1, hashrateHs: 1e12 }).btcPerDay - 200) < 1e-9);
+  ok('nothing to divide by is nothing', hashprice({ rewardSats: 1, priceUsd: 1, hashrateHs: 0 }) === null);
+  ok('miners at published specs', MINERS.every(m => m.th > 100 && m.jth > 10 && m.jth < 20) && MINERS[0].th * MINERS[0].jth === 3500);
+  ok('Akash\'s fee is a fraction', AKASH_FEE > 0 && AKASH_FEE < 0.1);
+  const p = mapPayload({ sites: { at: 1, sites: [], market: { util: u, btc: hp } } });
+  ok('the payload carries what the earnings view needs', p.market.btc && p.miners.length === MINERS.length && p.akashFee === AKASH_FEE && p.watts.h100 === 700 && p.regions.CN);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

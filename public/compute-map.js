@@ -37,6 +37,12 @@
     '.cm-big{font-size:26px;font-weight:900;letter-spacing:-.02em;margin:6px 0 0}.cm-big small{font-size:13px;font-weight:700;color:#8a93a6}',
     '.cm-kind{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.08);color:#c9d1de;margin-top:4px}',
     '.cm-kind.w{background:rgba(201,178,58,.16);color:#e4cf6a}',
+    '.cm-kind.t{background:rgba(159,183,255,.14);color:#b9c8ff}',
+    '.cm-form{display:flex;gap:8px;align-items:center;margin:8px 0 2px;flex-wrap:wrap}.cm-form select,.cm-form input{font:600 12.5px/1 inherit;color:#e8edf5;background:#121826;border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:7px 9px}.cm-form input{width:96px}.cm-form label{font-size:11.5px;color:#8a93a6}',
+    '.cm-earn{margin-top:8px;padding:10px 12px;border-radius:12px;background:rgba(61,240,155,.06);border:1px solid rgba(61,240,155,.18)}.cm-earn.neg{background:rgba(217,87,63,.08);border-color:rgba(217,87,63,.28)}',
+    '.cm-earn .cm-big{margin-top:0}.cm-up{color:#3df09b}.cm-dn{color:#ff7a6b}',
+    '.cm-note{font-size:11.5px;color:#8a93a6;margin:8px 0 0}',
+    '.cm-legend .bar.m{background:linear-gradient(90deg,#d9573f,#c9b23a 38%,#1f9d6a)}',
     '.cm-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:10px 0 2px}.cm-stats div{padding:8px;border-radius:10px;background:rgba(255,255,255,.04)}.cm-stats b{display:block;font-size:16px;font-weight:900}.cm-stats span{font-size:10.5px;color:#8a93a6}',
     '.cm-rows{display:flex;flex-direction:column}.cm-row{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:8px;cursor:pointer}.cm-row:hover{background:rgba(255,255,255,.05)}',
     '.cm-row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cm-row .v{font-weight:800;font-variant-numeric:tabular-nums}.cm-row .s{color:#8a93a6;font-size:11.5px;font-variant-numeric:tabular-nums}',
@@ -82,6 +88,10 @@
   var D = null, world = null, built = false, loadedAt = 0, on = { sites: true, metros: true, projects: true, power: true };
   var shapes = [], dots = [], NAME = { SG: 'Singapore', HK: 'Hong Kong', BH: 'Bahrain', MT: 'Malta', LU: 'Luxembourg', LI: 'Liechtenstein', XK: 'Kosovo', US: 'United States' };
   var focusGpu = null, selected = null, raf = 0, stripe = null;
+  /* what the countries are coloured by: the price of power, or what a GPU
+     rented on Akash or a Bitcoin miner would earn there after its power */
+  var mode = 'power', gpuPick = 'h100', minerPick = 's21', myPrice = null;
+  var AK = { h100: ['h100'], h200: ['h200'], a100: ['a100'], b200: ['b200'], b300: ['b300'], rtx4090: ['rtx4090'], rtx5090: ['rtx5090'], pro6000: ['pro6000se', 'pro6000we'] };
 
   function base(lon, lat) { var p = ee(lon, lat); return [B.ox + p[0] * B.s, B.oy - p[1] * B.s]; }
   function scr(b) { return [b[0] * V.z + V.px, b[1] * V.z + V.py]; }
@@ -138,6 +148,7 @@
     var c = D.countries[cc];
     if (!c) return null;
     if (c.ind != null) return { usd: c.ind, kind: 'industrial', period: c.indP };
+    if (c.tar != null) return { usd: c.tar, kind: 'tariff', period: c.tarP, what: c.tarWhat, src: c.tarSrc };
     if (c.whl != null) return { usd: c.whl, kind: 'wholesale', period: c.whlP, market: c.whlM };
     return null;
   }
@@ -147,6 +158,41 @@
     return [0, 1, 2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * u); });
   }
   var rgba = function (c, a) { return 'rgba(' + c.join(',') + ',' + a + ')'; };
+  /* margin, loss to fat: red below break-even, amber at it, green at 80%+ */
+  function marginRgb(m) {
+    var t = Math.max(0, Math.min(1, (m + 0.5) / 1.3)), lo = [217, 87, 63], mid = [201, 178, 58], hi = [31, 157, 106];
+    var a = t < 0.38 ? lo : mid, b = t < 0.38 ? mid : hi, u = t < 0.38 ? t / 0.38 : (t - 0.38) / 0.62;
+    return [0, 1, 2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * u); });
+  }
+
+  /* ------------------------------------------------------------ earnings */
+  function utilOf(id) {
+    var u = D && D.market && D.market.util, t = 0, l = 0;
+    if (!u) return null;
+    (AK[id] || [id]).forEach(function (m) { if (u[m]) { t += u[m].total; l += u[m].leased; } });
+    return t ? { util: l / t, total: t } : null;
+  }
+  function gpuRow(id) { return (D.gpus || []).filter(function (x) { return x.id === id; })[0] || null; }
+  function minerOf(id) { return (D.miners || []).filter(function (x) { return x.id === id; })[0] || null; }
+  function earnable() { return (D.gpus || []).filter(function (gp) { return D.watts && D.watts[gp.id] && utilOf(gp.id); }); }
+  /* a GPU on Akash at its typical posted price, as busy as the network's
+     GPUs of that model are, less Akash's fee, less its power (x PUE) */
+  function earnGpu(usdKwh) {
+    var gp = gpuRow(gpuPick), u = utilOf(gpuPick), w = D.watts && D.watts[gpuPick];
+    if (!gp || !u || !w || usdKwh == null) return null;
+    var kwh = w * D.pue / 1000, rev = gp.usd * u.util * (1 - (D.akashFee || 0)), power = kwh * usdKwh, p = rev - power;
+    return { rev: rev, power: power, profit: p, month: p * 730, margin: rev > 0 ? p / rev : -1, util: u, price: gp.usd, breakeven: rev / kwh };
+  }
+  /* a miner at today's hashprice: TH/s x $/TH/day, less TH x J/TH x 24 h of power */
+  function earnMine(usdKwh) {
+    var b = D.market && D.market.btc, m = minerOf(minerPick);
+    if (!b || !m || usdKwh == null) return null;
+    var kwhDay = m.th * m.jth * 24 / 1000, rev = b.usdPerThDay * m.th, p = rev - kwhDay * usdKwh;
+    return { rev: rev, power: kwhDay * usdKwh, profit: p, month: p * 30.4, margin: p / rev, breakeven: rev / kwhDay, kwhDay: kwhDay, m: m };
+  }
+  function earnAt(usd) { return mode === 'gpu' ? earnGpu(usd) : mode === 'mine' ? earnMine(usd) : null; }
+  var money = function (v) { var a = Math.abs(v), t = a >= 1000 ? Math.round(a).toLocaleString('en-US') : a.toFixed(2); return (v < 0 ? '−$' : '$') + t; };
+  function earnLabel(e) { return mode === 'gpu' ? money(e.month) + '/mo' : money(e.profit) + '/day'; }
 
   /* ------------------------------------------------------------ building */
   function build() {
@@ -188,8 +234,8 @@
     g.setTransform(dpr * V.z, 0, 0, dpr * V.z, dpr * V.px, dpr * V.py);
     if (stripe && stripe.setTransform) stripe.setTransform(new DOMMatrix().scale(1 / V.z));
     for (var i = 0; i < shapes.length; i++) {
-      var s = shapes[i], pw = on.power ? powerOf(s.c.a2) : null;
-      g.fillStyle = pw ? rgba(heatRgb(pw.usd), selected && selected.cc === s.c.a2 ? 0.85 : 0.6) : '#111722';
+      var s = shapes[i], pw = powerOf(s.c.a2), sel = selected && selected.cc === s.c.a2, e = pw && mode !== 'power' ? earnAt(pw.usd) : null;
+      g.fillStyle = !pw || (mode !== 'power' && !e) ? '#111722' : rgba(mode === 'power' ? heatRgb(pw.usd) : marginRgb(e.margin), sel ? 0.85 : 0.6);
       g.fill(s.p);
       if (pw && pw.kind === 'wholesale' && stripe) { g.fillStyle = stripe; g.fill(s.p); }
       g.lineWidth = (selected && selected.cc === s.c.a2 ? 1.6 : 0.6) / V.z;
@@ -198,7 +244,7 @@
     }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     /* prices on the countries, once they are big enough to carry one */
-    if (on.power && V.z >= 2.2) {
+    if (V.z >= 2.2) {
       g.font = '700 11px ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif';
       g.textAlign = 'center'; g.textBaseline = 'middle';
       for (var j = 0; j < shapes.length; j++) {
@@ -206,7 +252,9 @@
         if (!pl || !pw2 || pl[2] * V.z < 26) continue;
         var q = scr(pl);
         if (q[0] < -40 || q[0] > W + 40 || q[1] < -20 || q[1] > H + 20) continue;
-        var txt = '$' + pw2.usd.toFixed(3);
+        var e2 = mode === 'power' ? null : earnAt(pw2.usd);
+        if (mode !== 'power' && !e2) continue;
+        var txt = mode === 'power' ? '$' + pw2.usd.toFixed(3) : earnLabel(e2);
         g.lineWidth = 3; g.strokeStyle = 'rgba(5,7,12,0.85)'; g.strokeText(txt, q[0], q[1]);
         g.fillStyle = '#fff'; g.fillText(txt, q[0], q[1]);
       }
@@ -265,7 +313,8 @@
   function placeName(cc, st) { return cc === 'US' && st ? (D.stateNames[st] || st) + ', US' : (NAME[cc] || cc || '—'); }
   function powerLine(pw) {
     if (!pw) return '<span class="cm-d">no open price</span>';
-    return '<b>' + $kwh(pw.usd) + '</b>/kWh <span class="cm-d">' + (pw.kind === 'wholesale' ? 'wholesale' : 'industrial') + '</span>';
+    var e = mode !== 'power' ? earnAt(pw.usd) : null;
+    return '<b>' + $kwh(pw.usd) + '</b>/kWh <span class="cm-d">' + pw.kind + '</span>' + (e ? '<br>' + (mode === 'gpu' ? 'GPU' : 'Miner') + ' earns <b class="' + (e.profit >= 0 ? 'cm-up' : 'cm-dn') + '">' + earnLabel(e) + '</b>' : '');
   }
   function tipHtml(h) {
     var d = h.d;
@@ -277,9 +326,11 @@
 
   function countryBlock(cc, st) {
     var c = D.countries[cc] || {}, pw = powerOf(cc, st), out = '';
+    if (pw && mode !== 'power') out += earnBlock(pw.usd);
     if (pw) {
       out += '<div class="cm-big">' + $kwh(pw.usd) + ' <small>per kWh</small></div>'
-        + '<span class="cm-kind' + (pw.kind === 'wholesale' ? ' w' : '') + '">' + (pw.kind === 'wholesale' ? 'Wholesale · ' + esc(pw.period || '') : 'Industrial · ' + esc(pw.period || (cc === 'US' ? D.asOf.us : ''))) + '</span>'
+        + '<span class="cm-kind' + (pw.kind === 'wholesale' ? ' w' : pw.kind === 'tariff' ? ' t' : '') + '">' + (pw.kind === 'wholesale' ? 'Wholesale · ' + esc(pw.period || '') : pw.kind === 'tariff' ? 'Published tariff · ' + esc(pw.period || '') : 'Industrial · ' + esc(pw.period || (cc === 'US' ? D.asOf.us : ''))) + '</span>'
+        + (pw.kind === 'tariff' && pw.what ? '<p class="cm-note">' + esc(pw.what) + (/^https:\/\//.test(pw.src || '') ? ' <a href="' + esc(pw.src) + '" target="_blank" rel="noopener nofollow" style="color:#9aa4b6">source ↗</a>' : '') + '</p>' : '')
         + '<div class="cm-kv"><span>One H100 at full power</span><b>' + $h(D.h100 * pw.usd) + ' / hour</b>'
         + '<span>A 100 MW campus, a year</span><b>$' + Math.round(pw.usd * 100000 * 8760 / 1e6) + 'M</b></div>';
     } else out += '<div class="cm-big" style="font-size:16px;color:#8a93a6">No open power price</div>';
@@ -288,6 +339,25 @@
       out += '<h4>Grid</h4><div class="cm-kv">' + (c.co2 != null ? '<span>Carbon intensity</span><b>' + c.co2 + ' g CO₂/kWh</b>' : '') + (c.lowc != null ? '<span>Low-carbon power</span><b>' + c.lowc + '%</b>' : '') + '<span>Year</span><b>' + esc(c.gy || '') + '</b></div>';
     }
     return out;
+  }
+  function earnBlock(usd, mine) {
+    var e = earnAt(usd);
+    if (!e) return '';
+    var head = mode === 'gpu' ? 'One ' + esc((gpuRow(gpuPick) || {}).model || '') + ' on Akash' : 'One ' + esc(e.m.name);
+    return '<div class="cm-earn' + (e.profit < 0 ? ' neg' : '') + '"><div class="cm-d" style="font-size:11.5px">' + head + (mine ? ' at your price' : ' here') + '</div>'
+      + '<div class="cm-big ' + (e.profit >= 0 ? 'cm-up' : 'cm-dn') + '">' + money(mode === 'gpu' ? e.month : e.profit) + ' <small>' + (mode === 'gpu' ? 'a month' : 'a day') + '</small></div>'
+      + '<div class="cm-kv"><span>Earns</span><b>' + money(e.rev) + (mode === 'gpu' ? '/h' : '/day') + '</b><span>Power</span><b>' + money(e.power) + (mode === 'gpu' ? '/h' : '/day') + '</b>'
+      + '<span>Margin</span><b>' + Math.round(e.margin * 100) + '%</b><span>Break-even power</span><b>' + $kwh(e.breakeven) + '/kWh</b></div></div>';
+  }
+  function regionsBlock(cc) {
+    var list = D.regions && D.regions[cc];
+    if (!list || !list.length) return '';
+    var out = '<h4>' + (cc === 'CN' ? 'By province · cheapest first' : 'By region') + '</h4><div class="cm-rows">';
+    list.slice(0, 12).forEach(function (r, i) {
+      var e = mode !== 'power' ? earnAt(r.usd) : null;
+      out += '<div class="cm-row" style="cursor:default"><span class="r">' + (i + 1) + '</span><span class="n">' + esc(r.name) + (e ? ' <span class="s">' + $kwh(r.usd) + '</span>' : '') + '</span><span class="v">' + (e ? '<span class="' + (e.profit >= 0 ? 'cm-up' : 'cm-dn') + '">' + earnLabel(e) + '</span>' : $kwh(r.usd)) + '</span></div>';
+    });
+    return out + '</div>' + (list.length > 12 ? '<p class="cm-note">' + (list.length - 12) + ' more, up to ' + $kwh(list[list.length - 1].usd) + '/kWh.</p>' : '');
   }
   function computeHere(cc) {
     var sites = D.sites.filter(function (s) { return s.cc === cc && s.gpus > 0; }), metros = D.metros.filter(function (m) { return m.cc === cc; }), proj = D.projects.filter(function (p) { return p.cc === cc; });
@@ -313,7 +383,7 @@
     var list = [];
     Object.keys(D.countries).forEach(function (cc) {
       var pw = powerOf(cc);
-      if (pw && pw.kind === 'industrial' && (NAME[cc] || cc === 'US')) list.push({ cc: cc, usd: pw.usd, kind: pw.kind });
+      if (pw && pw.kind !== 'wholesale' && (NAME[cc] || cc === 'US')) list.push({ cc: cc, usd: pw.usd, kind: pw.kind });
     });
     var states = {};
     D.metros.concat(D.projects, D.sites).forEach(function (x) { if (x.cc === 'US' && x.st && D.states[x.st] != null) states[x.st] = 1; });
@@ -321,14 +391,15 @@
     return list.sort(function (a, b) { return a.usd - b.usd; });
   }
   function home() {
+    if (mode !== 'power') return homeEarn();
     selected = null; focusGpu = null;
     var gpus = D.sites.reduce(function (n, s) { return n + s.gpus; }, 0), free = D.sites.reduce(function (n, s) { return n + s.free; }, 0);
     var regions = D.metros.reduce(function (n, m) { return n + m.regions.length; }, 0), gw = D.projects.reduce(function (n, p) { return n + (p.gw || 0); }, 0);
     var places = cheapestPlaces(), html = '<span class="cm-grab"></span><h3>Where compute runs, and what power costs</h3>'
       + '<div class="cm-stats"><div><b>' + (gpus || '—') + '</b><span>Akash GPUs · ' + free + ' free</span></div><div><b>' + regions + '</b><span>cloud regions</span></div><div><b>' + (gw ? gw.toFixed(1) + ' GW' : '—') + '</b><span>AI megaprojects</span></div></div>'
-      + '<h4>Cheapest industrial power · an H100-hour</h4><div class="cm-rows">';
+      + '<h4>Cheapest power for industry · an H100-hour</h4><div class="cm-rows">';
     places.slice(0, 8).forEach(function (p, i) {
-      html += row('c' + (p.st ? 'US-' + p.st : p.cc), '<span class="r">' + (i + 1) + '</span>', esc(placeName(p.cc, p.st)), $kwh(p.usd), $h(D.h100 * p.usd) + '/h');
+      html += row('c' + (p.st ? 'US-' + p.st : p.cc), '<span class="r">' + (i + 1) + '</span>', esc(placeName(p.cc, p.st)) + (p.kind === 'tariff' ? ' <span class="s">tariff</span>' : ''), $kwh(p.usd), $h(D.h100 * p.usd) + '/h');
     });
     html += '</div>';
     var whl = Object.keys(D.countries).filter(function (cc) { var pw = powerOf(cc); return pw && pw.kind === 'wholesale'; })
@@ -345,6 +416,67 @@
     panel.innerHTML = html;
     draw();
   }
+  /* the earnings view: pick a GPU or a miner, see the best places to run it,
+     and what it makes at your own price */
+  function bestPlaces() {
+    return cheapestPlaces().map(function (p) { return { p: p, e: earnAt(p.usd) }; }).filter(function (x) { return x.e; })
+      .sort(function (a, b) { return b.e.profit - a.e.profit; });
+  }
+  function homeEarn() {
+    selected = null; focusGpu = mode === 'gpu' ? { id: gpuPick, akash: AK[gpuPick] || [gpuPick] } : null;
+    var html = '<span class="cm-grab"></span>';
+    if (mode === 'gpu') {
+      var list = earnable();
+      if (!list.length) { panel.innerHTML = html + '<h3>Earn with a GPU</h3><p class="cm-note">Akash’s utilization is being read — try again in a minute.</p>'; return draw(); }
+      if (!list.some(function (x) { return x.id === gpuPick; })) { gpuPick = list[0].id; focusGpu = { id: gpuPick, akash: AK[gpuPick] || [gpuPick] }; }
+      var gp = gpuRow(gpuPick), u = utilOf(gpuPick);
+      html += '<h3>Earn with a GPU on Akash</h3><div class="cm-form"><select data-in="gpu" aria-label="GPU">' + list.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === gpuPick ? ' selected' : '') + '>' + esc(x.model) + '</option>'; }).join('') + '</select>'
+        + '<label>your power $/kWh <input data-in="price" inputmode="decimal" placeholder="0.08" value="' + (myPrice != null ? esc(myPrice) : '') + '"></label></div>'
+        + '<div class="cm-kv"><span>Typical Akash price</span><b>' + $h(gp.usd) + '/h</b><span>Rented out (network)</span><b>' + Math.round(u.util * 100) + '% of ' + u.total + ' GPUs</b><span>Akash fee</span><b>' + Math.round((D.akashFee || 0) * 100) + '%</b><span>Power with cooling</span><b>' + (D.watts[gpuPick] / 1000 * D.pue).toFixed(2) + ' kWh/h</b></div>';
+      var e0 = earnGpu(0.10);
+      if (e0 && e0.rev > 0) html += '<p class="cm-note">At $0.10/kWh its power is ' + Math.max(1, Math.round(e0.power / e0.rev * 100)) + '% of what it earns — for a GPU, the rent and how often it is rented matter far more than where it runs.</p>';
+    } else {
+      var b = D.market && D.market.btc;
+      if (!b) { panel.innerHTML = html + '<h3>Mine Bitcoin</h3><p class="cm-note">Bitcoin’s hashprice is being read — try again in a minute.</p>'; return draw(); }
+      var m = minerOf(minerPick) || D.miners[0]; minerPick = m.id;
+      html += '<h3>Mine Bitcoin</h3><div class="cm-form"><select data-in="miner" aria-label="Miner">' + D.miners.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === minerPick ? ' selected' : '') + '>' + esc(x.name) + ' · ' + x.th + ' TH/s</option>'; }).join('') + '</select>'
+        + '<label>your power $/kWh <input data-in="price" inputmode="decimal" placeholder="0.05" value="' + (myPrice != null ? esc(myPrice) : '') + '"></label></div>'
+        + '<div class="cm-kv"><span>Hashprice</span><b>$' + b.usdPerThDay.toFixed(4) + ' per TH/day</b><span>Bitcoin</span><b>$' + Math.round(b.priceUsd).toLocaleString('en-US') + '</b><span>Network</span><b>' + Math.round(b.hashrateEh).toLocaleString('en-US') + ' EH/s</b><span>Miner draws</span><b>' + (m.th * m.jth / 1000).toFixed(2) + ' kW · ' + m.jth + ' J/TH</b></div>';
+    }
+    html += '<div data-mine-out>' + (myPrice != null ? earnBlock(myPrice, true) : '') + '</div>';
+    html += '<h4>Best places · after power</h4><div class="cm-rows">';
+    bestPlaces().slice(0, 10).forEach(function (x, i) {
+      html += row('c' + (x.p.st ? 'US-' + x.p.st : x.p.cc), '<span class="r">' + (i + 1) + '</span>', esc(placeName(x.p.cc, x.p.st)) + ' <span class="s">' + $kwh(x.p.usd) + '</span>', '<span class="' + (x.e.profit >= 0 ? 'cm-up' : 'cm-dn') + '">' + earnLabel(x.e) + '</span>', '');
+    });
+    html += '</div><p class="cm-note">' + (mode === 'gpu'
+      ? 'At Akash’s typical posted price, rented out as often as the network’s GPUs of that model. Before the GPU itself, hosting, bandwidth and taxes.'
+      : 'At the last day’s blocks (subsidy and fees), today’s price and difficulty — all of which move. Before the machine, hosting, pool fees (usually 1–4%) and taxes.') + '</p>';
+    html += '<p class="cm-src">Sources: Akash Network (prices, utilization) · mempool.space (Bitcoin) · Eurostat · U.S. EIA · ECB · published tariffs (linked on each country) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · Natural Earth.</p>';
+    panel.innerHTML = html;
+    draw();
+  }
+  /* inputs re-render only their own result, so typing is never interrupted */
+  function onInput(e) {
+    var t = e.target, k = t.getAttribute('data-in');
+    if (!k) return;
+    if (k === 'gpu' && e.type === 'change') { gpuPick = t.value; homeEarn(); return; }
+    if (k === 'miner' && e.type === 'change') { minerPick = t.value; homeEarn(); return; }
+    if (k === 'price') {
+      var v = parseFloat(String(t.value).replace(',', '.'));
+      myPrice = Number.isFinite(v) && v >= 0 && v < 2 ? Math.round(v * 10000) / 10000 : null;
+      var out = panel.querySelector('[data-mine-out]');
+      if (out) out.innerHTML = myPrice != null ? earnBlock(myPrice, true) : '';
+    }
+  }
+  function setMode(m) {
+    mode = m;
+    root.querySelectorAll('[data-m]').forEach(function (b) { b.classList.toggle('on', b.dataset.m === mode); });
+    var lg = root.querySelector('.cm-legend');
+    if (lg) lg.innerHTML = mode === 'power'
+      ? '<span>Power, US$ per kWh</span><span>$0.05<span class="bar"></span>$0.20+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>wholesale only</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span>'
+      : '<span>' + (mode === 'gpu' ? 'GPU on Akash' : 'Bitcoin miner') + ', margin after power</span><span>loss<span class="bar m"></span>80%+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>at a wholesale price</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span>';
+    home();
+  }
   function showCountry(cc, st) {
     selected = { cc: cc };
     var html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All places</button><h3>' + esc(placeName(cc, st)) + '</h3>' + countryBlock(cc, st);
@@ -354,7 +486,7 @@
       ss.slice(0, 8).forEach(function (s, i) { html += row('cUS-' + s.st, '<span class="r">' + (i + 1) + '</span>', esc(D.stateNames[s.st] || s.st), $kwh(s.usd), $h(D.h100 * s.usd) + '/h'); });
       html += '</div>';
     }
-    html += computeHere(cc);
+    html += regionsBlock(cc) + computeHere(cc);
     panel.innerHTML = html; panel.classList.remove('min');
     draw();
   }
@@ -381,7 +513,6 @@
   function showGpu(id) {
     var gp = D.gpus.filter(function (x) { return x.id === id; })[0];
     if (!gp) return;
-    var AK = { h100: ['h100'], h200: ['h200'], a100: ['a100'], b200: ['b200'], b300: ['b300'], rtx4090: ['rtx4090'], rtx5090: ['rtx5090'], pro6000: ['pro6000se', 'pro6000we'] };
     focusGpu = { id: id, akash: AK[id] || [id] };
     selected = null;
     var html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All places</button><h3>' + esc(gp.model) + '</h3>'
@@ -506,7 +637,7 @@
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     root = document.createElement('div'); root.className = 'cmw';
     root.innerHTML = '<canvas aria-label="World map of GPU providers, cloud regions and AI data centers, coloured by the price of power"></canvas>'
-      + '<div class="cm-top"><div class="grp" data-g="l"><button data-l="power" class="on"><i style="background:linear-gradient(90deg,#1f9d6a,#d9573f)"></i>Power price</button><button data-l="sites" class="on"><i style="background:#3df09b"></i>GPU providers</button><button data-l="metros" class="on"><i style="background:#9fb7ff"></i>Cloud regions</button><button data-l="projects" class="on"><i style="background:#f5c542"></i>AI megaprojects</button></div>'
+      + '<div class="cm-top"><div class="grp" data-g="m"><button data-m="power" class="on">Power price</button><button data-m="gpu">GPU profit</button><button data-m="mine">Mining profit</button></div><div class="grp" data-g="l"><button data-l="sites" class="on"><i style="background:#3df09b"></i>GPU providers</button><button data-l="metros" class="on"><i style="background:#9fb7ff"></i>Cloud regions</button><button data-l="projects" class="on"><i style="background:#f5c542"></i>AI megaprojects</button></div>'
       + '<div class="grp" data-g="v"><button data-v="world">World</button><button data-v="na">N. America</button><button data-v="eu">Europe</button><button data-v="asia">Asia</button></div></div>'
       + '<div class="cm-zoom"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button><button data-z="home" aria-label="Whole world" style="font-size:13px">⤢</button></div>'
       + '<div class="cm-legend"><span>Power, US$ per kWh</span><span>$0.05<span class="bar"></span>$0.20+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>wholesale only</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span></div>'
@@ -515,6 +646,11 @@
     cv = root.querySelector('canvas'); g = cv.getContext('2d'); tip = root.querySelector('.cm-tip'); panel = root.querySelector('.cm-panel');
     stripe = makeStripe();
     panel.addEventListener('click', onPanel);
+    panel.addEventListener('change', onInput);
+    panel.addEventListener('input', onInput);
+    root.querySelector('[data-g="m"]').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-m]'); if (b && b.dataset.m !== mode) setMode(b.dataset.m);
+    });
     root.querySelector('[data-g="l"]').addEventListener('click', function (e) {
       var b = e.target.closest('[data-l]'); if (!b) return;
       on[b.dataset.l] = !on[b.dataset.l]; b.classList.toggle('on', on[b.dataset.l]); draw();

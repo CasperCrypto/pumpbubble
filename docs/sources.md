@@ -65,6 +65,10 @@ The map carries one small line of sources at the bottom of its panel — the ope
 | Euro → dollar | [ECB reference rates](https://data.ecb.europa.eu/) (monthly averages) | free reuse with the source acknowledged |
 | Wholesale power, JP KR IN AU BR SG CH | [Global Day-Ahead Electricity Price Dataset](https://zenodo.org/records/16284828) (Zenodo, 2025) | CC BY 4.0 |
 | Grid carbon intensity, low-carbon share | [Ember](https://ember-energy.org/) via [Our World in Data](https://ourworldindata.org/electricity-mix) | CC BY 4.0 |
+| Published tariffs: China (30 provinces), South Korea, Québec, Ethiopia, Paraguay | each utility's or regulator's own figure, read where `scripts/tariffs.mjs` links it (China Briefing's compilation of the provincial schedules; KEPCO's SEC filing; Hydro-Québec's 2026 filing as reported; Ethiopian Electric Power's miner tariff as reported; ANDE's 220 kV tariff as reported) | facts, each with its source |
+| GPU utilization by model | Akash console API, `/v1/gpu-breakdown` | keyless |
+| Bitcoin reward, price, hashrate | [mempool.space](https://mempool.space/docs/api) public API | free, keyless |
+| Miner specs (TH/s, J/TH) | Bitmain's published specifications for the Antminer S21 family | facts |
 | Country outlines | [Natural Earth](https://www.naturalearthdata.com/) 1:110m via world-atlas 2.0.2 | public domain (world-atlas: ISC) |
 | Country codes (build time only) | [i18n-iso-countries](https://www.npmjs.com/package/i18n-iso-countries) code table | MIT |
 | Cloud regions | AWS, Google Cloud and Azure's own region lists | facts, compiled by hand |

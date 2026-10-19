@@ -1129,6 +1129,27 @@ while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data 
   campus-year, the grid, and the compute there. A GPU row lights only the providers offering it.
 - Akash's provider list is 3.8 MB, so the **ComputeDO** reads it (on request, at most every 30
   minutes, a failed read paused two minutes); a Worker request could not parse it in 10 ms.
+- **Colour by: Power price · GPU profit · Mining profit** (2026-10-19, asked as "what value can we
+  give — help others earn"). GPU profit: one GPU rented on Akash at its typical posted price × the
+  network's measured utilization for that model (`/v1/gpu-breakdown`, the newest day's rows summed)
+  × (1 − Akash's 2% USDC take rate, governance proposal 267), less its power ×1.3 — a month is 730
+  hours. Mining profit: Bitmain's published TH/s and J/TH for the S21, S21 Pro and S21 XP at today's
+  hashprice (the last 144 blocks' reward, subsidy and fees, at mempool.space's price over its
+  network hashrate), less TH × J/TH × 24 h of power. Countries colour by margin; the panel has a
+  model picker, "your power $/kWh" (re-renders only its own result, so typing is never cut), the
+  best ten places, and what is left out (hardware, hosting, pool fees, taxes). The honest finding
+  it prints: for a GPU, power is a few percent of what it earns — rent and utilization decide; for a
+  miner, power decides everything (an S21 breaks even at ~$0.087/kWh on 2026-10-19).
+  Utilization and the hashprice are read by the ComputeDO beside the providers (`readMarket`), each
+  allowed to fail alone.
+- **Published tariffs** (`scripts/tariffs.mjs` → `src/tariffs.mjs`): a third kind of price, between
+  statistics and wholesale — China (30 provinces' ≥220 kV large-industry energy charge, May 2025,
+  the country coloured by their median, provinces listed on its card), South Korea (KEPCO's
+  industrial average from its SEC filing, replacing the wholesale price), Canada (Québec, Hydro-
+  Québec Rate L average), Ethiopia (the miners' tariff from Dec 2025), Paraguay (ANDE 220 kV at full
+  load). Each row carries what it is and its source, shown on the card. Japan, Taiwan, Saudi Arabia,
+  Malaysia, Kazakhstan and Iceland were looked for and left out — no current figure could be
+  confirmed.
 - Static data is generated, never hand-edited: `scripts/world-map.mjs`, `scripts/power-prices.mjs`,
   `scripts/wholesale-prices.mjs <unzipped Zenodo folder>`, `scripts/grid-mix.mjs` (each `--write`).
   Re-run power prices when Eurostat publishes a semester. `scripts/computemap.test.mjs` pins it.
