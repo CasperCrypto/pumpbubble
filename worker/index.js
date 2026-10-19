@@ -1018,7 +1018,8 @@ export class ComputeDO {
   async fetch() {
     const now = Date.now();
     if (!this.mem) { try { this.mem = (await this.state.storage.get('sites')) || null; } catch { /* none yet */ } }
-    if (this.mem && now - this.mem.at < SITES_TTL) return Response.json(this.mem);
+    /* a copy from before the market data existed is re-read, not served */
+    if (this.mem && now - this.mem.at < SITES_TTL && this.mem.market) return Response.json(this.mem);
     /* a failed read waits two minutes before the next try, or every page
        view would start another 25-second read of a refusing upstream */
     if (this.fail && now - this.fail.at < 120_000) return Response.json({ ...(this.mem || { at: 0, sites: [] }), error: this.fail.error });
