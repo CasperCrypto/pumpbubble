@@ -41,7 +41,7 @@ import {
 } from './cryptowin.mjs';
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
-import { computeMapPage, mapPayload, MAP_CSP } from './computemap.mjs';
+import { mapPayload } from './computemap.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -971,6 +971,20 @@ export async function handle(req, ctx) {
         { 'cache-control': 'public, max-age=300' });
     }
 
+    /* --------------------------------------------------- /api/compute/map */
+    /* The Compute tab's map view (src/computemap.mjs): Akash's providers from
+       the ComputeDO, the GPU board, and the static power, grid and data-center
+       data. It was a page of its own for a day (/compute-map); asked to live in
+       the tab instead, that address now opens the tab on the map. */
+    if (path === '/api/compute/map') {
+      const limited = rateLimit(req, 'cmap', 60, 60_000);
+      if (limited) return limited;
+      const [sites, board] = await Promise.all([computeSitesCached(ctx), gpuBoardCached(ctx).catch(() => null)]);
+      return json(mapPayload({ sites, feed: gpuFeed(board, null), error: (sites && sites.error) || '' }), 200,
+        { 'cache-control': 'public, max-age=300' });
+    }
+    if (path === '/compute-map') return Response.redirect(url.origin + '/?source=compute&view=map', 301);
+
     /* ------------------------------------------------------- /api/tokens */
     if (path === '/api/tokens') {
       const limited = rateLimit(req, 'tokens', 180, 60_000);
@@ -1754,13 +1768,6 @@ export async function handle(req, ctx) {
       if (path === '/robinhood') return html(robinhoodPage(shown((await feed('robinhood')).filter(t => t.solid !== false)), now));
       if (path === '/gpu-prices') return html(gpuPage(gpuFeed(await gpuBoardCached(ctx), null), now));
       if (path === '/bot') return html(botPage(now));
-      if (path === '/compute-map') {
-        const [sites, board] = await Promise.all([computeSitesCached(ctx), gpuBoardCached(ctx).catch(() => null)]);
-        const res = html(computeMapPage(mapPayload({ sites, feed: gpuFeed(board, null), error: (sites && sites.error) || '', now }), now));
-        /* provider names on this page are written by strangers: no script but ours */
-        res.headers.set('content-security-policy', MAP_CSP);
-        return res;
-      }
     }
 
     if (path === '/s/top10') {

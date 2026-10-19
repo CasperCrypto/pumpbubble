@@ -330,6 +330,8 @@ h3 .ic{vertical-align:-.12em}
 /* Smart money's holdings, as a table over the stage */
 #smTable{position:absolute;inset:0;z-index:12;overflow:auto;padding:8px 10px 70px;-webkit-overflow-scrolling:touch}
 #smTable[hidden]{display:none}
+#cmView{position:absolute;inset:0;z-index:12;background:#05070c;overflow:hidden}
+#cmView[hidden]{display:none}
 #smTable table{width:100%;max-width:1100px;margin:0 auto;border-collapse:separate;border-spacing:0 6px;font-size:13px}
 #smTable th{position:sticky;top:0;z-index:1;text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;
   text-transform:uppercase;color:var(--dim);padding:6px 10px;background:rgba(6,9,12,.94);white-space:nowrap}
@@ -1043,6 +1045,11 @@ body.embed #brandbadge.on{display:flex}
     <button data-is="buy">Buys</button>
     <button data-is="sell">Sells</button>
   </div>
+  <!-- Compute: bubbles of who sells it, or the map of where it runs -->
+  <div class="seg" id="cpView">
+    <button data-cpv="bubbles" class="on">Bubbles</button>
+    <button data-cpv="map"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> Map</button>
+  </div>
   <!-- Compute: who sells it, by what they sell -->
   <div class="seg" id="cpGrp">
     <button data-cg="all" class="on">All</button>
@@ -1051,7 +1058,6 @@ body.embed #brandbadge.on{display:flex}
     <button data-cg="hardware"><span class="sb-full">Servers &amp; networks</span><span class="sb-short">Servers</span></button>
     <button data-cg="clouds"><span class="sb-full">Clouds &amp; data centers</span><span class="sb-short">Clouds</span></button>
     <button data-cg="tokens">Tokens</button>
-    <button data-cmap="1" title="World map of GPU providers, data centers and power prices"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> Map</button>
   </div>
   <span class="subnote" id="smNote"></span>
 </div>
@@ -1064,6 +1070,7 @@ body.embed #brandbadge.on{display:flex}
   <div id="tip"></div>
   <div id="tapbar"></div>
   <div id="smTable" hidden></div>
+  <div id="cmView" hidden></div>
   <button id="shareTen" title="Share this tab's top 10 as a picture"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg> Share top 10</button>
   <!-- The legend is gone. It explained three colours to somebody who had
        already worked them out from a screen full of red and green, and the
@@ -1312,12 +1319,39 @@ function lightMode(){
   const m=S.mode==='traders'?'smart':(S.mode==='callers'||S.mode==='kols')?'calls':S.mode;
   document.querySelectorAll('#mode [data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
 }
+/* Compute's map view (public/compute-map.js, loaded the first time it is
+   opened): the canvas and the bubble physics rest while it shows. */
+function mapOn(){return S.mode==='compute'&&S.cpView==='map'}
+function syncMap(){
+  const box=document.getElementById('cmView'),on=mapOn();
+  box.hidden=!on;
+  document.getElementById('cv').style.visibility=on||TABLE_MODES.has(S.mode)?'hidden':'';
+  if(!on){if(window.ComputeMap)window.ComputeMap.hide();return}
+  if(window.ComputeMap){window.ComputeMap.show(box);return}
+  if(syncMap.loading)return;
+  syncMap.loading=true;
+  const sc=document.createElement('script');
+  sc.src='/compute-map.js';
+  sc.onload=()=>{if(window.ComputeMap&&mapOn())window.ComputeMap.show(box)};
+  document.head.appendChild(sc);
+}
+/* the address says map, so the link can be shared */
+function mapUrl(){
+  try{
+    const u=new URL(location.href);
+    if(mapOn()){u.searchParams.set('source','compute');u.searchParams.set('view','map')}
+    else u.searchParams.delete('view');
+    history.replaceState(null,'',u.pathname+(u.search||'')+u.hash);
+  }catch(e){}
+}
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
   const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers'||S.mode==='kols',ins=S.mode==='insiders',cp=S.mode==='compute';
   renderGpuBoard();
+  syncMap();
   el.hidden=!(sm||cl||ins||cp);if(el.hidden)return;
-  document.getElementById('cpGrp').style.display=cp?'':'none';
+  document.getElementById('cpView').style.display=cp?'':'none';
+  document.getElementById('cpGrp').style.display=cp&&!mapOn()?'':'none';
   document.getElementById('smView').style.display=sm?'':'none';
   document.getElementById('smBoard').style.display=S.mode==='smart'?'':'none';
   document.getElementById('clView').style.display=cl?'':'none';
@@ -1329,7 +1363,10 @@ function subbar(){
   document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
   if(cp){
     document.querySelectorAll('#cpGrp [data-cg]').forEach(b=>b.classList.toggle('on',b.dataset.cg===(S.cpGrp||'all')));
-    document.getElementById('smNote').textContent='GPU price: what providers ask for one GPU, one hour — posted rates, not trades · not financial advice';
+    document.querySelectorAll('#cpView [data-cpv]').forEach(b=>b.classList.toggle('on',b.dataset.cpv===(mapOn()?'map':'bubbles')));
+    document.getElementById('smNote').textContent=mapOn()
+      ?'Power in US$ per kWh: industrial where published, wholesale (striped) elsewhere · scroll or pinch to zoom, drag to move'
+      :'GPU price: what providers ask for one GPU, one hour — posted rates, not trades · not financial advice';
     return;
   }
   if(ins){
@@ -1706,7 +1743,7 @@ function renderSmartTable(list){
   const box=document.getElementById('smTable');
   const on=TABLE_MODES.has(S.mode);
   box.hidden=!on;
-  document.getElementById('cv').style.visibility=on?'hidden':'';
+  document.getElementById('cv').style.visibility=on||mapOn()?'hidden':'';
   if(!on)return;
   if(S.mode==='traders')return renderTraderTable(box,list);
   if(S.mode==='calls')return renderCallsTable(box,list);
@@ -2730,7 +2767,7 @@ function loop(now){
 
   if((++frameN%30)===0)resize();
   /* under the Smart money table the canvas is hidden; do not animate it */
-  if(!TABLE_MODES.has(S.mode)){step();draw();}
+  if(!TABLE_MODES.has(S.mode)&&!mapOn()){step();draw();}
   requestAnimationFrame(loop);
 }
 
@@ -3792,7 +3829,7 @@ async function railOpen(key){
 /* ------------------------------------------------------------ Smart money tabs */
 document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.cmap){location.href='/compute-map';return}
+  if(b.dataset.cpv){S.cpView=b.dataset.cpv==='map'?'map':'';subbar();shareTenBtn();mapUrl();return}
   if(b.dataset.cg){S.cpGrp=b.dataset.cg;subbar();rebuild();return}
   if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
   if(b.dataset.iv){S.insWho=b.dataset.iv;S.insPerson='';subbar();rebuild();return}
@@ -3928,7 +3965,7 @@ function showPost(txt){
 const TEN_TABS={trending:1,pumpfun:1,majors:1,stocks:1,robinhood:1,base:1,compute:1,traders:1,smart:1,callers:1,kols:1};
 function shareTenBtn(){
   const b=document.getElementById('shareTen');
-  if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]);
+  if(b)b.classList.toggle('on',!!TEN_TABS[S.mode]&&!mapOn());
 }
 document.getElementById('shareTen').onclick=()=>openTen();
 function openTen(){
@@ -4144,11 +4181,13 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',crypto:'majors',market:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
             insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders',
-            compute:'compute',gpu:'compute',gpus:'compute'};
+            compute:'compute',gpu:'compute',gpus:'compute',map:'compute',gpumap:'compute',datacenters:'compute',power:'compute'};
   if(OK[src])S.mode=OK[src];
   /* ?grp=memory opens Compute on one group */
   const gq=(q.get('grp')||'').toLowerCase();
   if(['chips','memory','hardware','clouds','tokens'].includes(gq)){S.mode='compute';S.cpGrp=gq}
+  /* ?source=compute&view=map (and ?source=map) opens Compute on its map */
+  if(S.mode==='compute'&&((q.get('view')||'').toLowerCase()==='map'||['map','gpumap','datacenters','power'].includes(src)))S.cpView='map';
   /* a link to one group of insiders opens the tab already filtered to it */
   const IW={politicians:'congress',congress:'congress',whitehouse:'whitehouse',trump:'whitehouse',ceos:'ceo'};
   if(IW[src])S.insWho=IW[src];

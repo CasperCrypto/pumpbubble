@@ -28,7 +28,7 @@ export const US_STATES = {
   Vermont: 'VT', Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY',
 };
 
-/* [city, country (Eurostat-style code: UK, EL), US state, lat, lon, regions] */
+/* [city, country (ISO 3166 alpha-2), US state, lat, lon, regions] */
 const M = [
   ['Ashburn, Virginia', 'US', 'VA', 39.04, -77.49, ['AWS us-east-1', 'Google us-east4', 'Azure East US', 'Azure East US 2']],
   ['Columbus, Ohio', 'US', 'OH', 39.96, -83.0, ['AWS us-east-2', 'Google us-east5']],
@@ -54,7 +54,7 @@ const M = [
   ['São Paulo', 'BR', '', -23.55, -46.63, ['AWS sa-east-1', 'Google southamerica-east1', 'Azure Brazil South']],
   ['Santiago', 'CL', '', -33.45, -70.67, ['Google southamerica-west1']],
   ['Dublin', 'IE', '', 53.35, -6.26, ['AWS eu-west-1', 'Azure North Europe']],
-  ['London', 'UK', '', 51.51, -0.13, ['AWS eu-west-2', 'Google europe-west2', 'Azure UK South']],
+  ['London', 'GB', '', 51.51, -0.13, ['AWS eu-west-2', 'Google europe-west2', 'Azure UK South']],
   ['Paris', 'FR', '', 48.86, 2.35, ['AWS eu-west-3', 'Google europe-west9', 'Azure France Central']],
   ['Frankfurt', 'DE', '', 50.11, 8.68, ['AWS eu-central-1', 'Google europe-west3', 'Azure Germany West Central']],
   ['Berlin', 'DE', '', 52.52, 13.4, ['Google europe-west10']],

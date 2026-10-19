@@ -21,19 +21,11 @@ import { writeFileSync } from 'node:fs';
 const SRC = 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json';
 const OUT = new URL('../public/world-110m.json', import.meta.url);
 
-/* ISO 3166-1 numeric → alpha-2, for the countries the map can say something
-   about (a power price, a data center, a GPU provider). Eurostat calls Greece
-   EL and the UK UK; those are its codes, kept as it writes them. */
-export const A2 = {
-  '008': 'AL', '036': 'AU', '040': 'AT', '056': 'BE', '070': 'BA', '076': 'BR', '100': 'BG', '124': 'CA', '152': 'CL',
-  '156': 'CN', '158': 'TW', '191': 'HR', '196': 'CY', '203': 'CZ', '208': 'DK', '233': 'EE', '246': 'FI', '250': 'FR',
-  '268': 'GE', '276': 'DE', '300': 'EL', '344': 'HK', '348': 'HU', '352': 'IS', '356': 'IN', '360': 'ID', '372': 'IE',
-  '376': 'IL', '380': 'IT', '392': 'JP', '398': 'KZ', '410': 'KR', '428': 'LV', '440': 'LT', '442': 'LU', '458': 'MY',
-  '470': 'MT', '484': 'MX', '498': 'MD', '499': 'ME', '528': 'NL', '554': 'NZ', '578': 'NO', '608': 'PH', '616': 'PL',
-  '620': 'PT', '634': 'QA', '642': 'RO', '643': 'RU', '682': 'SA', '688': 'RS', '702': 'SG', '703': 'SK', '704': 'VN',
-  '705': 'SI', '710': 'ZA', '724': 'ES', '752': 'SE', '756': 'CH', '764': 'TH', '784': 'AE', '792': 'TR', '804': 'UA',
-  '807': 'MK', '818': 'EG', '826': 'UK', '840': 'US', '048': 'BH', '032': 'AR', '170': 'CO', '604': 'PE',
-};
+/* ISO 3166-1 numeric → alpha-2 for every country, from the i18n-iso-countries
+   package's code table (MIT) — read at build time, not shipped. Natural Earth
+   gives Kosovo no ISO number; it is XK, as Eurostat writes it. */
+const CODES = 'https://cdn.jsdelivr.net/npm/i18n-iso-countries@7.11.0/codes.json';
+export const isoTable = rows => Object.fromEntries(rows.map(([a2, , num]) => [num, a2]));
 
 export function decode(topo, objectName = 'countries') {
   const { scale: [sx, sy], translate: [tx, ty] } = topo.transform;
@@ -75,9 +67,9 @@ export function splitDateline(r) {
 }
 
 /* tenths of a degree, consecutive duplicates dropped, rings under 3 points dropped */
-export function compact(countries) {
+export function compact(countries, A2 = {}) {
   return countries.filter(c => c.id !== '010').map(c => ({
-    id: c.id, a2: A2[c.id] || '', n: c.name,
+    id: c.id, a2: A2[c.id] || (c.name === 'Kosovo' ? 'XK' : ''), n: c.name,
     r: c.rings.flatMap(splitDateline).map(r => {
       const flat = [];
       let px = null, py = null;
@@ -93,7 +85,8 @@ export function compact(countries) {
 
 if (import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}` || process.argv[1].endsWith('world-map.mjs')) {
   const topo = await (await fetch(SRC)).json();
-  const countries = compact(decode(topo));
+  const A2 = isoTable(await (await fetch(CODES)).json());
+  const countries = compact(decode(topo), A2);
   const json = JSON.stringify({ v: 1, src: 'Natural Earth 1:110m (public domain), via world-atlas 2.0.2', countries });
   const named = countries.filter(c => c.a2).length;
   console.log(`${countries.length} countries (${named} with a code), ${countries.reduce((n, c) => n + c.r.reduce((m, r) => m + r.length / 2, 0), 0)} points, ${(json.length / 1024).toFixed(1)} KB`);

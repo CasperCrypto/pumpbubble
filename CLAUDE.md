@@ -1105,6 +1105,34 @@ hourly points, CORS open, `cache-control` five minutes, 60 requests a minute per
 same `gpuBoardCached` the map uses so a caller costs no upstream call. It exists so the Akash grant
 application (`docs/grants/akash.md`) can point at a live product.
 
+**The map view** (2026-10-18, moved into the tab 2026-10-19): Compute's sub-bar switches **Bubbles |
+Map** (`S.cpView`, `?source=compute&view=map`, `?source=map`); `/compute-map`, the page it was for one
+day, redirects there — asked as "I don't want a new page, I want it in the Compute tab". The map is
+`public/compute-map.js`, loaded the first time Map is pressed, drawing into `#cmView` over the stage
+while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data from
+`/api/compute/map` (`src/computemap.mjs`), outlines from `/world-110m.json`.
+
+- **No library**: Equal Earth projection by its formula, one canvas, zoom by wheel, pinch,
+  double-click and +/−, drag to pan, presets that fly (World, N. America, Europe, Asia). Country
+  paths are built once per resize in base coordinates and drawn under a zoom transform; dots are
+  drawn in screen space. Prices print on countries once they are big enough on screen.
+- **Power is US dollars per kWh, by ISO code** (GB, GR — Eurostat's UK and EL are converted).
+  Industrial where published openly (Eurostat for Europe, each semester at its own average ECB rate;
+  EIA by US state), **wholesale** day-ahead for seven more markets (JP, KR, IN, AU, BR, SG, CH) —
+  drawn striped, labelled wholesale everywhere, and **never ranked with industrial prices** (Brazil's
+  wholesale $0.031 topped the first list for being incomplete, not cheap). Grey is "no open data":
+  the only global industrial set is the IEA's, and it is sold. `docs/sources.md` has every source.
+- **The grid**: carbon intensity and low-carbon share for 213 countries (Ember via OWID).
+- **The panel** (right on a desktop, a sheet from the bottom on a phone): cheapest industrial power
+  with an H100-hour of it, the cheapest GPU-hour on Akash plus its power, the megaprojects, and one
+  small sources line. A country, dot or row opens a card: price and kind, an H100-hour, a 100 MW
+  campus-year, the grid, and the compute there. A GPU row lights only the providers offering it.
+- Akash's provider list is 3.8 MB, so the **ComputeDO** reads it (on request, at most every 30
+  minutes, a failed read paused two minutes); a Worker request could not parse it in 10 ms.
+- Static data is generated, never hand-edited: `scripts/world-map.mjs`, `scripts/power-prices.mjs`,
+  `scripts/wholesale-prices.mjs <unzipped Zenodo folder>`, `scripts/grid-mix.mjs` (each `--write`).
+  Re-run power prices when Eurostat publishes a semester. `scripts/computemap.test.mjs` pins it.
+
 **Not built yet, and why**: the Trade button on Hyperliquid's equity perps (builder codes: up to 0.1%
 a fill, the user signs, no custody). It needs the operator's builder wallet with 100 USDC on
 Hyperliquid, a US block, a look at EU rules for derivatives, and — because Hyperliquid's orders are

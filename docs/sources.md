@@ -51,3 +51,28 @@ means"); Ornn's index, OCPI (its free tier may not be displayed publicly without
 — ask them); gpurentalprices.com, FastGPU and gpu.ai (CC BY 4.0 — a visible credit, which the main
 UI does not carry); Silicon Data and CME settlement prices (licensed); Kalshi's GPU markets (no
 trading to read a price from).
+
+## Compute tab → Map (`src/computemap.mjs`, `public/compute-map.js`)
+
+The map carries one small line of sources at the bottom of its panel — the operator approved that on
+2026-10-18 ("small source text at bottom"), which is what lets the CC BY sources below be used.
+
+| Data | Source | Terms, as read on 2026-10-19 |
+|---|---|---|
+| GPU providers, positions, GPUs, models | [Akash](https://akash.network/) console API, `console-api.akash.network/v1/providers` (positions are its IP geolocation) | keyless; no reuse restriction found |
+| Industrial electricity, Europe | [Eurostat nrg_pc_205](https://ec.europa.eu/eurostat/databrowser/view/nrg_pc_205/default/table), 70–150 GWh/year, excl. VAT | reuse with the source acknowledged |
+| Industrial electricity, US states | [U.S. EIA, Electric Power Monthly, table 5.6.B](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_b) | US government work, public domain |
+| Euro → dollar | [ECB reference rates](https://data.ecb.europa.eu/) (monthly averages) | free reuse with the source acknowledged |
+| Wholesale power, JP KR IN AU BR SG CH | [Global Day-Ahead Electricity Price Dataset](https://zenodo.org/records/16284828) (Zenodo, 2025) | CC BY 4.0 |
+| Grid carbon intensity, low-carbon share | [Ember](https://ember-energy.org/) via [Our World in Data](https://ourworldindata.org/electricity-mix) | CC BY 4.0 |
+| Country outlines | [Natural Earth](https://www.naturalearthdata.com/) 1:110m via world-atlas 2.0.2 | public domain (world-atlas: ISC) |
+| Country codes (build time only) | [i18n-iso-countries](https://www.npmjs.com/package/i18n-iso-countries) code table | MIT |
+| Cloud regions | AWS, Google Cloud and Azure's own region lists | facts, compiled by hand |
+| AI megaprojects | company announcements and trackers, linked per project in `src/datacenters.mjs` | facts, each with its source |
+
+**Not used, and why**: the IEA's End-Use Prices (~150 countries — the only global industrial price
+set, and sold under licence); GlobalPetrolPrices (its data is reported as CC BY-NC-ND — not for a site
+that sells ads); Climatescope (it says "open data" and "All Rights Reserved" on the same page);
+World Bank Doing Business electricity prices (CC BY, but 2019 — before the energy crisis, so wrong
+today); from the Zenodo set, Chile (unit not confirmed), Ontario (HOEP leaves out the Global
+Adjustment) and Great Britain (stops in 2020).
