@@ -1165,6 +1165,61 @@ Hyperliquid, a US block, a look at EU rules for derivatives, and — because Hyp
 signed with an agent key in the browser — a signing library (secp256k1, keccak), which this
 project's no-dependency rule says to argue for first.
 
+## Cards
+
+`src/cards.mjs`, `cardsSnapshot()` in `src/api.mjs`, the `cards` source, and four views under one
+tab: **Bubbles** (`cards`), **Pack value** (`packs`), **Live pulls** (`pulls`), **Big hits**
+(`hits`). Asked for on 2026-10-22 ("pokemon cards map … Collector Crypt … we need mechanics to bring
+money"). Collector Crypt sells graded trading cards as packs on Solana: you pay a machine's price
+in USDC, get one card, and can sell it straight back. Q3 2026: $433.5M of packs, 21,876 buyers,
+548 wallets at ≥ $100K making up 83%. Jupiter's storefront, which sells their packs, took 11% of
+sales by value. In one 200-pull sample, 35% of packs were sold through Jupiter.
+
+**Switched off in production: `CARDS_TAB = "off"` in wrangler.toml.** Their Terms of Service
+(revised 2026-06-09) cover their APIs and license them "solely for User's personal use" unless the
+company expressly authorises commercial use, and they bar automated monitoring and copying. Their
+docs and their own post ("Our APIs are open…") point to a yes, but a keyless 200 is not
+permission (the Vast.ai rule). The operator is asking them in writing, alongside the partner key. Off
+means the feed answers `{cards:{off:true}}` with no upstream call, and the tab button stays
+`hidden`. Every `/api/tokens` answer carries `cardsOn` so the page knows. `CARDS_TAB = "on"` plus a
+push turns it on. **The name is not `CARDS`**: that is the share-card Durable Object's binding,
+and a var of the same name fails the deploy (caught by `npm run check:config`).
+
+Three keyless reads on `gacha.collectorcrypt.com`, together, within the feed's 20 s lifetime and
+only while somebody is looking. No Durable Object:
+
+| read | what it gives |
+|---|---|
+| `/api/machines` | 127 machines: price, odds per tier, the top tier's value range, stock by tier, `instantBuyback` %, and `ev` — the expected insured value of the next pack at today's stock. 33 are Collector Crypt's own (`public`); the rest are partners' (Jupiter, Solflare, Slabz…), some adopted from a public machine (`parentCode`) |
+| `/api/getAllWinners?count=200` | the latest 200 pulls (~15 min): card, insured value, machine, buyer, `memo_slug` (the storefront) |
+| `…&epic=true` | the latest 200 top-tier pulls (~12 h): Big hits |
+
+- **EV is insured value, Collector Crypt's own price for the card.** Selling back pays 85–93% of
+  it, so a pack at 110% EV returns ~93% if sold back at once. The board shows both, the bubble's
+  colour is EV against the price, and the card says what insured value is. Never show EV alone.
+- **The pulls window is per isolate, one hour** (`mergePulls`), and its length is stated wherever
+  it is used ("Packs opened, 21 min"). A machine's size is the dollars of packs it sold in that
+  window, floored at $1 so an unopened machine is still a bubble. A partner's adopted copy counts
+  toward its parent. A partner machine with sales of its own gets a bubble. A pull from a machine
+  the list does not name has no price and no multiple, never one guessed from its code.
+- 55 partner machines are named with their code (`ejup_poke_300`); those read as their storefront
+  ("Jupiter pack", "$300 Jupiter").
+- Card photos are ~190 KB. The API also carries a resized copy on Helius's image CDN, 160 px wide at
+  ~17 KB, which is what the tables load (through `/api/img`, like all art). Only the rows sent are
+  signed: 100 pulls and 100 hits.
+- The timeframe and size pills are hidden on this tab, since a pack has a price and an EV, not a 1H.
+  The figure rides in `pc.h24`, and `fixTf` keeps the tab on 24H. There is no share card for a machine.
+
+**The money is not built yet: selling packs ourselves.** Collector Crypt lets a partner "adopt" a
+machine and add a per-pack fee. The fee is capped at 10% of the pack price and comes out of the
+player's EV. Half is paid when the pack completes and half when the card is bought back. It accrues
+in µUSDC to the partner wallet and a CC admin releases it by hand. This needs **their partner API
+key** (the operator is asking support@collectorcrypt.com for it, 2026-10-22). Recommended fee ~2%: big
+buyers chase EV, and PackSpy publishes every site's payback (CC 98%), so a 10% fee makes our packs
+visibly worse than theirs. The flow, once keyed: `/api/generatePack` → wallet signs →
+`/api/submitTransaction` → `/api/openPack`, reusing /swap's wallet code. The invoiced model
+(we collect payment, partnerFee 0) does not fit.
+
 ## Partners
 
 `public/partners.html` at `/partners`, linked as **Partners** from the map's toolbar (it was "Embed")

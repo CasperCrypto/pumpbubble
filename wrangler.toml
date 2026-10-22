@@ -90,6 +90,12 @@ JUP_FEE_BPS = "100"
 # relay.link/claim-app-fees. The operator's own wallet, 2026-10-01.
 RELAY_FEE_RECIPIENT = "0x1a654fcda6761087447bbca629c65b76f9d04c15"
 RELAY_FEE_BPS = "100"
+# The Cards tab (src/cards.mjs): Collector Crypt's gacha machines, pulls and
+# big hits. "on" shows the tab and reads their API; anything else keeps both
+# off. Off because their Terms of Service license the API for personal use
+# only unless they authorise commercial use in writing (being asked 2026-10-22,
+# alongside the partner key). Flip it the day they say yes.
+CARDS_TAB = "off"
 
 # SOLANA_RPC is deliberately NOT here.
 #

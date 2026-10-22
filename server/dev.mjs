@@ -55,6 +55,8 @@ const env = {
   SOLANA_RPC: real(process.env.SOLANA_RPC) || 'https://api.mainnet-beta.solana.com',
   AD_CONTACT: real(process.env.AD_CONTACT) || 'https://t.me/casper_crypto',
   COINGECKO_KEY: real(process.env.COINGECKO_KEY) || '',
+  /* the Cards tab, as in wrangler.toml: CARDS_TAB=on to work on it locally */
+  CARDS_TAB: real(process.env.CARDS_TAB) || '',
 };
 const usingPublicRpc = !real(process.env.SOLANA_RPC);
 

@@ -36,6 +36,26 @@ directly (they are encrypted PDFs with CID fonts — possible later, not needed 
 Nothing is stored that pump.fun does not publish itself; the medians, averages and "hold now" are
 computed here from those calls.
 
+## Cards tab (`src/cards.mjs`) — switched off
+
+| Data | Source | Terms, as read on 2026-10-22 |
+|---|---|---|
+| Gacha machines: price, odds, stock, expected value, instant-buyback share | [Collector Crypt](https://docs.collectorcrypt.com/gacha/api) `gacha.collectorcrypt.com/api/machines` | see below |
+| Pulls (card, insured value, machine, buyer, storefront) and top-tier pulls | Collector Crypt `…/api/getAllWinners?count=200` (and `&epic=true`) | see below |
+| Machine art | Collector Crypt's own images (gacha site and its Vercel blob store), through our image proxy | Collector Crypt's |
+| Card photos | the resized copy on Helius's image CDN (`cdn.helius-rpc.com/cdn-cgi/image/width=160,…`) that Collector Crypt's API carries as `cdn_uri`; full size from Collector Crypt's CloudFront as the fallback | the photos are Collector Crypt's |
+
+**Why it is off (`CARDS_TAB = "off"`)**: Collector Crypt's [Terms of Service](https://collectorcrypt.com/terms-of-service)
+(revised 2026-06-09) cover its "application programming interfaces" and grant a licence to the
+content "solely for User's personal use" unless the company expressly authorises use "for User's own
+commercial purposes". They also bar using "any robot, spider, or other automatic device … including
+monitoring or copying" and commercially exploiting content displayed on the service. The endpoints
+are documented publicly, and the company posts "Our APIs are open. Come chat with our team about
+hosting our Gachas on your site". That reads as willing, but it is not written permission.
+**Turn it on only after Collector Crypt says yes in writing**: being asked 2026-10-22, alongside the
+partner API key. Card art is of third-party trading cards (Pokémon, One Piece, sports). The tab is
+called "Cards" and uses no franchise logos.
+
 ## Compute tab (`src/compute.mjs`)
 
 | Data | Source | Terms, as read on 2026-10-07 |

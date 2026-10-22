@@ -376,6 +376,9 @@ h3 .ic{vertical-align:-.12em}
 @media (max-width:820px){#subbar #inTheme button{flex:0 0 auto;padding:0 12px}}
 #smTable .thm{display:inline-block;margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;font-weight:800;
   color:var(--dim);border:1px solid var(--line);vertical-align:1px}
+#smTable .thm.ep{color:var(--gold);border-color:rgba(255,201,60,.45)}
+/* Cards: a graded card is a tall slab, not a round logo */
+#smTable .tk img.slab{width:28px;height:40px;border-radius:4px;object-fit:cover}
 /* a company's full legal name is long: one line, cut, on every screen */
 #smTable td.itrade{overflow:hidden;max-width:320px}
 #smTable td.itrade b,#smTable td.itrade small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -476,6 +479,8 @@ h3 .ic{vertical-align:-.12em}
   .tier{padding:14px 13px}
   #q{height:44px}
 }
+/* a tab the server has not switched on: the touch rule above sets display */
+#mode button[hidden]{display:none}
 .iconbtn:hover{background:var(--glass2)}
 .iconbtn.act{border-color:rgba(40,224,140,.5);color:var(--mint2)}
 .iconbtn.sw{border-color:rgba(40,224,140,.4);color:var(--mint2)}
@@ -882,6 +887,7 @@ body.embed #brandbadge.on{display:flex}
      render differently on every phone and cannot take the page's colours. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
 <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2.8c.7 3.3 4 5.1 5.2 8.3 1.4 3.9-.9 8.4-5.2 8.4s-6.5-4.5-5.1-8.2c.6-1.7 1.7-2.9 2.7-3.7-.1 1.9.6 3.3 1.9 4 .4-2.9.1-5.9.5-8.8z"/></symbol>
+<symbol id="i-cards" viewBox="0 0 24 24"><path d="M9.5 3.5h8A1.5 1.5 0 0 1 19 5v12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 8 17.5V5a1.5 1.5 0 0 1 1.5-1.5zM8 6.8 5.4 7.6a1.5 1.5 0 0 0-1 1.9l3 10.2a1.5 1.5 0 0 0 1.9 1l4.2-1.3M13.5 7.8l1.1 2.3 2.4.3-1.8 1.6.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.6 2.4-.3z"/></symbol>
 <symbol id="i-tap" viewBox="0 0 24 24"><path d="M9.5 13V5a1.5 1.5 0 0 1 3 0v6M12.5 10.5a1.5 1.5 0 0 1 3 0V12M15.5 11a1.5 1.5 0 0 1 3 0v3.5A6.5 6.5 0 0 1 12 21h-.6a6.5 6.5 0 0 1-5.3-2.8L3.8 15a1.5 1.5 0 0 1 2.3-1.9L9.5 16"/></symbol>
 <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5.2a3 3 0 0 0-5.4-1.1 3 3 0 0 0-2.5 4.2 3.2 3.2 0 0 0 .5 5.6 3.3 3.3 0 0 0 3.7 4.4A2.9 2.9 0 0 0 12 19.8zM12 5.2a3 3 0 0 1 5.4-1.1 3 3 0 0 1 2.5 4.2 3.2 3.2 0 0 1-.5 5.6 3.3 3.3 0 0 1-3.7 4.4A2.9 2.9 0 0 1 12 19.8M12 5.2v14.6M8.3 9.3a2.2 2.2 0 0 1 2.2 2.2M15.7 9.3a2.2 2.2 0 0 0-2.2 2.2M8.8 14.6h1.7M13.5 14.6h1.7"/></symbol>
 <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3.5 10.5v3A1.5 1.5 0 0 0 5 15h2l9 4.5v-15L7 9H5a1.5 1.5 0 0 0-1.5 1.5zM7 15l1.3 4.5h2.2l-1.2-3.9M19.5 9.5a3.5 3.5 0 0 1 0 5"/></symbol>
@@ -952,6 +958,8 @@ body.embed #brandbadge.on{display:flex}
        a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
     <button data-mode="trending"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg>Trending</button>
+    <!-- shown when the server says the feed is on (cardsOn in /api/tokens) -->
+    <button data-mode="cards" hidden><svg class="ic" aria-hidden="true"><use href="#i-cards"/></svg>Cards</button>
     <button data-mode="taps"><svg class="ic" aria-hidden="true"><use href="#i-tap"/></svg>Tap wars</button>
     <button data-mode="smart"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>Smart money</button>
     <button data-mode="calls"><svg class="ic" aria-hidden="true"><use href="#i-megaphone"/></svg>Calls</button>
@@ -1056,6 +1064,13 @@ body.embed #brandbadge.on{display:flex}
     <button data-is="all" class="on"><span class="sb-full">Buys and sells</span><span class="sb-short">All</span></button>
     <button data-is="buy">Buys</button>
     <button data-is="sell">Sells</button>
+  </div>
+  <!-- Cards: the machines as bubbles, their value board, the pulls as they land, the big hits -->
+  <div class="seg" id="ccView">
+    <button data-ccv="cards" class="on">Bubbles</button>
+    <button data-ccv="packs"><span class="sb-full">Pack value</span><span class="sb-short">Value</span></button>
+    <button data-ccv="pulls"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span class="sb-full">Live pulls</span><span class="sb-short">Pulls</span></button>
+    <button data-ccv="hits"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg><span class="sb-full">Big hits</span><span class="sb-short">Hits</span></button>
   </div>
   <!-- Compute: bubbles of who sells it, or the map of where it runs -->
   <div class="seg" id="cpView">
@@ -1271,6 +1286,9 @@ function fmtUsd(n){
 const fmtPct=n=>(n==null||!Number.isFinite(+n))?'—'
   :((n>=0?'+':'')+(+n).toFixed(n>=100||n<=-100?0:2)+'%');
 function hue(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h)%360}
+/* the letter drawn where art is missing: a pack machine's face starts with
+   its price ("$50 Elite"), so it takes its name's first letter instead */
+const initial=t=>String((t.mach?t.name:t.sym)||'?')[0]||'?';
 
 /* Anyone can mint a pump.fun token and name it whatever they like, including
    `<img src=x onerror=…>`. That name reaches this page, and the top mover is
@@ -1311,8 +1329,11 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
    nothing shorter — DefiLlama has no five-minute candle for a chain. */
 const FLOW_MODES=new Set(['chains','pads','prediction','casinos']);
 /* tabs drawn as tables rather than bubbles, and tabs allowed to be empty */
-const TABLE_MODES=new Set(['smart','traders','calls','callers','kols','insiders']);
-const EMPTY_MODES=new Set(['taps','calls','callers','kols','insiders']);
+const TABLE_MODES=new Set(['smart','traders','calls','callers','kols','insiders','packs','pulls','hits']);
+const EMPTY_MODES=new Set(['taps','calls','callers','kols','insiders','cards','packs','pulls','hits']);
+/* the Cards tab's four views, all one feed: the machines as bubbles, their
+   value board, the pulls as they land, the big hits */
+const CARD_MODES=new Set(['cards','packs','pulls','hits']);
 const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
 /* The Traders tab asks pump.fun for one period at a time, so its timeframe
    pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
@@ -1324,11 +1345,12 @@ function feedId(){
   if(S.mode==='callers')return 'callers-'+(S.callWin||'weekly');
   if(S.mode==='kols')return 'kols-'+(S.kolWin||'all');
   if(S.mode==='smart')return S.smartBoard&&S.smartBoard!=='all'?'smart-'+S.smartBoard:'smart';
+  if(CARD_MODES.has(S.mode))return 'cards';
   return S.mode;
 }
 /* Top traders lives under the Smart money tab, so either view lights it */
 function lightMode(){
-  const m=S.mode==='traders'?'smart':(S.mode==='callers'||S.mode==='kols')?'calls':S.mode;
+  const m=S.mode==='traders'?'smart':(S.mode==='callers'||S.mode==='kols')?'calls':CARD_MODES.has(S.mode)?'cards':S.mode;
   document.querySelectorAll('#mode [data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
 }
 /* Compute's map view (public/compute-map.js, loaded the first time it is
@@ -1358,10 +1380,15 @@ function mapUrl(){
 }
 function subbar(){
   const el=document.getElementById('subbar');if(!el)return;
-  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers'||S.mode==='kols',ins=S.mode==='insiders',cp=S.mode==='compute';
+  const sm=S.mode==='smart'||S.mode==='traders',cl=S.mode==='calls'||S.mode==='callers'||S.mode==='kols',ins=S.mode==='insiders',cp=S.mode==='compute',cc=CARD_MODES.has(S.mode);
   renderGpuBoard();
   syncMap();
-  el.hidden=!(sm||cl||ins||cp);if(el.hidden)return;
+  /* A pack has a price and an expected value, not a 1H or a 1Y, and its
+     size is what it sold: the timeframe and size pills say nothing there. */
+  document.getElementById('tf').style.display=cc?'none':'';
+  document.getElementById('sz').style.display=cc?'none':'';
+  el.hidden=!(sm||cl||ins||cp||cc);if(el.hidden)return;
+  document.getElementById('ccView').style.display=cc?'':'none';
   document.getElementById('cpView').style.display=cp?'':'none';
   document.getElementById('cpGrp').style.display=cp&&!mapOn()?'':'none';
   document.getElementById('smView').style.display=sm?'':'none';
@@ -1373,6 +1400,18 @@ function subbar(){
   document.getElementById('inView').style.display=ins?'':'none';
   document.getElementById('inTheme').style.display=ins?'':'none';
   document.getElementById('inSide').style.display=ins&&S.insMode!=='people'?'':'none';
+  if(cc){
+    document.querySelectorAll('#ccView [data-ccv]').forEach(b=>b.classList.toggle('on',b.dataset.ccv===S.mode));
+    const m=S.cardMeta||{},win=m.windowMin?m.windowMin+' min':'the window';
+    document.getElementById('smNote').textContent=S.mode==='pulls'
+      ?'every pack opened on Collector Crypt and its storefronts, newest first · value is Collector Crypt’s insured value · tap a row for the card'
+      :S.mode==='hits'
+      ?'the biggest top-tier pulls'+(m.hitsH?' of the last '+m.hitsH+' hours':'')+' · × is the card’s value over the pack’s price · not financial advice'
+      :S.mode==='packs'
+      ?'card value: the expected insured value of the next pack at today’s stock · sold back: what you get if you sell the card straight back · not financial advice'
+      :'size: packs sold in the last '+win+' · colour: expected card value against the pack price · selling back pays 85–93% of it';
+    return;
+  }
   if(cp){
     document.querySelectorAll('#cpGrp [data-cg]').forEach(b=>b.classList.toggle('on',b.dataset.cg===(S.cpGrp||'all')));
     document.querySelectorAll('#cpView [data-cpv]').forEach(b=>b.classList.toggle('on',b.dataset.cpv===(mapOn()?'map':'bubbles')));
@@ -1434,6 +1473,13 @@ function renderGpuBoard(){
   }).join('');
 }
 function fixTf(){
+  /* Cards carry one figure, in the 24h slot, and the pills are hidden there */
+  if(CARD_MODES.has(S.mode)){
+    if(S.tf==='h24')return;
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+    return;
+  }
   /* Compute mixes coins (1H to 1Y) and companies (24H, 1M, 1Y): it opens on a
      window both carry, so half the map is not grey on arrival */
   if(S.mode==='compute'){
@@ -1538,6 +1584,11 @@ async function fetchLive(){
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   /* the board rides the Compute feed; a response without one keeps the last */
   if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
+  /* the pulls, the big hits and the window's totals ride the Cards feed */
+  if(src==='cards'){S.cardMeta=j.cards||S.cardMeta||null;subbar()}
+  /* every feed says whether the Cards tab is switched on */
+  const cb=document.querySelector('#mode [data-mode="cards"]');
+  if(cb)cb.hidden=!j.cardsOn;
   /* kept until the person is found: an early copy of the feed may not have
      read their filings yet */
   if(S.insWhoQ&&S.insMeta&&Array.isArray(S.insMeta.people)){
@@ -1580,6 +1631,8 @@ async function fetchLive(){
     kol:t.kol&&typeof t.kol==='object'?t.kol:null,
     /* an insider's trade (src/insiders.mjs), escaped wherever it is written */
     ins:t.ins&&typeof t.ins==='object'?t.ins:null,
+    /* a Collector Crypt pack machine (src/cards.mjs), escaped wherever it is written */
+    mach:t.mach&&typeof t.mach==='object'?t.mach:null,
     fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
     via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
     parts:Array.isArray(t.parts)?t.parts.filter(p=>p&&p.name).slice(0,6):[],
@@ -1765,6 +1818,8 @@ function renderSmartTable(list){
   if(S.mode==='callers')return renderCallerTable(box,list);
   if(S.mode==='kols')return renderKolTable(box,list);
   if(S.mode==='insiders')return renderInsidersTable(box,list);
+  if(S.mode==='packs')return renderPacksTable(box,list);
+  if(S.mode==='pulls'||S.mode==='hits')return renderPullsTable(box);
   const key={held:t=>(t.smartN||0)*1e3+(t.heat||0),mcap:t=>t.mcap||0,
              h24:t=>t.pc&&t.pc.h24!=null?t.pc.h24:-1e9,h1:t=>t.pc&&t.pc.h1!=null?t.pc.h1:-1e9,vol:t=>t.vol||0}[SM_SORT];
   const rows=[...list].sort((a,b)=>key(b)-key(a));
@@ -2085,6 +2140,105 @@ function renderInsidersTable(box,list){
     }).join('')
     +'</tbody></table>';
 }
+/* ---------------------------------------------------------------- Cards */
+/* Collector Crypt's machines as rows: the price against the expected value
+   of the next pack, what selling the card straight back returns, the top
+   tier's odds and what is left of it, and what the window sold. Card value is
+   Collector Crypt's insured value — the sell-back column is the cash. A row
+   opens the machine's card. */
+let PK_SORT='edge';
+const PL_SORT={pulls:'new',hits:'value'};
+const fmtOdds=p=>p==null||!Number.isFinite(+p)?'—':(p*100>=10?Math.round(p*100):(p*100).toFixed(p*100>=1?1:2))+'%';
+const shortW=w=>w&&w.length>10?w.slice(0,4)+'…'+w.slice(-4):(w||'');
+/* "Legendary Pokémon Gacha Pack" → "Legendary Pokémon": the row says pack already */
+const packShort=p=>String(p.packName||p.pack||'').replace(/\s*\bgacha\b\s*/i,' ').replace(/\s+pack$/i,'').trim().slice(0,30);
+/* the storefront that sold the pack, where we know its name */
+const CC_VIA={cc:'Collector Crypt',jupiter:'Jupiter',slabz:'Slabz'};
+function renderPacksTable(box,list){
+  const all=list.filter(t=>t.mach);
+  if(!all.length){box.innerHTML=emptyNote(S.cardMeta&&S.cardMeta.off?'Cards are coming soon.':'Reading the machines…');return}
+  const key={edge:t=>t.mach.edge==null?-1e9:t.mach.edge,price:t=>t.mach.price||0,opened:t=>t.mach.openedUsd||0,
+             left:t=>t.mach.stock&&t.mach.stock.epic!=null?t.mach.stock.epic:-1}[PK_SORT]||(t=>0);
+  const rows=[...all].sort((a,b)=>key(b)-key(a));
+  const win=(S.cardMeta&&S.cardMeta.windowMin)||0;
+  const th=(k,label,cls='',tip='')=>`<th class="${cls}${PK_SORT===k?' on':''}" ${k?'data-psort="'+k+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}${PK_SORT===k?' ↓':''}</th>`;
+  const sp=(k,label)=>`<span class="${PK_SORT===k?'on':''}" data-psort="${k}">${label}${PK_SORT===k?' ↓':''}</span>`;
+  const dash='<span style="color:var(--dim)">—</span>';
+  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Pack')+th('price','Price','num c-dt')
+    +th('edge','Card value','num c-dt','The expected insured value of the next pack at today’s stock, against its price')
+    +th('','Sold back now','num c-h1','What the next pack returns if the card is sold straight back, as a share of its price')
+    +th('','Top tier','num c-vol','The chance of the top tier, and what its cards are worth')
+    +th('left','Top tier left','num c-vol','Top-tier cards still in the machine')
+    +th('opened','Opened','num c-dt','Packs sold in the last '+win+' minutes, on Collector Crypt and its storefronts')
+    +th('','Best in the window','c-who')
+    +'<th class="num c-ph">'+sp('edge','Value')+' · '+sp('price','Price')+'</th>'
+    +'</tr></thead><tbody>'
+    +rows.map((t,i)=>{
+      const m=t.mach,e=m.edge;
+      const edge=e==null?dash:`<span class="${e>=0?'up':'dn'}">${esc(fmtPct(e))}</span>`;
+      const ev=m.ev!=null?esc(fmtUsd(m.ev)):'—';
+      return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
+        +`<td><div class="tk">${avatarOf(t.img,t.name||t.sym)}<div><b>${esc(t.name||t.sym)}</b><small>${esc(m.cat||'')}${m.public?'':' · partner'}</small></div></div></td>`
+        +`<td class="num c-dt"><b>${esc(fmtUsd(m.price))}</b></td>`
+        +`<td class="num c-dt stk"><b>${ev}</b><small>${edge}</small></td>`
+        +`<td class="num c-h1">${m.sellBack!=null?esc(Math.round(m.sellBack*100)+'%'):dash}</td>`
+        +`<td class="num c-vol stk"><b>${esc(fmtOdds(m.odds&&m.odds.epic))}</b><small>${m.epicFrom!=null?esc(fmtUsd(m.epicFrom))+(m.epicTo?'–'+esc(fmtUsd(m.epicTo)):'+'):''}</small></td>`
+        +`<td class="num c-vol">${m.stock&&m.stock.epic!=null?esc(String(m.stock.epic)):dash}</td>`
+        +`<td class="num c-dt stk"><b>${esc(String(m.opened||0))}</b><small>${m.openedUsd?esc(fmtUsd(m.openedUsd)):''}</small></td>`
+        +`<td class="who c-who">${m.best?'<b>'+esc(fmtUsd(m.best.value))+'</b> '+(m.best.mult?'<span class="up">'+mult(m.best.mult)+'</span> ':'')+esc(String(m.best.card||'').slice(0,48)):dash}</td>`
+        +`<td class="num c-ph stk"><b>${ev} ${edge}</b><small>${esc(fmtUsd(m.price))} · ${m.opened||0} opened</small></td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+}
+/* The pulls as they land, or the window's biggest: the card's photo and
+   name, the pack it came from, its value and its multiple of the pack, who
+   pulled it and through whose storefront. A row opens the card. */
+function renderPullsTable(box){
+  const m=S.cardMeta||{};
+  if(m.off){box.innerHTML=emptyNote('Cards are coming soon.');return}
+  const hits=S.mode==='hits',q=(S.q||'').toLowerCase();
+  let rows=((hits?m.hits:m.pulls)||[]).filter(p=>p&&p.nft&&(!q||String(p.card||'').toLowerCase().includes(q)||String(p.packName||'').toLowerCase().includes(q)));
+  if(!rows.length){box.innerHTML=emptyNote(q?'No card by that name in these pulls.':hits?'Reading the top-tier pulls…':'Waiting for the first pulls… packs open every few seconds.');return}
+  const sort=PL_SORT[S.mode]||'new';
+  const key={new:p=>p.at||0,value:p=>p.value||0,mult:p=>p.mult||0}[sort]||(p=>0);
+  rows=[...rows].sort((a,b)=>key(b)-key(a));
+  const th=(k,label,cls='')=>`<th class="${cls}${sort===k?' on':''}" ${k?'data-lsort="'+k+'"':''}>${label}${sort===k?' ↓':''}</th>`;
+  const sp=(k,label)=>`<span class="${sort===k?'on':''}" data-lsort="${k}">${label}${sort===k?' ↓':''}</span>`;
+  const dash='<span style="color:var(--dim)">—</span>';
+  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Card')+th('','Pack','num c-dt')+th('value','Value','num c-dt')
+    +th('mult','× pack','num c-h1')+th('','Pulled by','c-vol')+th('new','When','num c-vol')
+    +'<th class="num c-ph">'+sp('value','Value')+' · '+sp('new','When')+'</th>'
+    +'</tr></thead><tbody>'
+    +rows.map((p,i)=>{
+      const av=p.img?`<img class="slab" src="${esc(p.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(p.card||'?')},40%,30%)">${esc(String(p.card||'?')[0])}</span>`;
+      const tier=p.tier?'<span class="thm'+(p.tier==='epic'?' ep':'')+'">'+esc(p.tier)+'</span>':'';
+      return `<tr class="row" data-nft="${esc(p.nft)}"><td>${i+1}</td>`
+        +`<td class="itrade"><div class="tk">${av}<div><b>${esc(p.card||'a card')}</b><small>${esc(p.cat||'')}${tier}<span class="i-ph"> · ${esc(since(p.at))}</span></small></div></div></td>`
+        +`<td class="num c-dt stk"><b>${p.price?esc(fmtUsd(p.price)):dash}</b><small>${esc(packShort(p))}</small></td>`
+        +`<td class="num c-dt"><b>${p.value!=null?esc(fmtUsd(p.value)):dash}</b></td>`
+        +`<td class="num c-h1"><span class="${p.mult>=1?'up':p.mult!=null?'dn':''}">${p.mult!=null?mult(p.mult):'—'}</span></td>`
+        +`<td class="c-vol stk"><b>${esc(shortW(p.wallet))}</b><small>${esc(CC_VIA[p.via]||p.via||'')}</small></td>`
+        +`<td class="num c-vol">${esc(since(p.at))}</td>`
+        +`<td class="num c-ph stk"><b>${p.value!=null?esc(fmtUsd(p.value)):'—'}</b><small><span class="${p.mult>=1?'up':p.mult!=null?'dn':''}">${p.mult!=null?mult(p.mult):''}</span> · ${p.price?esc(fmtUsd(p.price)):''} pack</small></td></tr>`;
+    }).join('')
+    +'</tbody></table>';
+}
+/* A machine's card lines: the odds tier by tier with the top tier's value
+   range and what is left of it, the best card the window saw come out, and
+   what "card value" means — Collector Crypt's insured value, of which a
+   straight sell-back pays a fixed share. */
+function machineLine(t){
+  const m=t.mach||{},o=m.odds||{},s=m.stock||{},win=(S.cardMeta&&S.cardMeta.windowMin)||0;
+  const range=m.epicFrom!=null?' ('+esc(fmtUsd(m.epicFrom))+(m.epicTo?'–'+esc(fmtUsd(m.epicTo)):'+')+')':'';
+  return '<div class="warn" style="opacity:.9">'+ic('cards')+'Top tier <b>'+esc(fmtOdds(o.epic))+'</b>'+range
+      +(s.epic!=null?' · <b>'+esc(String(s.epic))+'</b> left':'')
+      +' · rare '+esc(fmtOdds(o.rare))+' · uncommon '+esc(fmtOdds(o.uncommon))+' · common '+esc(fmtOdds(o.common))+'</div>'
+    +(m.best?'<div class="warn" style="opacity:.9">'+ic('trophy')+'Best of the last '+win+' min: <b>'+esc(fmtUsd(m.best.value))+'</b>'
+      +(m.best.mult?' <span class="up">'+mult(m.best.mult)+'</span>':'')+' — '+esc(String(m.best.card||'').slice(0,70))+'</div>'
+      :'<div class="warn" style="opacity:.7">'+ic('trophy')+'Nobody opened one in the last '+win+' min</div>')
+    +'<div class="warn" style="opacity:.75">'+ic('alert')+'Card value is Collector Crypt’s insured value'
+      +(m.back!=null?'; selling the card straight back pays '+esc(Math.round(m.back*100)+'%')+' of it':'')+' · not financial advice</div>';
+}
 /* the card's line for a call: who called it, their record, when, what they did */
 function callLine(t){
   const c=t.call||{},by=c.by||{};
@@ -2116,6 +2270,13 @@ document.getElementById('smTable').addEventListener('click',e=>{
   if(ip){openInsider(ip.dataset.ip);return}
   const hi=e.target.closest('[data-isort]');
   if(hi){IN_SORT=hi.dataset.isort;rebuild();return}
+  const hp=e.target.closest('[data-psort]');
+  if(hp){PK_SORT=hp.dataset.psort;rebuild();return}
+  const hl=e.target.closest('[data-lsort]');
+  if(hl){PL_SORT[S.mode]=hl.dataset.lsort;rebuild();return}
+  /* a pull is a card on Collector Crypt: its row opens it there */
+  const pr=e.target.closest('tr[data-nft]');
+  if(pr){if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(pr.dataset.nft))open('https://collectorcrypt.com/assets/solana/'+pr.dataset.nft,'_blank','noopener');return}
   const hc=e.target.closest('[data-csort]');
   if(hc){CL_SORT=hc.dataset.csort;rebuild();return}
   const hr=e.target.closest('[data-rsort]');
@@ -2146,6 +2307,16 @@ function stats(){
   if(!v.length){
     lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Top mover');
     for(const id of ['stCap','stGR','stTop'])document.getElementById(id).innerHTML='<span class="sb">—</span>';
+    return;
+  }
+  /* Cards: how many packs the window saw, what came back in card value for
+     every dollar in, and the best card that came out */
+  if(CARD_MODES.has(S.mode)){
+    const m=S.cardMeta||{},best=m.best||null;
+    lab('stCap','Packs opened, '+(m.windowMin||0)+' min');lab('stGR','Card value back');lab('stTop','Best hit');
+    document.getElementById('stCap').textContent=(m.opened||0).toLocaleString('en-US');
+    document.getElementById('stGR').innerHTML=m.back!=null?`<span class="${m.back>=1?'up':'dn'}">${esc(Math.round(m.back*100)+'%')}</span>`:'<span class="sb">—</span>';
+    document.getElementById('stTop').innerHTML=best?`${esc(fmtUsd(best.value))}${best.mult?' <span class="up">'+mult(best.mult)+'</span>':''}`:'<span class="sb">—</span>';
     return;
   }
   if(S.mode==='traders'){
@@ -2534,7 +2705,7 @@ function flowFace(t,r){
       ctx.fillStyle=`hsl(${h},38%,26%)`;ctx.fillRect(t.x-ir,iy-ir,ir*2,ir*2);
       ctx.fillStyle=`hsl(${h},72%,76%)`;
       ctx.font=`900 ${ir*1.1}px ui-sans-serif,sans-serif`;
-      ctx.fillText(t.sym[0]||'?',t.x,iy+1);
+      ctx.fillText(initial(t),t.x,iy+1);
     }
     ctx.restore();
     ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);
@@ -2694,7 +2865,7 @@ function draw(){
         ctx.fillStyle=lg;ctx.fillRect(t.x-ir,iy-ir,ir*2,ir*2);
         ctx.fillStyle=`hsl(${h},72%,76%)`;
         ctx.font=`900 ${ir*1.15}px ui-sans-serif,sans-serif`;
-        ctx.fillText(t.sym[0]||'?',t.x,iy+1);
+        ctx.fillText(initial(t),t.x,iy+1);
       }
       ctx.restore();
       ctx.beginPath();ctx.arc(t.x,iy,ir,0,TAU);
@@ -2822,18 +2993,18 @@ cv.addEventListener('pointermove',e=>{
   const t=hitTest(p.x,p.y);S.hover=t;cv.style.cursor=t?'pointer':'default';
   if(!t){tip.classList.remove('on');return}
   const av=t.img?`<img class="im" src="${esc(t.img)}" alt="">`
-    :`<div class="im" style="background:hsl(${hue(t.sym)},38%,50%)">${esc(t.sym[0]||'?')}</div>`;
+    :`<div class="im" style="background:hsl(${hue(t.sym)},38%,50%)">${esc(initial(t))}</div>`;
   /* `null >= 0` is true, so a window with no figure printed its dash in green */
   const k=(l,n)=>`<div class="kv"><span>${l}</span><b class="${n==null?'':n>=0?'up':'dn'}">${fmtPct(n)}</b></div>`;
   tip.innerHTML=`<div class="tk">${av}<div><div class="nm">${esc(t.sym)}${t.boost>0?' '+ic('star','f gold'):''}</div>
       <div class="sb">${esc((t.name||'').slice(0,24))}</div></div></div>
-    <div class="kv"><span>Mcap</span><b>${fmtUsd(t.mcap)}</b></div>
+    ${t.mach?machineTip(t):`<div class="kv"><span>Mcap</span><b>${fmtUsd(t.mcap)}</b></div>
     <div class="kv"><span>Liquidity</span><b>${fmtUsd(t.liq)}${t.mcLiq?` <span style="color:${t.mcLiq>120?'var(--dn)':'var(--dim)'}">${Math.round(t.mcLiq)}×</span>`:''}</b></div>
     <div class="kv"><span>Vol 24h</span><b>${fmtUsd(t.vol)}</b></div>
-    ${k('5m',t.pc.m5)}${k('1h',t.pc.h1)}${k('6h',t.pc.h6)}${k('24h',t.pc.h24)}
+    ${k('5m',t.pc.m5)}${k('1h',t.pc.h1)}${k('6h',t.pc.h6)}${k('24h',t.pc.h24)}`}
     ${t.boost>0?`<div class="kv"><span>Boost</span><b style="color:var(--gold)">×${(1+t.boost).toFixed(1)}</b></div>`:''}
     ${warnLine(t)}
-    <div class="hint">click → details &amp; boost · drag to move · shift-click boosts directly</div>`;
+    <div class="hint">${t.mach?'click → odds, best hit and the machine':'click → details &amp; boost · drag to move · shift-click boosts directly'}</div>`;
   const st=document.getElementById('stage');
   let lx=p.x+20,ly=p.y+16;
   if(lx+220>st.clientWidth)lx=p.x-230;
@@ -2841,6 +3012,18 @@ cv.addEventListener('pointermove',e=>{
   tip.style.left=lx+'px';tip.style.top=ly+'px';tip.classList.add('on');
 });
 cv.addEventListener('pointerleave',()=>{tip.classList.remove('on');S.hover=null});
+/* A pack machine's hover: what it costs, what the next pack is worth, what
+   selling the card straight back returns, and what the window sold. No 5m or
+   24h rows: a machine has a price and an expected value, not a chart. */
+function machineTip(t){
+  const m=t.mach,kv=(l,v)=>`<div class="kv"><span>${l}</span><b>${v}</b></div>`;
+  const win=(S.cardMeta&&S.cardMeta.windowMin)||0;
+  return kv('Pack price',esc(fmtUsd(m.price)))
+    +kv('Card value',m.ev!=null?esc(fmtUsd(m.ev))+(m.edge!=null?` <span class="${m.edge>=0?'up':'dn'}">${esc(fmtPct(m.edge))}</span>`:''):'—')
+    +kv('Sold back now',m.sellBack!=null?esc(Math.round(m.sellBack*100)+'% of price'):'—')
+    +kv('Opened, '+win+' min',esc(String(m.opened||0))+(m.openedUsd?' · '+esc(fmtUsd(m.openedUsd)):''))
+    +kv('Top tier left',m.stock&&m.stock.epic!=null?esc(String(m.stock.epic)):'—');
+}
 cv.addEventListener('pointerdown',e=>{
   const p=pt(e);const t=hitTest(p.x,p.y);S.dragged=false;
   if(t){S.drag=t;cv.setPointerCapture&&cv.setPointerCapture(e.pointerId)}
@@ -2891,7 +3074,7 @@ function openCard(t){
   const im=e('cIm');
   if(t.img){im.outerHTML=`<img class="im" id="cIm" src="${esc(t.img)}" alt="">`}
   else{const d=document.createElement('div');d.className='im';d.id='cIm';
-    d.style.background=`hsl(${hue(t.sym)},38%,50%)`;d.textContent=t.sym[0]||'?';
+    d.style.background=`hsl(${hue(t.sym)},38%,50%)`;d.textContent=initial(t);
     im.replaceWith(d)}
   /* Only offer to boost a bubble we can name a contract for. Stocks have none,
      and a boost that cannot identify its token is a payment with nowhere to go. */
@@ -2900,7 +3083,10 @@ function openCard(t){
   /* "Chart" is wrong for a chain: chartUrl sends it to its DefiLlama page,
      which is where the number came from and what the reader wants next. */
   const co=e('cOpen');
-  if(co)co.textContent=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')?'Profile':FLOW_KINDS.has(t.kind)?'Open':'Chart';
+  if(co)co.textContent=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')?'Profile':(FLOW_KINDS.has(t.kind)||t.mach)?'Open':'Chart';
+  /* a pack machine has no share card: the card renderer draws a price move */
+  const cs=document.getElementById('cShare');
+  if(cs)cs.style.display=t.mach?'none':'';
   e('cSym').innerHTML=esc(t.sym)+(t.boost>0?' '+ic('star','f gold'):'');
   /* A venue's subtitle says what it is and where it runs, so "Off Chain" is
      said out loud on the ones that are not crypto at all. */
@@ -2912,7 +3098,7 @@ function openCard(t){
   if(t.verified&&(t.kind==='trader'||t.kind==='caller'||t.kind==='kol'))e('cName').insertAdjacentHTML('beforeend',' '+ic('verified','up'));
   e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
   e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
-  e('cTf').textContent=({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
+  e('cTf').textContent=t.mach?'card value vs price':({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
   /* `fmtPct(null)` throws — `null >= 0` is true, so the guard passes and
      `null.toFixed` does not exist. Chains and launchpads publish a day and a
      week and nothing shorter, so these four lines threw on every one of them,
@@ -2976,6 +3162,18 @@ function openCard(t){
     e('cVol').innerHTML=c.mcapAtCall?esc(fmtUsd(c.mcapAtCall)):dash;
     e('cA').innerHTML='<span class="'+multCls(c.peak)+'">'+mult(c.peak)+'</span>';
     e('cB').innerHTML='<span class="'+multCls(c.now)+'">'+mult(c.now)+'</span>';
+  }else if(t.mach){
+    /* a pack machine: what it costs, what the next pack is worth in card
+       value, what selling that card straight back returns, what it sold */
+    const m=t.mach,win=(S.cardMeta&&S.cardMeta.windowMin)||0;
+    lab('cMc','Pack price');
+    lab('cVol','Card value');
+    lab('cA','Sold back now');
+    lab('cB','Opened, '+win+' min');
+    e('cMc').textContent=fmtUsd(m.price);
+    e('cVol').innerHTML=m.ev!=null?esc(fmtUsd(m.ev))+(m.edge!=null?` <span class="${m.edge>=0?'up':'dn'}" style="font-size:.8em">${esc(fmtPct(m.edge))}</span>`:''):dash;
+    e('cA').innerHTML=m.sellBack!=null?esc(Math.round(m.sellBack*100)+'%'):dash;
+    e('cB').innerHTML=esc(String(m.opened||0))+(m.openedUsd?` <span style="color:var(--dim);font-size:.8em">${esc(fmtUsd(m.openedUsd))}</span>`:'');
   }else if(t.kind==='pm'){
     /* A prediction market: what was wagered, its share of all wagering on the
        map, the move, and the house take — the one number a punter never sees
@@ -3080,7 +3278,7 @@ function openCard(t){
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  e('cWarn').innerHTML=t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
+  e('cWarn').innerHTML=t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
@@ -3189,6 +3387,9 @@ function chartUrl(t){
   if(!t)return '';
   if((t.kind==='trader'||t.kind==='caller'||t.kind==='kol')&&t.wallet)return 'https://pump.fun/profile/'+encodeURIComponent(t.wallet);
   const id=String(t.id||'');
+  /* A pack machine opens on Collector Crypt's gacha site. Its own page has no
+     link we have checked, so the site, not a guessed path. */
+  if(id.startsWith('cc:'))return 'https://gacha.collectorcrypt.com/';
   /* A coin from the wider market charts where its numbers come from, even when
      it carries a mint for the Buy button: RENDER's mint is not a pump.fun coin. */
   if(id.startsWith('cg:'))return 'https://coinpaprika.com/coin/'+encodeURIComponent(id.slice(3))+'/';
@@ -3860,6 +4061,8 @@ async function railOpen(key){
 /* ------------------------------------------------------------ Smart money tabs */
 document.getElementById('subbar').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
+  /* Cards' four views are one feed: switching between them only redraws */
+  if(b.dataset.ccv&&b.dataset.ccv!==S.mode){S.mode=b.dataset.ccv;fixTf();subbar();lightMode();shareTenBtn();rebuild();return}
   if(b.dataset.cpv){S.cpView=b.dataset.cpv==='map'?'map':'';subbar();shareTenBtn();mapUrl();return}
   if(b.dataset.cg){S.cpGrp=b.dataset.cg;subbar();rebuild();return}
   if(b.dataset.im){S.insMode=b.dataset.im;S.insPerson='';subbar();rebuild();return}
@@ -4224,7 +4427,8 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
             casinos:'casinos',casino:'casinos',gamble:'casinos',gambling:'casinos',pumpfun:'pumpfun',majors:'majors',crypto:'majors',market:'majors',stocks:'stocks',robinhood:'robinhood',
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
             insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders',
-            compute:'compute',gpu:'compute',gpus:'compute',map:'compute',gpumap:'compute',datacenters:'compute',power:'compute'};
+            compute:'compute',gpu:'compute',gpus:'compute',map:'compute',gpumap:'compute',datacenters:'compute',power:'compute',
+            cards:'cards',pokemon:'cards',gacha:'cards',packs:'packs',pulls:'pulls',hits:'hits'};
   if(OK[src])S.mode=OK[src];
   /* ?grp=memory opens Compute on one group */
   const gq=(q.get('grp')||'').toLowerCase();

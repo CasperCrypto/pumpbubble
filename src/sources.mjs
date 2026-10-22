@@ -334,6 +334,15 @@ export const SOURCES = {
     chain: 'mixed', ttl: 5_000, enrich: false, boostable: true, quality: 'major',
     fetch: () => [],
   },
+  /* Cards: Collector Crypt's gacha machines, their pulls and big hits —
+     src/cards.mjs. Composed in api.mjs; twenty seconds because the pulls are
+     the live part. Not shared: the tab is read on request, nothing in KV.
+     Off until CARDS_TAB = "on" (their terms want written permission). */
+  cards: {
+    id: 'cards', label: 'Cards', group: 'Cards',
+    chain: 'mixed', ttl: 20_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => [],
+  },
   /* Traders: pump.fun's PnL leaderboard ranked by what was realized, not by
      paper — see src/traders.mjs. One source per period because the period is
      the query, and the tab's timeframe pill picks between them. Not `shared`:

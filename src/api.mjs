@@ -42,6 +42,7 @@ import {
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
 import { mapPayload } from './computemap.mjs';
+import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
@@ -555,9 +556,56 @@ async function insidersSnapshot(ctx) {
     tokens, insiders: d ? { ...(d.status || {}), people: d.people || [] } : null,
   };
 }
+/* Cards (src/cards.mjs): Collector Crypt's machines as bubbles, sized by
+   what they sold in the window and coloured by expected card value against
+   the price; the pulls and the big hits ride along for the tables. The pulls
+   are kept per isolate for an hour. Images are signed here, as for every
+   feed, and only for the rows that are sent. Switched off (an empty feed and
+   `cards.off`) until CARDS_TAB = "on". */
+let ccPulls = [];
+const CARD_ROWS = 100;
+async function cardsSnapshot(ctx) {
+  const base = { ts: Date.now(), sol: 0, sampleArt: '', signed: true, source: 'cards', sourceLabel: 'Cards', boostable: false };
+  if (!cardsOn(ctx.env)) return { ...base, count: 0, enriched: 0, withArt: 0, solid: 0, tokens: [], cards: { off: true } };
+  const raw = await readCards();
+  const now = Date.now();
+  ccPulls = mergePulls(ccPulls, raw.pulls, now);
+  const { machines, meta } = cardsBoard({ machines: raw.machines, pulls: ccPulls, hits: raw.hits }, now);
+  const tokens = [];
+  for (const m of machines) {
+    tokens.push({
+      id: 'cc:' + m.code, kind: 'machine', chain: 'solana', mint: '', addr: '',
+      sym: m.sym, name: m.name, img: await signedImg(ctx, m.thumb),
+      /* size is what it sold in the window; a machine nobody opened is a
+         dollar, so it is still a bubble */
+      mcap: Math.max(1, m.openedUsd), vol: m.openedUsd, liq: 0, price: m.price,
+      pc: { ...NULL_PC(), h24: m.edge },
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'cards',
+      mach: { code: m.code, cat: m.cat, price: m.price, ev: m.ev, back: m.back, edge: m.edge, sellBack: m.sellBack,
+        odds: m.odds, epicFrom: m.epicFrom, epicTo: m.epicTo, stock: m.stock, opened: m.opened, openedUsd: m.openedUsd,
+        best: m.best, public: m.public },
+    });
+  }
+  const signRows = async rows => {
+    const out = [];
+    for (const p of rows.slice(0, CARD_ROWS)) {
+      const { id, machine, ...rest } = p;
+      out.push({ ...rest, img: await signedImg(ctx, p.img) });
+    }
+    return out;
+  };
+  return {
+    ...base, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length, solid: tokens.length,
+    tokens,
+    cards: { at: meta.at, windowMin: meta.windowMin, opened: meta.opened, openedUsd: meta.openedUsd, back: meta.back, best: meta.best,
+      via: meta.via.slice(0, 8), hitsH: meta.hitsH, machines: raw.machines.length,
+      pullsOk: raw.pullsOk, hitsOk: raw.hitsOk,
+      pulls: await signRows(meta.pulls), hits: await signRows(meta.hits) },
+  };
+}
 /* feeds whose empty answer is a state (nothing yet), not an outage */
 const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
-  'kols-all', 'kols-1m', 'kols-1w', 'kols-1d']);
+  'kols-all', 'kols-1m', 'kols-1w', 'kols-1d', 'cards']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */
 const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id.startsWith('callers-') || id.startsWith('traders-') || id.startsWith('kols-');
@@ -659,6 +707,8 @@ async function snapshot(ctx, source, force = false) {
         ? await callsSnapshot(ctx)
         : src.id === 'insiders'
         ? await insidersSnapshot(ctx)
+        : src.id === 'cards'
+        ? await cardsSnapshot(ctx)
         : src.id.startsWith('callers-')
         ? await callersSnapshot(ctx, src.id.slice(8))
         : src.id.startsWith('kols-')
@@ -1202,6 +1252,10 @@ export async function handle(req, ctx) {
         insiders: snap.insiders || undefined,
         /* Compute only: the GPU-hour price board */
         compute: gpus || undefined,
+        /* Cards only: the window's totals, the pulls and the big hits */
+        cards: snap.cards || undefined,
+        /* on every feed, so the page knows whether to show the Cards tab */
+        cardsOn: cardsOn(ctx.env) || undefined,
         events: snap.events || undefined,
         arena: snap.arena || undefined,
         goldShare: goldShare(visibleSet(tokens, byMint)),
