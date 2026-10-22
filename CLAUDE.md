@@ -278,6 +278,11 @@ million requests a month) is, and it also lifts the CPU and KV-write limits desc
   100 bubbles × 64 verts × ≤7 neighbours is the current budget. `step()` measures ~0.4ms;
   `draw()` is the expensive half and is the first place to look if frames drop.
 - Test both viewports before calling something done: 1440×900 and 390×844.
+- **The desktop toolbar wraps; the phone's does not.** At ≥820px `#chips` and `#subbar` wrap (tabs
+  on the first row, timeframe / size / Filters / links / "N unbacked hidden" under them) — on one
+  sideways row the fifteen tabs pushed every control past the right edge of a 1440 screen, with
+  no scrollbar and a wheel that scrolls down. The phone keeps its single swipeable row (he
+  considers it right). Check 1024, 1280 and 1440 after adding a tab or a toolbar link.
 - **Icons, not emoji, in the site's UI.** One hand-drawn line-icon sprite sits at the top of
   `public/index.html`'s body (`<symbol id="i-…">`), used through `ic(name, cls)`; the canvas draws
   the same shapes from the same path data (`icon2d`, `faceLabel`), so a bubble's face and a button

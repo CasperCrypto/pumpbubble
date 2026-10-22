@@ -786,6 +786,18 @@ body.embed #brandbadge.on{display:flex}
   #stats{display:flex;gap:18px}
   #boostTop{margin-left:0}
   #rail,#chips{padding-left:18px;padding-right:18px}
+  /* Fifteen tabs are 1,395px on their own, so on one sideways row the
+     timeframe, Mcap/Gain/Vol, Filters and the "unbacked hidden" count all sat
+     past the right edge of a 1440 screen — with the scrollbar hidden and a
+     mouse wheel that scrolls down, not across. On a desktop the rows wrap:
+     the tabs first (a pill while they fit one line, a rounded block when the
+     window is narrower), the controls under them. The phone keeps its
+     single swipeable row. */
+  #chips{flex-wrap:wrap;overflow-x:visible;row-gap:8px}
+  #mode{flex-wrap:wrap;border-radius:18px;max-width:100%}
+  #subbar{flex-wrap:wrap;overflow-x:visible;row-gap:6px}
+  /* the top bar's Swap is beside BOOST on every desktop width */
+  #chips .iconbtn.sw{display:none}
   /* The card used to be mobile-only, because desktop clicks went straight to
      pump.fun. Now a click selects on every device — so on desktop it becomes a
      floating panel rather than a bottom sheet. Hiding it here left desktop
@@ -1551,7 +1563,10 @@ async function fetchLive(){
        what the feed actually sent. */
     addr:t.addr||'', chain:t.chain||'',
     hot:!!t.hot, from:t.from||'', heat:+t.heat||0, txns:t.txns||null,
-    ageH:NN(t.ageH), rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kol:NN(t.kol), tx5:NN(t.tx5),
+    /* `kol` on a trending token is pump.fun's count of KOLs in it; on the KOLs
+       tab it is a KOL's record. One key held both, and the record's line below
+       overwrote the count with null, so the card's "N KOLs" never showed. */
+    rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
     positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
@@ -2120,12 +2135,19 @@ document.getElementById('smTable').addEventListener('click',e=>{
 });
 
 function stats(){
-  const v=S.view; if(!v.length)return;
+  const v=S.view;
   const cap=v.reduce((s,t)=>s+t.mcap,0);
   /* On Traders the header counts money banked, and the "top" is the top
      banker — the biggest percentage there is a total return on whatever was
      spent, which crowns a $200 flip over a $1.7M month. */
   const lab=(id,txt)=>{const u=document.getElementById(id);const l=u&&u.previousElementSibling;if(l)l.textContent=txt};
+  /* An empty tab (an arena nobody has added to yet) says nothing, rather than
+     keeping the last tab's numbers under this tab's name. */
+  if(!v.length){
+    lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Top mover');
+    for(const id of ['stCap','stGR','stTop'])document.getElementById(id).innerHTML='<span class="sb">—</span>';
+    return;
+  }
   if(S.mode==='traders'){
     lab('stCap','Banked');lab('stGR','Up / Underwater');lab('stTop','Top banker');
     const b=v.reduce((a,t)=>(t.realized||0)>(a.realized||0)?t:a,v[0]);
@@ -2139,18 +2161,19 @@ function stats(){
     lab('stCap','Tracked cap');lab('stGR','Green / Red');lab('stTop','Most held');
     const m=v.reduce((a,t)=>(t.smartN||0)>(a.smartN||0)?t:a,v[0]);
     document.getElementById('stCap').textContent=fmtUsd(cap);
-    const upN=v.filter(t=>!t.noData&&t.chg>=0).length;
-    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${v.length-upN}</span>`;
+    const upN=v.filter(t=>!t.noData&&t.chg>=0).length,dnN=v.filter(t=>!t.noData&&t.chg<0).length;
+    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${dnN}</span>`;
     document.getElementById('stTop').innerHTML=`${esc(m.sym)} <span class="up">${ic('brain')} ${m.smartN}</span>`;
     return;
   }
   if(S.mode==='calls'){
     const cs=S.tokens.filter(t=>t.call);
     lab('stCap','Calls, 48h');lab('stGR','Up / Down since');lab('stTop','Best since the call');
-    const upN=cs.filter(t=>+t.call.now>=1).length;
+    /* a call with no price since is neither up nor down */
+    const upN=cs.filter(t=>+t.call.now>=1).length,dnN=cs.filter(t=>+t.call.now>0&&+t.call.now<1).length;
     const best=cs.reduce((a,t)=>(+t.call.now||0)>(a?+a.call.now||0:0)?t:a,null);
     document.getElementById('stCap').textContent=String(cs.length);
-    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${cs.length-upN}</span>`;
+    document.getElementById('stGR').innerHTML=`<span class="up">${upN}</span> / <span class="dn">${dnN}</span>`;
     document.getElementById('stTop').innerHTML=best?`${esc(best.sym)} <span class="up">${mult(best.call.now)}</span>`:'<span class="sb">—</span>';
     return;
   }
@@ -2191,7 +2214,9 @@ function stats(){
   const top=rated.length?rated.reduce((a,t)=>Math.abs(t.chg)>Math.abs(a.chg)?t:a,rated[0]):null;
   const e=id=>document.getElementById(id);
   e('stCap').textContent=fmtUsd(cap);
-  e('stGR').innerHTML=`<span class="up">${up}</span> / <span class="dn">${v.length-up}</span>`;
+  /* Red is a measured fall. A grey bubble has no figure for this window, and
+     counting it as red put "0 / 50" over a map of fifty greys on 1Y. */
+  e('stGR').innerHTML=rated.length?`<span class="up">${up}</span> / <span class="dn">${rated.length-up}</span>`:'<span class="sb">—</span>';
   /* No rated token means no top mover — which happens the moment somebody
      picks a window this feed does not publish. */
   e('stTop').innerHTML=top
@@ -2798,7 +2823,8 @@ cv.addEventListener('pointermove',e=>{
   if(!t){tip.classList.remove('on');return}
   const av=t.img?`<img class="im" src="${esc(t.img)}" alt="">`
     :`<div class="im" style="background:hsl(${hue(t.sym)},38%,50%)">${esc(t.sym[0]||'?')}</div>`;
-  const k=(l,n)=>`<div class="kv"><span>${l}</span><b class="${n>=0?'up':'dn'}">${fmtPct(n)}</b></div>`;
+  /* `null >= 0` is true, so a window with no figure printed its dash in green */
+  const k=(l,n)=>`<div class="kv"><span>${l}</span><b class="${n==null?'':n>=0?'up':'dn'}">${fmtPct(n)}</b></div>`;
   tip.innerHTML=`<div class="tk">${av}<div><div class="nm">${esc(t.sym)}${t.boost>0?' '+ic('star','f gold'):''}</div>
       <div class="sb">${esc((t.name||'').slice(0,24))}</div></div></div>
     <div class="kv"><span>Mcap</span><b>${fmtUsd(t.mcap)}</b></div>
@@ -2829,8 +2855,11 @@ addEventListener('pointerup',e=>{
      the only route to a purchase was an undocumented shift-click. The card
      carries both actions: open on pump.fun, or boost this one. */
   if(S.embedLink){open('https://pumpbubble.fun/?utm_source=embed&utm_medium=bubble','_blank','noopener');return}
-  /* On the arena a click is a tap. The card is one button away in the bar. */
-  if(S.mode==='taps'){tapHit(t);return}
+  /* On the arena a click is a tap. The card is one button away in the bar.
+     Only an arena bubble takes taps: the last tab's bubbles stay on screen
+     while the arena loads, and a tap on one was sent for a token that is not
+     in it. */
+  if(S.mode==='taps'){if(t.via==='taps')tapHit(t);return}
   openCard(t);
 });
 
@@ -3035,7 +3064,7 @@ function openCard(t){
       +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
       +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
       +(t.tx5!=null?' · '+nf(t.tx5)+' trades in 5m':'')
-      +(t.kol!=null&&t.kol>0?' · '+nf(t.kol)+' KOLs':'')
+      +(t.kolN>0?' · '+nf(t.kolN)+' KOLs':'')
       +'</div>'
     : '')+tapLine;
   const whoOf=w=>w.xh?'@'+esc(w.xh):esc(w.name);
@@ -3699,7 +3728,9 @@ let ADS=[],AD_CONTACT='',OUR=null,FILL=[];
 async function loadAds(){
   try{const j=await jget('/api/ads',8000);ADS=Array.isArray(j.ads)?j.ads:[];AD_CONTACT=j.contact||'';
     FILL=Array.isArray(j.fill)?j.fill:[];
-    OUR=(j.token&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(j.token.mint||'')))?j.token:null;rail();official()}
+    OUR=(j.token&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(j.token.mint||'')))?j.token:null;rail();official();
+    /* an empty arena offers the trending list, which arrives with this */
+    tapbar()}
   catch(e){}
 }
 setInterval(()=>{if(!document.hidden)loadAds()},60000);
@@ -4078,6 +4109,8 @@ function tapbar(){
   const el=document.getElementById('tapbar');
   if(S.mode!=='taps'){el.classList.remove('on');return}
   el.classList.add('on');
+  /* the arena is empty and the trending list has not been read yet: ask once */
+  if(!S.tokens.length&&!FILL.length&&!tapbar.askedFill){tapbar.askedFill=true;loadAds()}
   const was=document.getElementById('tapCa');
   const typing=was&&(was.value||document.activeElement===was)?{value:was.value,focus:document.activeElement===was,sel:was.selectionStart}:null;
   const t=TAP.sel&&S.tokens.find(x=>x.key===TAP.sel.key)||null;
@@ -4093,10 +4126,16 @@ function tapbar(){
     ?`<div class="row">${av}<b>$${esc(t.sym)}</b><span class="cnt">${ic('tap')} ${nf0(t.taps)}</span><span class="dim">#${t.tapRank||'—'}</span>${badge}${next?'<span class="dim">'+esc(next)+'</span>':''}
         <button type="button" data-card="1">details</button><button type="button" data-boost="1">boost</button>${msg}</div>`
     :`<div class="row"><b>${n?'Tap a bubble.':'The arena is empty.'}</b><span class="dim">${n?'Every tap counts for that token — 1,000 wins a free ad slot, 5,000 a golden bubble on every tab.':'Add the first token and start tapping.'}</span>${msg}</div>`;
+  /* An empty arena is a blank map, and a blank map reads as a broken one. Offer
+     what is trending right now, one tap each, beside the box for any address. */
+  const seeds=n?[]:FILL.filter(x=>x&&x.key&&x.sym).slice(0,5);
+  const seedRow=seeds.length
+    ?`<div class="row"><span class="dim">trending now:</span>${seeds.map(x=>`<button type="button" data-seed="${esc(x.key)}" ${TAP.busy?'disabled':''}>+ $${esc(x.sym)}</button>`).join('')}</div>`
+    :'';
   const add=(TAP.addOpen||!n)
     ?`<div class="row"><input id="tapCa" placeholder="paste a contract address — any chain" autocomplete="off" spellcheck="false"><button type="button" class="go" data-add="1" ${TAP.busy?'disabled':''}>${TAP.busy?'adding…':'add to the arena'}</button></div>`
     :'';
-  el.innerHTML=sel+add+`<div class="row"><button type="button" data-open="1">${TAP.addOpen||!n?'':'+ add a token'}</button><span class="rules">top 3 over 5,000 taps wear gold · next 2 over 1,000 take the rail · taps halve every day · ${S.arena?S.arena.n:n} in the arena</span></div>`+evLine;
+  el.innerHTML=sel+seedRow+add+`<div class="row"><button type="button" data-open="1">${TAP.addOpen||!n?'':'+ add a token'}</button><span class="rules">top 3 over 5,000 taps wear gold · next 2 over 1,000 take the rail · taps halve every day · ${S.arena?S.arena.n:n} in the arena</span></div>`+evLine;
   el.querySelectorAll('[data-open]').forEach(b=>{if(!b.textContent)b.remove()});
   /* A poll must not eat what somebody is typing into the add box. */
   if(typing){const i=document.getElementById('tapCa');if(i){i.value=typing.value;if(typing.focus){i.focus();try{i.setSelectionRange(typing.sel,typing.sel)}catch(_){}}}}
@@ -4107,24 +4146,28 @@ document.getElementById('tapbar').addEventListener('click',async e=>{
   if(b.dataset.card&&TAP.sel){openCard(TAP.sel);return}
   if(b.dataset.boost&&TAP.sel){openBoost(TAP.sel);return}
   if(b.dataset.open){TAP.addOpen=true;tapbar();const i=document.getElementById('tapCa');if(i)i.focus();return}
+  if(b.dataset.seed){if(!TAP.busy)addToArena(b.dataset.seed);return}
   if(b.dataset.add){
     const i=document.getElementById('tapCa');const ca=(i&&i.value||'').trim();
     if(!ca){i&&i.focus();return}
-    TAP.busy=true;tapbar();
-    try{
-      const r=await fetch('/api/tap/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ca})});
-      const j=await r.json().catch(()=>({}));
-      if(!r.ok||!j.ok){TAP.msg=j.error||'could not add that';TAP.msgAt=Date.now()}
-      else{
-        TAP.msg=j.existed?'already in the arena — tap it':'$'+(j.row&&j.row.sym||'')+' is in the arena — tap it';TAP.msgAt=Date.now();
-        TAP.addOpen=false;
-        await refresh(true);
-        const t=S.tokens.find(x=>x.key===j.key);if(t){TAP.sel=t;S.pin=t.key;rebuild()}
-      }
-    }catch(_){TAP.msg='could not reach the arena';TAP.msgAt=Date.now()}
-    TAP.busy=false;tapbar();
+    addToArena(ca);
   }
 });
+async function addToArena(ca){
+  TAP.busy=true;tapbar();
+  try{
+    const r=await fetch('/api/tap/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ca})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok){TAP.msg=j.error||'could not add that';TAP.msgAt=Date.now()}
+    else{
+      TAP.msg=j.existed?'already in the arena — tap it':'$'+(j.row&&j.row.sym||'')+' is in the arena — tap it';TAP.msgAt=Date.now();
+      TAP.addOpen=false;
+      await refresh(true);
+      const t=S.tokens.find(x=>x.key===j.key);if(t){TAP.sel=t;S.pin=t.key;rebuild()}
+    }
+  }catch(_){TAP.msg='could not reach the arena';TAP.msgAt=Date.now()}
+  TAP.busy=false;tapbar();
+}
 document.getElementById('tapbar').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target.id==='tapCa'){const b=document.querySelector('#tapbar [data-add]');b&&b.click()}
 });
@@ -4290,7 +4333,32 @@ refresh(true);loadAds();resumePendingOrder();shareTenBtn();
 let lastPoll=Date.now();
 setInterval(()=>{if(document.hidden)return;lastPoll=Date.now();refresh(false)},15000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-lastPoll>15000){lastPoll=Date.now();refresh(false);loadAds()}});
-setInterval(()=>{tick();rebuild()},2500);
+setInterval(()=>{
+  /* Live rows only change when a refresh lands, and that rebuilds on its own.
+     Rebuilding a table here rewrote every row every 2.5s: 270ms of main thread
+     for Insiders' 800 rows on a desktop, and a stutter under a thumb scrolling
+     it on a phone. */
+  if(S.live&&TABLE_MODES.has(S.mode))return;
+  tick();rebuild()},2500);
+/* Escape closes whatever is on top: the share card, the boost box, the token
+   card or the filters. Closing the boost box this way is the same as its
+   Cancel — an order already sent is saved and picked up on the next visit. */
+addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  if(sveil.classList.contains('on'))closeShare();
+  else if(veil.classList.contains('on'))closeVeil();
+  else if(card.classList.contains('on')||sheet.classList.contains('on'))closeAll();
+});
+/* The tab and filter rows scroll sideways when they overflow, which a mouse
+   wheel never did: on a narrow desktop window everything past the fold was
+   out of reach. */
+for(const id of ['chips','subbar','gpuBoard']){
+  const el=document.getElementById(id);
+  el.addEventListener('wheel',e=>{
+    if(el.scrollWidth<=el.clientWidth+1||Math.abs(e.deltaX)>=Math.abs(e.deltaY))return;
+    el.scrollLeft+=e.deltaY;e.preventDefault();
+  },{passive:false});
+}
 /* Boost decay lives on the server now (boosts.mjs → bonusOf): it has to be
    the same number for everyone, and it must survive a page reload. */
 </script>
