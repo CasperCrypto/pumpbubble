@@ -357,7 +357,7 @@ export function sitemapXml(kols = [], now = Date.now()) {
   const lm = new Date(now).toISOString();
   const urls = [
     ['/', 'hourly', '1.0'], ...PAGES.map(p => [p.path, 'hourly', '0.9']), ['/market', 'hourly', '0.8'], ['/board', 'hourly', '0.6'],
-    ['/partners', 'weekly', '0.5'], ['/swap', 'weekly', '0.4'],
+    ['/partners', 'weekly', '0.5'], ['/swap', 'weekly', '0.4'], ['/launch', 'weekly', '0.7'],
     ...kols.map(s => ['/kol/' + s, 'daily', '0.5']),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
@@ -385,6 +385,7 @@ ${k.length ? `\nAs of ${day(now)}: pump.fun has paid its top ${k.length} KOLs ${
 - [Trending tokens](${ORIGIN}/trending): pump.fun's trending list plus Base, Robinhood Chain and majors by turnover × movement.
 - [Robinhood Chain tokens](${ORIGIN}/robinhood): every token on Robinhood Chain (chain id 4663), one per ticker, unbacked caps filtered.
 - [GPU rental prices](${ORIGIN}/gpu-prices): H100, A100, RTX PRO 6000, RTX 5090, RTX 4090 per hour on Akash's open market.
+- [Launch a token](${ORIGIN}/launch): launch a pump.fun token and get its own page, a Telegram group with the free buy bot already set up, its first X post and an hour gold on the map. Non-custodial; free apart from Solana's fees and the creator's own first buy.
 - [Compute map](${ORIGIN}/?source=compute&view=map): a world map of Akash's GPU providers (live), AWS / Google Cloud / Azure regions and AI megaprojects, shaded by electricity price in US dollars per kWh (industrial where published, wholesale otherwise) with each grid's carbon intensity; the cheapest GPU hour and the cheapest power.
 - [Crypto market overview](${ORIGIN}/market): the top 250 coins with 1h to 1y changes.
 

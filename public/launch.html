@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch a token on pump.fun — with its page, Telegram and bot | pumpbubble.fun</title>
+<meta name="description" content="Launch a pump.fun token and get everything after it in one go: its own page, a Telegram group with our free buy bot already set up, its first X post and an hour gold on the map. Free — you pay only Solana's fees and your own first buy.">
+<link rel="canonical" href="https://pumpbubble.fun/launch">
+<link rel="icon" href="/favicon.png">
+<meta property="og:title" content="Launch a token — and everything after it">
+<meta property="og:description" content="A pump.fun token, its page, a Telegram group with the buy bot, its first post. One flow, free.">
+<meta property="og:image" content="https://pumpbubble.fun/og.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@pumpbubblefun">
+<!--
+  The Launch Kit (src/launch.mjs has the why). Non-custodial by construction:
+  the token's key is made here with WebCrypto, cannot be exported even by
+  this page, signs once and is gone; the creator's wallet signs the rest.
+  The transaction is PumpPortal's, read and simulated by our server before
+  the wallet sees it. Every string a creator types is sent as data and
+  escaped wherever it is shown.
+-->
+<style>
+:root{--bg:#06080d;--ink:#eef2f8;--dim:#8a93a6;--line:rgba(255,255,255,.1);--mint:#28e08c;--mint2:#3df09b;--gold:#f5c542;--rose:#ff5a6e}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:radial-gradient(120% 70% at 50% -10%,#10241a 0%,#06080d 60%);color:var(--ink);font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+a{color:inherit}.wrap{max-width:640px;margin:0 auto;padding:18px 16px 70px}
+.top{display:flex;align-items:center;gap:10px}.top .mk{width:24px;height:24px;border-radius:50%;box-shadow:0 0 18px rgba(40,224,140,.45)}.top b{font-weight:900;letter-spacing:-.02em}.top nav{margin-left:auto;display:flex;gap:14px;font-size:13px;font-weight:700}.top nav a{color:var(--dim);text-decoration:none}.top nav a:hover{color:var(--ink)}
+h1{font-size:clamp(28px,6vw,40px);line-height:1.1;letter-spacing:-.03em;margin:28px 0 8px;font-weight:900}
+.lede{color:#c9d1de;margin:0 0 6px}.perks{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;padding:0;list-style:none}.perks li{font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:999px;background:rgba(61,240,155,.08);border:1px solid rgba(61,240,155,.22);color:var(--mint2)}
+.card{border:1px solid var(--line);border-radius:18px;background:rgba(10,14,22,.75);padding:18px;backdrop-filter:blur(6px)}
+.row{display:flex;gap:16px;align-items:flex-start}
+.pic{flex:none;width:112px;height:112px;border-radius:50%;border:2px dashed rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--dim);cursor:pointer;overflow:hidden;background:#0d1219}
+.pic img{width:100%;height:100%;object-fit:cover}.pic.has{border-style:solid;border-color:var(--mint)}
+.fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+label{display:block;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:0 0 4px}
+label small{text-transform:none;letter-spacing:0;font-weight:600}
+input,textarea{width:100%;font-family:inherit;font-size:15px;font-weight:600;line-height:1.3;color:var(--ink);background:#0d1219;border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:11px 12px;outline:none}
+input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:84px;resize:vertical;font-weight:500}
+.bad{border-color:var(--rose)!important}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sec{margin-top:16px}.hint{font-size:12.5px;color:var(--dim);margin:5px 0 0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.chips button{font:700 12.5px/1 inherit;color:var(--dim);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer}.chips button.on{color:#04140b;background:var(--mint);border-color:var(--mint)}
+.go{display:block;width:100%;margin-top:18px;font:900 17px/1 inherit;padding:16px;border-radius:14px;border:0;background:var(--mint);color:#04140b;cursor:pointer}
+.go[disabled]{opacity:.55;cursor:default}
+.wal{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.wal button,.wal a{display:flex;align-items:center;gap:8px;font:800 14px/1 inherit;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);cursor:pointer;text-decoration:none}.wal img{width:20px;height:20px;border-radius:5px}
+.who{font-size:13px;color:var(--dim);margin-top:8px}.who b{color:var(--ink)}
+.steps{list-style:none;padding:0;margin:16px 0 0}.steps li{display:flex;gap:10px;align-items:center;padding:7px 0;color:var(--dim);font-size:14px}.steps li i{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.2);flex:none}
+.steps li.doing{color:var(--ink)}.steps li.doing i{border-color:var(--mint);border-top-color:transparent;animation:sp 0.8s linear infinite}
+.steps li.done{color:var(--ink)}.steps li.done i{background:var(--mint);border-color:var(--mint)}.steps li.fail{color:var(--rose)}.steps li.fail i{border-color:var(--rose)}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{margin-top:12px;padding:10px 12px;border-radius:11px;background:rgba(255,90,110,.1);border:1px solid rgba(255,90,110,.3);color:#ffb3bd;font-size:13.5px}
+.cost{margin-top:10px;font-size:13.5px;color:#c9d1de}
+.done{text-align:center}.done .bub{width:120px;height:120px;margin:4px auto 10px;border-radius:50%;overflow:hidden;border:4px solid var(--mint);box-shadow:0 0 60px rgba(40,224,140,.35)}.done .bub img{width:100%;height:100%;object-fit:cover}
+.done h2{margin:6px 0 2px;font-size:26px;letter-spacing:-.02em}.done p{color:#c9d1de;margin:4px 0}
+.next{display:grid;gap:8px;margin-top:16px;text-align:left}.next a{display:block;padding:13px 15px;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.04);text-decoration:none}.next a b{display:block}.next a span{font-size:13px;color:var(--dim)}
+.next a.first{background:var(--mint);border-color:var(--mint);color:#04140b}.next a.first span{color:#0b3a22}
+.next a.gold{border-color:rgba(245,197,66,.35)}.next a.gold b{color:var(--gold)}
+.fine{margin-top:22px;font-size:12px;color:#5d6678;line-height:1.5}
+@media (max-width:520px){.row{flex-direction:column;align-items:center}.fields{width:100%}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="top"><a href="/"><img class="mk" src="/mark.png" alt="" width="24" height="24"></a><b><a href="/" style="text-decoration:none">pumpbubble.fun</a></b><nav><a href="/">Map</a><a href="/swap">Swap</a><a href="/bot">Bot</a></nav></div>
+
+<section id="form">
+<h1>Launch a token — and everything after it</h1>
+<p class="lede">Your token on pump.fun, its own page, a Telegram group with our buy bot already set up, and its first post. One flow.</p>
+<ul class="perks"><li>pump.fun token</li><li>Token page</li><li>Telegram + buy bot</li><li>X post</li><li>1 hour gold on the map</li></ul>
+
+<div class="card">
+  <div class="row">
+    <div class="pic" id="pic" role="button" tabindex="0" aria-label="Choose the token's picture">Add a picture<br>PNG, JPG, GIF</div>
+    <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+    <div class="fields">
+      <div><label for="name">Name</label><input id="name" maxlength="32" placeholder="Bubble Cat" autocomplete="off"></div>
+      <div><label for="sym">Ticker</label><input id="sym" maxlength="10" placeholder="BCAT" autocomplete="off" style="text-transform:uppercase"></div>
+    </div>
+  </div>
+  <div class="sec"><label for="desc">Description <small>— optional, up to 500</small></label><textarea id="desc" maxlength="500" placeholder="What it is, in a sentence or two."></textarea></div>
+  <div class="sec grid2">
+    <div><label for="x">X <small>— optional</small></label><input id="x" placeholder="https://x.com/…" inputmode="url"></div>
+    <div><label for="tg">Telegram <small>— optional</small></label><input id="tg" placeholder="https://t.me/…" inputmode="url"></div>
+  </div>
+  <p class="hint">No group yet? After the launch, one tap makes it — with our buy bot inside and set up. No website? You get one at pumpbubble.fun/t/…</p>
+  <div class="sec"><label for="web">Website <small>— optional</small></label><input id="web" placeholder="https://…" inputmode="url"></div>
+  <div class="sec">
+    <label for="buy">Your first buy, SOL <small>— optional</small></label>
+    <input id="buy" inputmode="decimal" value="0.05">
+    <div class="chips" id="buys"><button type="button" data-b="0">None</button><button type="button" data-b="0.05" class="on">0.05</button><button type="button" data-b="0.25">0.25</button><button type="button" data-b="1">1</button></div>
+    <p class="hint">You buy first, at the curve's lowest price, in the same transaction. PumpPortal keeps 0.5% of it.</p>
+  </div>
+  <div class="sec">
+    <label>Wallet</label>
+    <div class="wal" id="wal"></div>
+    <div class="who" id="who" hidden></div>
+  </div>
+  <button class="go" id="go" type="button">Launch on pump.fun</button>
+  <div class="cost" id="cost" hidden></div>
+  <ol class="steps" id="steps" hidden>
+    <li data-s="meta"><i></i>Saving the picture and details</li>
+    <li data-s="tx"><i></i>Building the launch and checking its cost</li>
+    <li data-s="sign"><i></i>Confirm in your wallet</li>
+    <li data-s="send"><i></i>Sending to Solana</li>
+    <li data-s="conf"><i></i>Confirmed on chain</li>
+  </ol>
+  <div class="err" id="err" hidden></div>
+</div>
+<p class="fine">Free: you pay only Solana's network fees and your own first buy. pumpbubble never holds your keys or your SOL — the token's key is made in this browser and signs once; your wallet signs the rest, and shows you what it costs before you approve. Launching a token is not an investment product; most tokens go to zero. You are responsible for what you launch.</p>
+</section>
+
+<section id="ok" hidden>
+<div class="card done">
+  <div class="bub"><img id="okImg" alt=""></div>
+  <h2 id="okTitle"></h2>
+  <p id="okSub">Live on pump.fun.</p>
+  <div class="next">
+    <a class="first" id="nTg" target="_blank" rel="noopener"><b>Create its Telegram group — bot included</b><span>Telegram opens; pick "New group" (or a group you have). The bot sets itself up for your token.</span></a>
+    <a id="nX" target="_blank" rel="noopener"><b>Post it on X</b><span>The link unfurls with your token's picture.</span></a>
+    <a id="nPage"><b>Open its page</b><span id="nPageUrl"></span></a>
+    <a class="gold" id="nBoost"><b>Make it gold for longer</b><span id="nGold">A golden bubble on the map, sized by what is paid.</span></a>
+    <a id="nPump" target="_blank" rel="noopener"><b>See it on pump.fun</b><span>Trading starts on the bonding curve.</span></a>
+  </div>
+</div>
+</section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var CHAIN = 'solana:mainnet';
+  var S = { img: null, imgType: '', wallet: null, acct: null, busy: false, buy: '0.05' };
+
+  /* ----------------------------------------------------------- base58 */
+  var A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  function b58(bytes) { var n = 0n, s = '', i; for (i = 0; i < bytes.length; i++) n = n * 256n + BigInt(bytes[i]); while (n > 0n) { s = A[Number(n % 58n)] + s; n /= 58n; } for (i = 0; i < bytes.length && !bytes[i]; i++) s = '1' + s; return s; }
+  function b64(bytes) { var s = ''; for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+  function unb64(str) { var s = atob(str), b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b; }
+  var isKey = function (s) { return typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s); };
+
+  /* signature slots and the message, read off the transaction bytes */
+  function layout(bytes) {
+    var o = 0, cu = function () { var v = 0, sh = 0, b; do { b = bytes[o++]; v |= (b & 0x7f) << sh; sh += 7; } while (b & 0x80); return v; };
+    var n = cu(), sigAt = o; o += 64 * n;
+    var msgAt = o; if (bytes[o] & 0x80) o++;
+    var req = bytes[o]; o += 3;
+    var nk = cu(), keys = [];
+    for (var i = 0; i < nk; i++) { keys.push(b58(bytes.subarray(o, o + 32))); o += 32; }
+    return { n: n, sigAt: sigAt, msgAt: msgAt, signers: keys.slice(0, req) };
+  }
+
+  /* ----------------------------------------------------------- picture */
+  $('pic').addEventListener('click', function () { $('file').click(); });
+  $('pic').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+  $('file').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) return fail('That picture is not a PNG, JPG, GIF or WebP.');
+    var rd = new FileReader();
+    rd.onload = function () {
+      var src = String(rd.result);
+      /* an animated GIF small enough goes as it is; everything else is drawn
+         to 512×512, centre-cropped, so every launch is light and square */
+      if (f.type === 'image/gif' && f.size <= 500 * 1024) return setPic(src, 'image/gif');
+      var im = new Image();
+      im.onload = function () {
+        var c = document.createElement('canvas'), z = 512; c.width = c.height = z;
+        var x = c.getContext('2d'), s = Math.min(im.width, im.height);
+        x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, z, z);
+        var png = c.toDataURL('image/png');
+        setPic(png.length < 480 * 1024 * 1.37 ? png : c.toDataURL('image/jpeg', 0.9), '');
+      };
+      im.onerror = function () { fail('That picture could not be read.'); };
+      im.src = src;
+    };
+    rd.readAsDataURL(f);
+  });
+  function setPic(dataUrl) {
+    S.img = dataUrl;
+    $('pic').innerHTML = '';
+    var i = document.createElement('img'); i.src = dataUrl; i.alt = '';
+    $('pic').appendChild(i); $('pic').classList.add('has'); $('pic').classList.remove('bad');
+    clearErr();
+  }
+
+  /* ------------------------------------------------------------- buys */
+  $('buys').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-b]'); if (!b) return;
+    $('buy').value = b.dataset.b; markBuys();
+  });
+  $('buy').addEventListener('input', markBuys);
+  function markBuys() { var v = $('buy').value; document.querySelectorAll('#buys [data-b]').forEach(function (b) { b.classList.toggle('on', b.dataset.b === v); }); }
+
+  /* ----------------------------------------------------------- wallets */
+  var wallets = [];
+  function isSol(w) { var f = w && w.features; return !!(f && f['standard:connect'] && (f['solana:signTransaction'] || f['solana:signAndSendTransaction']) && Array.isArray(w.chains) && w.chains.some(function (c) { return /^solana:/.test(String(c)); })); }
+  var api = { register: function () { for (var i = 0; i < arguments.length; i++) { var w = arguments[i]; if (isSol(w) && !wallets.some(function (x) { return x.name === w.name; })) wallets.push(w); } drawWallets(); return function () {}; } };
+  window.addEventListener('wallet-standard:register-wallet', function (e) { try { e.detail(api); } catch (x) { /* a broken wallet */ } });
+  try { window.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: api })); } catch (x) { /* old browser */ }
+  function icon(w) { return typeof w.icon === 'string' && /^data:image\/(png|svg\+xml|webp|jpeg|gif);/i.test(w.icon) ? w.icon : ''; }
+  function drawWallets() {
+    var box = $('wal'); box.innerHTML = '';
+    if (S.acct) {
+      $('who').hidden = false;
+      $('who').innerHTML = 'Connected: <b></b> · <a href="#" id="disc">change</a>';
+      $('who').querySelector('b').textContent = S.acct.address.slice(0, 4) + '…' + S.acct.address.slice(-4) + ' (' + S.wallet.name + ')';
+      $('disc').onclick = function (e) { e.preventDefault(); S.acct = null; S.wallet = null; drawWallets(); };
+      return;
+    }
+    $('who').hidden = true;
+    if (!wallets.length) {
+      var here = encodeURIComponent(location.href), ref = encodeURIComponent(location.origin);
+      [['Open in Phantom', 'https://phantom.app/ul/browse/' + here + '?ref=' + ref], ['Open in Solflare', 'https://solflare.com/ul/v1/browse/' + here + '?ref=' + ref]].forEach(function (l) {
+        var a = document.createElement('a'); a.href = l[1]; a.textContent = l[0]; box.appendChild(a);
+      });
+      return;
+    }
+    wallets.forEach(function (w) {
+      var b = document.createElement('button'); b.type = 'button';
+      var ic = icon(w); if (ic) { var im = document.createElement('img'); im.src = ic; im.alt = ''; b.appendChild(im); }
+      b.appendChild(document.createTextNode(w.name));
+      b.onclick = function () { connect(w); };
+      box.appendChild(b);
+    });
+  }
+  function connect(w) {
+    clearErr();
+    return Promise.resolve(w.features['standard:connect'].connect()).then(function (r) {
+      var accts = (r && r.accounts && r.accounts.length ? r.accounts : w.accounts) || [];
+      var a = accts.filter(function (x) { return isKey(x.address); })[0];
+      if (!a) throw new Error('The wallet did not share an account.');
+      S.wallet = w; S.acct = a; drawWallets();
+    }).catch(function (e) { fail(String(e && e.message || e)); });
+  }
+  setTimeout(drawWallets, 400);
+
+  /* ------------------------------------------------------------ errors */
+  function fail(msg) { $('err').hidden = false; $('err').textContent = msg; }
+  function clearErr() { $('err').hidden = true; $('err').textContent = ''; }
+  function step(id, state) { var li = document.querySelector('#steps [data-s="' + id + '"]'); if (li) li.className = state || ''; }
+
+  function post(path, body) {
+    return fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'the server answered ' + r.status }; }); });
+  }
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  function read() {
+    var v = {
+      name: $('name').value.trim(), symbol: $('sym').value.trim().replace(/^\$/, '').toUpperCase(), description: $('desc').value.trim(),
+      twitter: $('x').value.trim(), telegram: $('tg').value.trim(), website: $('web').value.trim(),
+    };
+    var bad = [];
+    if (!S.img) bad.push(['pic', 'Add a picture.']);
+    if (!v.name) bad.push(['name', 'Give it a name.']);
+    if (!/^[A-Z0-9]{1,10}$/.test(v.symbol)) bad.push(['sym', 'A ticker of 1–10 letters or digits.']);
+    if (v.twitter && !/^https:\/\/(www\.)?(x|twitter)\.com\//i.test(v.twitter)) bad.push(['x', 'An X link starts https://x.com/']);
+    if (v.telegram && !/^https:\/\/(www\.)?(t|telegram)\.me\//i.test(v.telegram)) bad.push(['tg', 'A Telegram link starts https://t.me/']);
+    if (v.website && !/^https:\/\//i.test(v.website)) bad.push(['web', 'A website starts https://']);
+    var amt = parseFloat(String($('buy').value || '0').replace(',', '.'));
+    if (!(amt >= 0 && amt <= 50)) bad.push(['buy', 'A first buy between 0 and 50 SOL.']);
+    ['pic', 'name', 'sym', 'x', 'tg', 'web', 'buy'].forEach(function (k) { $(k).classList.toggle('bad', bad.some(function (b) { return b[0] === k; })); });
+    if (bad.length) { fail(bad[0][1]); return null; }
+    v.amount = Math.round(amt * 1e6) / 1e6;
+    return v;
+  }
+
+  /* ------------------------------------------------------------ launch */
+  $('go').addEventListener('click', function () {
+    if (S.busy) return;
+    clearErr();
+    var v = read(); if (!v) return;
+    if (!S.acct) { fail('Connect a wallet first.'); return; }
+    if (!(window.crypto && crypto.subtle && crypto.subtle.generateKey)) { fail('This browser cannot make the token’s key — open this page in Chrome, Safari 17+ or inside Phantom.'); return; }
+    S.busy = true; $('go').disabled = true; $('go').textContent = 'Launching…';
+    $('steps').hidden = false; document.querySelectorAll('#steps li').forEach(function (li) { li.className = ''; });
+    var user = S.acct.address, mintKey, mint, meta, sig;
+    /* the token's own key: made here, not extractable, used for one signature */
+    Promise.resolve(crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign'])).catch(function () {
+      throw new Error('This browser cannot make the token’s key — open this page in Chrome, Safari 17+ or inside Phantom.');
+    }).then(function (kp) {
+      mintKey = kp;
+      return crypto.subtle.exportKey('raw', kp.publicKey);
+    }).then(function (raw) {
+      mint = b58(new Uint8Array(raw));
+      step('meta', 'doing');
+      return post('/api/launch/meta', { name: v.name, symbol: v.symbol, description: v.description, twitter: v.twitter, telegram: v.telegram, website: v.website, image: S.img, mint: mint });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'The details could not be saved.');
+      meta = r; step('meta', 'done'); step('tx', 'doing');
+      return post('/api/launch/tx', { publicKey: user, mint: mint, name: v.name, symbol: v.symbol, uri: r.uri, amount: v.amount });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.error || 'The launch could not be built.');
+      step('tx', 'done');
+      if (r.cost != null) { $('cost').hidden = false; $('cost').textContent = 'This launch takes ' + (r.cost / 1e9).toFixed(4) + ' SOL from your wallet (your first buy, network fees and rent) — your wallet shows the same before you approve.'; }
+      step('sign', 'doing');
+      return signAndSend(unb64(r.tx), user, mint, mintKey);
+    }).then(function (s) {
+      sig = s; step('sign', 'done'); step('send', 'done'); step('conf', 'doing');
+      return confirm(sig);
+    }).then(function () {
+      step('conf', 'done');
+      return finish(v, mint, sig, meta);
+    }).catch(function (e) {
+      var li = document.querySelector('#steps li.doing'); if (li) li.className = 'fail';
+      var m = String(e && e.message || e);
+      fail(/reject|denied|cancel/i.test(m) ? 'You declined in your wallet — nothing was sent.' : m);
+      S.busy = false; $('go').disabled = false; $('go').textContent = 'Try again';
+    });
+  });
+
+  /* The wallet signs first, then the token's key signs the very message the
+     wallet returns — so a wallet that adds its own safety checks still gets
+     a valid transaction. A wallet that can only sign-and-send gets the token
+     key's signature first. */
+  function signAndSend(bytes, user, mint, mintKey) {
+    var w = S.wallet, f = w.features['solana:signTransaction'];
+    if (f && f.signTransaction) {
+      return Promise.resolve(f.signTransaction({ account: S.acct, transaction: bytes, chain: CHAIN })).then(function (out) {
+        var first = Array.isArray(out) ? out[0] : out, st = first && first.signedTransaction;
+        if (!st) throw new Error('The wallet returned no signature.');
+        var t = st instanceof Uint8Array ? st : new Uint8Array(st);
+        return addMintSig(t, mint, mintKey);
+      }).then(function (t) {
+        step('send', 'doing');
+        return post('/api/launch/send', { tx: b64(t), user: user, mint: mint });
+      }).then(function (r) {
+        if (!r.ok) throw new Error(r.error || 'Solana refused the launch.');
+        return r.sig;
+      });
+    }
+    var g = w.features['solana:signAndSendTransaction'];
+    return addMintSig(bytes, mint, mintKey).then(function (t) {
+      return g.signAndSendTransaction({ account: S.acct, transaction: t, chain: CHAIN });
+    }).then(function (out) {
+      var first = Array.isArray(out) ? out[0] : out, s = first && first.signature;
+      if (!s) throw new Error('The wallet returned no signature.');
+      step('send', 'doing');
+      return b58(s instanceof Uint8Array ? s : new Uint8Array(s));
+    });
+  }
+  function addMintSig(bytes, mint, mintKey) {
+    var L = layout(bytes), i = L.signers.indexOf(mint);
+    if (i < 0) return Promise.reject(new Error('The transaction is not for this token’s key — nothing was sent.'));
+    return crypto.subtle.sign({ name: 'Ed25519' }, mintKey.privateKey, bytes.subarray(L.msgAt)).then(function (s) {
+      var out = new Uint8Array(bytes); out.set(new Uint8Array(s), L.sigAt + 64 * i); return out;
+    });
+  }
+  function confirm(sig) {
+    var t0 = Date.now();
+    return (function poll() {
+      return fetch('/api/launch/status?sig=' + encodeURIComponent(sig)).then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (r) {
+        if (r.state === 'confirmed' || r.state === 'finalized') return true;
+        if (r.state === 'failed') throw new Error('The launch failed on chain' + (r.err ? ': ' + r.err : '') + '. Your SOL was not spent beyond the network fee.');
+        if (Date.now() - t0 > 90000) throw new Error('Solana has not confirmed it after 90 seconds. Check your wallet’s activity before trying again.');
+        return wait(1500).then(poll);
+      });
+    })();
+  }
+  function finish(v, mint, sig, meta) {
+    var tries = 0;
+    return (function again() {
+      return post('/api/launch/done', { mint: mint, sig: sig, name: v.name, symbol: v.symbol }).then(function (r) {
+        if (!r.ok && tries++ < 5) return wait(2000).then(again);
+        show(v, mint, meta, r && r.gold);
+      });
+    })();
+  }
+  function show(v, mint, meta, gold) {
+    var page = location.origin + '/t/' + mint;
+    $('form').hidden = true; $('ok').hidden = false; window.scrollTo(0, 0);
+    $('okImg').src = S.img;
+    $('okTitle').textContent = '$' + v.symbol + ' is live';
+    $('nTg').href = 'https://t.me/pumpbubblebot?startgroup=setup_' + mint + '&admin=delete_messages+restrict_members+pin_messages+invite_users+change_info';
+    $('nX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent('$' + v.symbol + ' is live — ' + v.name) + '&url=' + encodeURIComponent(page) + '&via=pumpbubblefun';
+    $('nPage').href = '/t/' + mint; $('nPageUrl').textContent = page.replace(/^https?:\/\//, '');
+    $('nBoost').href = '/?boost=' + mint;
+    $('nGold').textContent = gold ? 'It is gold on the map for its first hour. Keep it there — sized by what is paid.' : 'A golden bubble on the map, sized by what is paid.';
+    $('nPump').href = 'https://pump.fun/coin/' + mint;
+  }
+})();
+</script>
+</body>
+</html>

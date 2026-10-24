@@ -72,6 +72,14 @@ means"); Ornn's index, OCPI (its free tier may not be displayed publicly without
 UI does not carry); Silicon Data and CME settlement prices (licensed); Kalshi's GPU markets (no
 trading to read a price from).
 
+## Launch Kit (`src/launch.mjs`)
+
+| Data / service | Source | Terms, as read on 2026-10-24 |
+|---|---|---|
+| pump.fun create transactions | [PumpPortal Local Transaction API](https://pumpportal.fun/creation) (`/api/trade-local`) | keyless; creation free, 0.5% on the dev buy (their fee page) |
+| Simulation, sending, confirmation | Solana JSON-RPC (Alchemy when `ALCHEMY_KEY` is set) | the RPC provider's terms |
+| Metadata and images | stored by us at `/m/<id>`, or [Pinata](https://pinata.cloud) when `PINATA_JWT` is set | ours / Pinata's free plan |
+
 ## Compute tab → Map (`src/computemap.mjs`, `public/compute-map.js`)
 
 The map carries one small line of sources at the bottom of its panel — the operator approved that on

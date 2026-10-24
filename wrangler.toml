@@ -218,6 +218,15 @@ class_name = "ComputeDO"
 tag = "v10-compute"
 new_sqlite_classes = ["ComputeDO"]
 
+# The Launch Kit's images, metadata and launch records (src/launch.mjs).
+[[durable_objects.bindings]]
+name = "LAUNCH"
+class_name = "LaunchDO"
+
+[[migrations]]
+tag = "v11-launch"
+new_sqlite_classes = ["LaunchDO"]
+
 # Created by `wrangler kv namespace create BUBBLE_KV` — paste the id it prints.
 [[kv_namespaces]]
 binding = "BUBBLE_KV"

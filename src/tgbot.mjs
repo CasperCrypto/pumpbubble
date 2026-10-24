@@ -850,6 +850,11 @@ async function onGroup(ctx, msg) {
   if (!c) return;
 
   const ADMIN_CMDS = new Set(['setup', 'emoji', 'step', 'minbuy', 'web', 'x', 'tg', 'stop', 'test', 'media', 'whalemedia', 'settings', 'welcome']);
+  /* t.me/<bot>?startgroup=setup_<address> — from a token's card, its page or
+     the launch kit: the group is set up for that token the moment an admin
+     adds the bot, nothing typed. Telegram delivers it as "/start <payload>". */
+  const auto = c.cmd === 'start' && /^setup_([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/.exec(c.arg || '');
+  if (auto && await isAdmin(env, msg)) return runSetup(ctx, msg, auto[1], '');
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
   /* anyone may buy for the token; the purchase itself happens in private */
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') {
@@ -877,22 +882,27 @@ async function onGroup(ctx, msg) {
   if (c.cmd === 'setup') {
     const [addr = '', wantChain = ''] = c.arg.split(/\s+/);
     if (!isCA(addr)) return say(env, chatId, 'Send the contract address after the command:\n<code>/setup &lt;address&gt;</code>');
-    /* A setup that broke half-way used to say nothing at all — the webhook
-       swallows errors — so an admin could only report that it "does not
-       work". Now the group is told which step failed, and the log says it too. */
-    try {
-      return await setupToken(ctx, msg, addr, wantChain);
-    } catch (e) {
-      const why = String((e && e.message) || e).replace(/bot\d+:[\w-]+/g, 'bot…').slice(0, 200);
-      console.log(JSON.stringify({ ev: 'tg-setup-error', chat: chatId, addr, error: why }));
-      return say(env, chatId, `⚠️ Setup did not finish: <code>${tgEsc(why)}</code>\n`
-        + `Run the same /setup again in a minute — if it fails again, tell us in <a href="${community(env)}">our Telegram group</a>.`);
-    }
+    return runSetup(ctx, msg, addr, wantChain);
   }
 
   const g = await getGroup(store, chatId);
   if (!g) return say(env, chatId, 'Run /setup <code>&lt;contract address&gt;</code> first.');
   return groupCommand(ctx, msg, c, g);
+}
+
+/* A setup that broke half-way used to say nothing at all — the webhook
+   swallows errors — so an admin could only report that it "does not work".
+   Now the group is told which step failed, and the log says it too. */
+async function runSetup(ctx, msg, addr, wantChain) {
+  const { env } = ctx, chatId = msg.chat.id;
+  try {
+    return await setupToken(ctx, msg, addr, wantChain);
+  } catch (e) {
+    const why = String((e && e.message) || e).replace(/bot\d+:[\w-]+/g, 'bot…').slice(0, 200);
+    console.log(JSON.stringify({ ev: 'tg-setup-error', chat: chatId, addr, error: why }));
+    return say(env, chatId, `⚠️ Setup did not finish: <code>${tgEsc(why)}</code>\n`
+      + `Run /setup <code>${tgEsc(addr)}</code> in a minute — if it fails again, tell us in <a href="${community(env)}">our Telegram group</a>.`);
+  }
 }
 
 async function setupToken(ctx, msg, addr, wantChain) {

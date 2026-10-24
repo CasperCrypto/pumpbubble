@@ -28,6 +28,7 @@ import { logoDataUri } from '../src/share.mjs';
 import { objectStore, StoreDO } from '../src/dostore.mjs';
 import { meterClass } from '../src/dometer.mjs';
 import { readAkashSites, SITES_TTL } from '../src/computemap.mjs';
+import { LaunchBook } from '../src/launch.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -994,6 +995,7 @@ async function makeCtx(env, execCtx) {
     audience: audienceClient(env),
     callers: callersClient(env),
     busy: () => doBusy(env),
+    launch: launchClient(env),
     computeSites: env.COMPUTE ? async () => (await env.COMPUTE.get(env.COMPUTE.idFromName('compute')).fetch('https://compute/sites')).json() : null,
     fetchImage: imageFetcher(execCtx),
     /* lets counting flush after the response is sent, off the critical path */
@@ -1006,6 +1008,35 @@ async function makeCtx(env, execCtx) {
       }
     },
   };
+}
+
+/* The Launch Kit's files and records (src/launch.mjs): images and metadata
+   JSON by content id, and every token launched through it. One object,
+   SQLite-backed; no alarm — it only answers. */
+export class LaunchDO {
+  constructor(state) { this.state = state; this.book = new LaunchBook(state.storage); }
+  async fetch(req) {
+    let b = {};
+    try { b = await req.json(); } catch { /* below */ }
+    const B = this.book, s = this.state.storage;
+    let out = { ok: false };
+    if (b.op === 'putFile' && /^[0-9a-f]{32}$/.test(b.id) && typeof b.b64 === 'string' && b.b64.length < 800_000) {
+      if (!(await s.get('f:' + b.id))) await s.put('f:' + b.id, { type: String(b.type || '').slice(0, 40), b64: b.b64 });
+      out = { ok: true };
+    } else if (b.op === 'getFile' && /^[0-9a-f]{32}$/.test(b.id)) {
+      const f = await s.get('f:' + b.id);
+      out = f ? { ok: true, type: f.type, b64: f.b64 } : { ok: false };
+    } else if (b.op === 'record') out = { ok: await B.record(b.entry) };
+    else if (b.op === 'get') { const e = await B.get(b.mint); out = e ? { ok: true, entry: e } : { ok: false }; }
+    else if (b.op === 'recent') out = { ok: true, launches: await B.recent(+b.n || 30) };
+    return Response.json(out);
+  }
+}
+function launchClient(env) {
+  if (!env.LAUNCH) return null;
+  const stub = () => env.LAUNCH.get(env.LAUNCH.idFromName('launch'));
+  return async (op, body = {}) => (await stub().fetch('https://launch/', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op, ...body }) })).json();
 }
 
 /* Akash's GPU providers for /compute-map (src/computemap.mjs). Their list is
@@ -1036,12 +1067,12 @@ export class ComputeDO {
 /* Every object class is metered (src/dometer.mjs): the free plan's 13,000
    GB-s a day is shared by all of them, and on 2026-10-17 it ran out before
    18:00 UTC with nothing to say which object spent it. */
-for (const C of [GroupGuard, EvmWatch, SolWatch, CardDO, InsidersDO, AudienceDO, TapArena, CallersDO, StoreDO, ComputeDO]) meterClass(C);
+for (const C of [GroupGuard, EvmWatch, SolWatch, CardDO, InsidersDO, AudienceDO, TapArena, CallersDO, StoreDO, ComputeDO, LaunchDO]) meterClass(C);
 
 async function doBusy(env) {
   const list = [['sol', env.SOL, 'solana'], ['callers', env.CALLERS, 'callers'], ['insiders', env.INSIDERS, 'insiders'],
     ['store', env.STORE, 'store'], ['cards', env.CARDS, 'cards'], ['audience', env.AUDIENCE, 'audience'], ['arena', env.ARENA, 'arena'],
-    ['compute', env.COMPUTE, 'compute'], ['evmBase', env.EVM, 'base'], ['evmEthereum', env.EVM, 'ethereum'], ['evmRobinhood', env.EVM, 'robinhood']];
+    ['compute', env.COMPUTE, 'compute'], ['launch', env.LAUNCH, 'launch'], ['evmBase', env.EVM, 'base'], ['evmEthereum', env.EVM, 'ethereum'], ['evmRobinhood', env.EVM, 'robinhood']];
   const out = {};
   await Promise.all(list.map(async ([k, ns, name]) => {
     if (!ns) return;

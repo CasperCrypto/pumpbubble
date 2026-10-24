@@ -42,6 +42,10 @@ import {
 import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } from './sources.mjs';
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
 import { mapPayload } from './computemap.mjs';
+import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata, isKey, b64dec, b64enc, parseTx, checkCreateTx, signed,
+         rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile } from './launch.mjs';
+import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
+import { pumpCoin } from './core.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
@@ -53,7 +57,7 @@ import { board, priceFor, standing, countClick, bidsAsBoostSpend,
 import {
   TIERS, tierOf, createOrder, signOrder, readOrder, findPayment,
   activeBoosts, activateBoost, applyBoosts, goldShare, bonusFromSpend, spendForBonus,
-  addPending, listPending, sweepPayments, ORDER_TTL_MS, AD_TIERS, AD_QUEUE_DAYS, adSchedule,
+  addPending, listPending, sweepPayments, ORDER_TTL_MS, AD_TIERS, AD_QUEUE_DAYS, adSchedule, welcomeGold,
 } from './boosts.mjs';
 
 const SNAPSHOT_TTL = 10_000;      // pump.fun poll interval
@@ -1026,6 +1030,141 @@ export async function handle(req, ctx) {
        the ComputeDO, the GPU board, and the static power, grid and data-center
        data. It was a page of its own for a day (/compute-map); asked to live in
        the tab instead, that address now opens the tab on the map. */
+    /* ------------------------------------------------- the Launch Kit */
+    /* src/launch.mjs has the why. Metadata and images live at /m/<id>,
+       content-addressed and immutable; /api/launch/* builds, checks, sends
+       and confirms a pump.fun create the creator signs; /t/<mint> is the
+       token's page. No route here ever sees a private key. */
+    const m = /^\/m\/([0-9a-f]{32})\.(json|png|jpg|gif|webp)$/.exec(path);
+    if (m && req.method === 'GET') {
+      if (!ctx.launch) return json({ ok: false }, 404);
+      const f = await ctx.launch('getFile', { id: m[1] }).catch(() => null);
+      if (!f || !f.ok) return new Response('not found', { status: 404 });
+      return new Response(b64dec(f.b64), { headers: { 'content-type': f.type, 'cache-control': 'public, max-age=31536000, immutable',
+        'access-control-allow-origin': '*', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" } });
+    }
+    if (path === '/api/launch/meta' && req.method === 'POST') {
+      const limited = rateLimit(req, 'lmeta', 12, 3600_000);
+      if (limited) return limited;
+      if (!ctx.launch && !ctx.env.PINATA_JWT) return json({ ok: false, error: 'launches are not set up here' }, 503);
+      let body = null;
+      try { body = await req.json(); } catch { return json({ ok: false, error: 'bad request' }, 400); }
+      const chk = checkLaunch(body || {});
+      if (!chk.ok) return json({ ok: false, error: 'check ' + chk.errors.join(', '), fields: chk.errors }, 400);
+      const dm = /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(body.image || ''));
+      if (!dm) return json({ ok: false, error: 'add a picture (PNG, JPG, GIF or WebP)', fields: ['image'] }, 400);
+      let bytes;
+      try { bytes = b64dec(dm[2]); } catch { return json({ ok: false, error: 'the picture could not be read', fields: ['image'] }, 400); }
+      const type = imageType(bytes);
+      if (!type) return json({ ok: false, error: 'the picture is not a PNG, JPG, GIF or WebP', fields: ['image'] }, 400);
+      if (bytes.length > MAX_IMG) return json({ ok: false, error: 'the picture is over 512 KB', fields: ['image'] }, 400);
+      const v = chk.value, mint = isKey(body.mint) ? body.mint : '';
+      if (!v.website && mint) v.website = url.origin + '/t/' + mint;
+      try {
+        let image, uri;
+        if (ctx.env.PINATA_JWT) {
+          image = await pinFile(ctx.env.PINATA_JWT, bytes, 'image.' + EXT[type], type);
+          const mb = new TextEncoder().encode(JSON.stringify(metadata(v, image)));
+          uri = await pinFile(ctx.env.PINATA_JWT, mb, 'metadata.json', 'application/json');
+        } else {
+          const iid = await contentId(bytes);
+          await ctx.launch('putFile', { id: iid, type, b64: dm[2] });
+          image = url.origin + '/m/' + iid + '.' + EXT[type];
+          const mb = new TextEncoder().encode(JSON.stringify(metadata(v, image)));
+          const mid = await contentId(mb);
+          await ctx.launch('putFile', { id: mid, type: 'application/json', b64: b64enc(mb) });
+          uri = url.origin + '/m/' + mid + '.json';
+        }
+        return json({ ok: true, uri, image, value: v });
+      } catch (e) {
+        return json({ ok: false, error: 'the picture could not be stored — try again in a minute' }, 502);
+      }
+    }
+    if (path === '/api/launch/tx' && req.method === 'POST') {
+      const limited = rateLimit(req, 'ltx', 20, 3600_000);
+      if (limited) return limited;
+      let b = null;
+      try { b = await req.json(); } catch { return json({ ok: false, error: 'bad request' }, 400); }
+      const chk = checkLaunch(b || {});
+      const amount = +b.amount;
+      const uriOk = typeof b.uri === 'string' && (b.uri.startsWith(url.origin + '/m/') || /^https:\/\/ipfs\.io\/ipfs\/[A-Za-z0-9]{20,80}$/.test(b.uri));
+      if (!isKey(b.publicKey) || !isKey(b.mint) || b.publicKey === b.mint || !chk.ok || !uriOk || !(amount >= 0 && amount <= MAX_DEV_BUY)) return json({ ok: false, error: 'bad request' }, 400);
+      const rpcU = rpcUrl(ctx.env);
+      try {
+        const bytes = await buildCreateTx({ publicKey: b.publicKey, mint: b.mint, name: chk.value.name, symbol: chk.value.symbol, uri: b.uri, amount });
+        const why = checkCreateTx(parseTx(bytes), { user: b.publicKey, mint: b.mint });
+        if (why) return json({ ok: false, error: 'refused: ' + why }, 502);
+        const txB64 = b64enc(bytes);
+        const sim = await simulateCost(rpcU, txB64, b.publicKey).catch(e => ({ err: String(e.message).slice(0, 160) }));
+        if (sim.err) return json({ ok: false, error: /insufficient|0x1\b|lamports/i.test(sim.err + (sim.logs || []).join(' ')) ? 'not enough SOL in the wallet for this' : 'the launch would fail: ' + sim.err, logs: sim.logs || [] }, 400);
+        if (sim.cost != null && sim.cost > costCap(amount)) return json({ ok: false, error: 'refused: it would take ' + (sim.cost / 1e9).toFixed(4) + ' SOL, more than the dev buy and fees' }, 502);
+        return json({ ok: true, tx: txB64, cost: sim.cost, balance: sim.balance });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e).slice(0, 160) }, 502);
+      }
+    }
+    if (path === '/api/launch/send' && req.method === 'POST') {
+      const limited = rateLimit(req, 'lsend', 20, 3600_000);
+      if (limited) return limited;
+      let b = null;
+      try { b = await req.json(); } catch { return json({ ok: false, error: 'bad request' }, 400); }
+      let bytes, tx;
+      try { bytes = b64dec(b.tx); tx = parseTx(bytes); } catch { return json({ ok: false, error: 'bad transaction' }, 400); }
+      const why = checkCreateTx(tx, { user: b.user, mint: b.mint });
+      if (why) return json({ ok: false, error: 'refused: ' + why }, 400);
+      if (!signed(bytes, tx, b.user) || !signed(bytes, tx, b.mint)) return json({ ok: false, error: 'not signed by both keys' }, 400);
+      try {
+        const sig = await rpc(rpcUrl(ctx.env), 'sendTransaction', [b.tx, { encoding: 'base64', skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 5 }]);
+        return json({ ok: true, sig });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e).slice(0, 200) }, 502);
+      }
+    }
+    if (path === '/api/launch/status') {
+      const sig = url.searchParams.get('sig') || '';
+      if (!/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(sig)) return json({ ok: false }, 400);
+      try {
+        const r = await rpc(rpcUrl(ctx.env), 'getSignatureStatuses', [[sig], { searchTransactionHistory: false }]);
+        const st = r && r.value && r.value[0];
+        return json({ ok: true, state: st ? (st.err ? 'failed' : st.confirmationStatus || 'processed') : 'pending', err: st && st.err ? JSON.stringify(st.err).slice(0, 120) : '' });
+      } catch (e) { return json({ ok: false, state: 'unknown' }, 502); }
+    }
+    if (path === '/api/launch/done' && req.method === 'POST') {
+      let b = null;
+      try { b = await req.json(); } catch { return json({ ok: false }, 400); }
+      if (!isKey(b.mint) || !/^[1-9A-HJ-NP-Za-km-z]{60,100}$/.test(String(b.sig || ''))) return json({ ok: false }, 400);
+      const v = await verifyLaunch(rpcUrl(ctx.env), b.sig, b.mint).catch(() => ({ ok: false, why: 'unreachable' }));
+      if (!v.ok) return json({ ok: false, error: v.why }, 409);
+      const chk = checkLaunch(b);
+      const entry = { mint: b.mint, sym: chk.value.symbol || '', name: chk.value.name || '', creator: v.creator, at: v.at || Date.now(), sig: b.sig };
+      if (ctx.launch) await ctx.launch('record', { entry }).catch(() => null);
+      /* the launch-day gift: an hour gold on the map, once per token ever */
+      const gold = await welcomeGold(ctx.store, { mint: b.mint, sym: entry.sym, name: entry.name }).catch(() => null);
+      return json({ ok: true, page: '/t/' + b.mint, gold: !!(gold && gold.ok) });
+    }
+    if (path === '/api/launch/recent') {
+      const list = ctx.launch ? await ctx.launch('recent', { n: 30 }).catch(() => null) : null;
+      return json({ ok: true, launches: (list && list.launches) || [] }, 200, { 'cache-control': 'public, max-age=60' });
+    }
+    if (path.startsWith('/t/') && req.method === 'GET') {
+      const mint = decodeURIComponent(path.slice(3).replace(/\/+$/, ''));
+      if (!isKey(mint)) return Response.redirect(url.origin + '/', 302);
+      const [t, raw, rec] = await Promise.all([
+        fetchCoin(mint, ctx.env.IMG_SECRET).catch(() => null),
+        pumpCoin(mint).catch(() => null),
+        ctx.launch ? ctx.launch('get', { mint }).catch(() => null) : null,
+      ]);
+      const headers = { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': TOKEN_CSP, 'x-content-type-options': 'nosniff' };
+      if (!t) {
+        /* a token minutes old may not be on pump.fun's API yet */
+        return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="8"><title>Token loading — pumpbubble.fun</title>'
+          + '<body style="background:#06080d;color:#eef2f8;font:16px system-ui;text-align:center;padding:80px 16px"><p>This token is not on pump.fun yet — if it was just launched, this page fills in by itself in a few seconds.</p><p><a style="color:#3df09b" href="/">Open the map</a></p>',
+          { status: 404, headers: { ...headers, 'cache-control': 'no-store' } });
+      }
+      const bot = ctx.env.TG_BOT_USERNAME || 'pumpbubblebot';
+      return new Response(tokenPage({ origin: url.origin, t, raw: raw || {}, launched: rec && rec.ok ? rec.entry : null, bot }), { headers: { ...headers, 'cache-control': 'public, max-age=60' } });
+    }
+
     if (path === '/api/compute/map') {
       const limited = rateLimit(req, 'cmap', 60, 60_000);
       if (limited) return limited;

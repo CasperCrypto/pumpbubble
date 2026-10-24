@@ -899,6 +899,7 @@ body.embed #brandbadge.on{display:flex}
 <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3.5 10h17L12 4.5zM5.5 10v7M9.5 10v7M14.5 10v7M18.5 10v7M4.5 17.5h15M3 20.5h18"/></symbol>
 <symbol id="i-brief" viewBox="0 0 24 24"><path d="M4 8h16a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19H4a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 4 8zM9 8V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2M2.5 12.5h19"/></symbol>
 <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5.5 21V4M5.5 4.5h11.5l-2.2 4 2.2 4H5.5"/></symbol>
+<symbol id="i-rocket" viewBox="0 0 24 24"><path d="M12 15l-3-3c1.6-4.3 4.6-7.7 10-9 0 0 .3 5.8-7 12zM9 12H5.5L8 8.5h4M12 15v3.5l3.5-2.5V12M7 17c-1.5.5-2.5 2-3 4 2-.5 3.5-1.5 4-3"/></symbol>
 <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM3.5 9h17M3.5 15h17M12 3c2.6 2.4 3.9 5.4 3.9 9s-1.3 6.6-3.9 9c-2.6-2.4-3.9-5.4-3.9-9s1.3-6.6 3.9-9z"/></symbol>
 <symbol id="i-chip" viewBox="0 0 24 24"><path d="M8 7h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM10 10h4v4h-4zM10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
 <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14"/></symbol>
@@ -1003,6 +1004,7 @@ body.embed #brandbadge.on{display:flex}
   <a class="iconbtn sw" href="/swap" title="Swap any Solana token from your own wallet"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>Swap</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Market overview</a>
   <a class="iconbtn" href="/partners" title="Partner with us, or embed a live map on your site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Partners</a>
+  <a class="iconbtn" href="/launch" title="Launch a pump.fun token with its page, a Telegram group and the buy bot"><svg class="ic" aria-hidden="true"><use href="#i-rocket"/></svg>Launch a token</a>
   <a class="iconbtn" href="https://t.me/pumpbubblebot?startgroup=setup&amp;admin=delete_messages+restrict_members+pin_messages+invite_users" target="_blank" rel="noopener" title="Free buy alerts and a captcha for your Telegram group"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg>Free buy bot</a>
   <div class="spacer"></div>
   <div class="hidden-note" id="hiddenNote"></div>
@@ -3065,7 +3067,12 @@ function openCard(t){
   /* installing the bot for a token: only for something with an address */
   const botLink=document.getElementById('cBot');
   botLink.hidden=!(t && (t.mint || t.addr));
-  if(!botLink.hidden)botLink.innerHTML=ic('bot')+' Free buy alerts for $'+esc(t.sym||'this token')+' in your Telegram group \u2192';
+  if(!botLink.hidden){
+    botLink.innerHTML=ic('bot')+' Free buy alerts for $'+esc(t.sym||'this token')+' in your Telegram group \u2192';
+    /* the link carries the token, so the group is set up the moment the bot joins */
+    const ca=t.addr||t.mint;
+    botLink.href='https://t.me/pumpbubblebot?startgroup=setup'+(/^([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/.test(ca)?'_'+ca:'')+'&admin=delete_messages+restrict_members+pin_messages+invite_users';
+  }
   /* the operator's pump.fun invite, on Solana tokens only */
   const jn=document.getElementById('cJoin');
   jn.hidden=!(BUY.join && t && t.mint && /^https:\/\/pump\.fun\/join\//.test(BUY.join));

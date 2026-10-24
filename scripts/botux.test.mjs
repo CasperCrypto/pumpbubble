@@ -175,6 +175,14 @@ try {
   await handleUpdate(gctx, gm('/setup ' + MINT, 401));
   msg = take().find(c => c.method === 'sendMessage');
   is('a setup that works confirms the token', !!msg && msg.body.text.includes('Tracking <b>HELL</b>'), true);
+  /* added through t.me/<bot>?startgroup=setup_<mint>: set up with nothing typed */
+  const actx = { env, store: mem() };
+  await handleUpdate(actx, gm('/start@pumpbubblebot setup_' + MINT, 402));
+  msg = take().find(c => c.method === 'sendMessage');
+  is('a group added with a token in the link sets itself up', !!msg && msg.body.text.includes('Tracking <b>HELL</b>'), true);
+  await handleUpdate(actx, gm('/start setup_nope', 403));
+  msg = take().find(c => c.method === 'sendMessage');
+  is('a link without a real address is only help', !!msg && /Admins/.test(msg.body.text) && !msg.body.text.includes('Tracking'), true);
   for (const [i, cmd] of ['/status', '/emoji 🔥', '/step 10', '/minbuy 5', '/settings', '/media', '/x https://x.com/hell', '/test', '/stop'].entries()) {
     await handleUpdate(gctx, gm(cmd, 410 + i));
     is(`${cmd.split(' ')[0]} on a set-up group gets an answer`, take().some(x => x.method === 'sendMessage'), true);

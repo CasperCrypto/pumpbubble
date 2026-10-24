@@ -1927,6 +1927,57 @@ honest denominator, and it correctly rejects a token claiming $141M against an e
 what survived filtering was still mostly $5–12k tokens. Deep links to `?source=bonding` still
 resolve so nothing already shared breaks.
 
+## The Launch Kit
+
+`src/launch.mjs`, `src/tokenpage.mjs`, `public/launch.html` at `/launch`, the `LaunchDO`
+(`env.LAUNCH`), routes `/api/launch/*`, `/m/<id>`, `/t/<mint>`. Asked for on 2026-10-24 as "one
+click: a token on pump.fun, a website, a Telegram group with the bot". **It launches ON pump.fun,
+not against it** — pump.fun takes 92% of launchpad revenue (Oct 2026) and ~21,700 tokens a day are
+launched there, 79% of which trade only on their first day: creators lack what comes after the
+mint, not the mint. So the token goes to pump.fun and everything after it is ours: its page, the
+bot, the post, an hour gold.
+
+The flow, and the line it holds — **non-custodial**:
+1. The creator fills name, ticker, picture, links, first buy; the page draws the picture to
+   512×512 (a small GIF goes as it is).
+2. The **token's key is made in the browser** with WebCrypto Ed25519, *not extractable* — not even
+   this page's code can copy it — and used for one signature.
+3. `/api/launch/meta` stores the picture and the metadata JSON **content-addressed** (the id is the
+   SHA-256 of the bytes) in the LaunchDO, served from `/m/<id>.<ext>` immutable with a sandbox CSP,
+   or pins them to IPFS when `PINATA_JWT` is set. pump.fun no longer takes uploads from outside.
+   No website given → the token's own `/t/<mint>`.
+4. `/api/launch/tx` asks **PumpPortal's keyless Local Transaction API** for the create (free;
+   PumpPortal keeps 0.5% of the dev buy), then **reads it** (`checkCreateTx`: two signers, the
+   creator pays, the token key signs, only the programs a create uses — read off a live one — plus
+   Phantom's Lighthouse) and **simulates it** for the creator's balance change. More than the dev
+   buy × 1.12 + 0.05 SOL and it refuses; the page shows the measured cost before the wallet does.
+5. The **wallet signs first**, then the token key signs the very message the wallet returned (so a
+   wallet that adds its own checks still yields a valid transaction); a sign-and-send-only wallet
+   gets the token key's signature first. `/api/launch/send` re-checks and wants both signatures.
+6. `/api/launch/status` polls; `/api/launch/done` verifies on chain (it landed, it is a pump.fun
+   create of this mint), records the launch, and gives the welcome gold hour.
+7. The success screen: **Create its Telegram group — bot included** (`startgroup=setup_<mint>`:
+   Telegram delivers `/start setup_<mint>` and the bot runs `/setup` for that token with nothing
+   typed), Post on X (the page unfurls), its page, Boost, pump.fun.
+
+`/t/<mint>` works for **any** pump.fun token, not only ours: the token as a lit bubble, market
+cap, 24h, curve state, Buy (our swap, 1%), Chart, its own links (https only), the buy-bot link set
+up for it, Boost, Share, and "Made with pumpbubble — launch your own token". Every string a minter
+typed is escaped; the page has its own strict CSP. The map card's bot link now carries the token
+too.
+
+Tested in a browser with a mock Wallet Standard wallet on a funded public address: picture stored,
+PumpPortal's create built and passed, simulated cost 0.0188 SOL for a 0.01 dev buy, wallet and
+token signatures in their slots, sent (and, the mock signature being fake, never landed).
+**The first real launch has not been made** — that takes the operator's wallet and SOL.
+`scripts/launch.test.mjs` pins the checks against a real unsigned PumpPortal create
+(`scripts/fixtures/pumpportal-create.json`, built for a public address and a throwaway key).
+
+Not built yet: a "launched with pumpbubble" board (`/api/launch/recent` already lists them), a
+creator dashboard, AI help with the name and picture, our own launchpad on Meteora DBC (after
+traction and a lawyer's opinion — whether a fee-taking launchpad is a CASP service under MiCA is
+unsettled).
+
 ## The Telegram buybot
 
 `src/tgbot.mjs`, `src/solbuy.mjs`, `src/helius.mjs`. A token community adds the bot to its

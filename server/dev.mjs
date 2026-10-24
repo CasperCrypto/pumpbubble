@@ -20,6 +20,7 @@ import { memoryGuard } from '../src/guard.mjs';
 import { memoryCallers, defaultHttp as callersHttp } from '../src/callers.mjs';
 import { withKols } from '../src/kols.mjs';
 import { readAkashSites } from '../src/computemap.mjs';
+import { LaunchBook } from '../src/launch.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -69,6 +70,18 @@ const ctx = {
   guard: memoryGuard(),
   /* the callers' watcher, in memory — production keeps it in a Durable Object */
   callers: withKols(memoryCallers(), callersHttp()),
+  /* the Launch Kit's files and records, in memory — production keeps them in the LaunchDO */
+  launch: (() => {
+    const m = new Map(), s = { get: async k => m.get(k), put: async (k, v) => { m.set(k, v); } }, B = new LaunchBook(s);
+    return async (op, b = {}) => {
+      if (op === 'putFile') { if (!m.has('f:' + b.id)) m.set('f:' + b.id, { type: b.type, b64: b.b64 }); return { ok: true }; }
+      if (op === 'getFile') { const f = m.get('f:' + b.id); return f ? { ok: true, ...f } : { ok: false }; }
+      if (op === 'record') return { ok: await B.record(b.entry) };
+      if (op === 'get') { const e = await B.get(b.mint); return e ? { ok: true, entry: e } : { ok: false }; }
+      if (op === 'recent') return { ok: true, launches: await B.recent(b.n) };
+      return { ok: false };
+    };
+  })(),
   /* Akash's providers for /compute-map — production reads them in the ComputeDO */
   computeSites: (() => { let m = null; return async () => (m && Date.now() - m.at < 30 * 60_000) ? m : (m = await readAkashSites()); })(),
   /* Lets the shared API render /market in dev the same way the worker does. */
@@ -118,6 +131,8 @@ const MIME = {
 async function serveStatic(pathname, res, extraHeaders = {}) {
   let rel = decodeURIComponent(pathname);
   if (rel === '/' || rel === '') rel = '/index.html';
+  /* /launch is launch.html, as Cloudflare's assets serve a page without its extension */
+  else if (/^\/[a-z0-9-]+$/.test(rel)) rel += '.html';
   /* keep the resolved path inside ROOT */
   const abs = normalize(join(ROOT, rel));
   if (!abs.startsWith(normalize(ROOT))) { res.writeHead(403).end('forbidden'); return; }
