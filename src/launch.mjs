@@ -169,6 +169,50 @@ export class LaunchBook {
 
   /* where the token's own /tg and /x links go: the creator's choice, signed,
      else the group the bot made the invite for */
+  /* a slug is free when nobody holds it, it is this mint's, or someone's
+     hour-long reservation lapsed without a launch */
+  async slugFree(slug, mint, now = Date.now()) {
+    const cur = await this.s.get('sl:' + slug);
+    return !cur || cur.mint === mint || (!cur.final && now - cur.at > RESERVE_MS);
+  }
+  async checkSlug(want, mint, now = Date.now()) {
+    const all = slugCandidates(want, mint);
+    for (const c of all) if (await this.slugFree(c, mint, now)) return { slug: c, asked: all[0] === c };
+    return { slug: '', asked: false };
+  }
+  async reserveSlug(want, mint, now = Date.now()) {
+    if (!isKey(mint)) return '';
+    for (const c of slugCandidates(want, mint)) {
+      if (!(await this.slugFree(c, mint, now))) continue;
+      const old = await this.s.get('ms:' + mint);
+      if (old && old !== c) {
+        const e = await this.s.get('sl:' + old);
+        if (e && e.mint === mint && !e.final) await this.s.put('sl:' + old, null);
+      }
+      await this.s.put('sl:' + c, { mint, at: now, final: false });
+      await this.s.put('ms:' + mint, c);
+      return c;
+    }
+    return '';
+  }
+  async finalSlug(mint) {
+    const s = isKey(mint) ? await this.s.get('ms:' + mint) : null;
+    if (!s) return '';
+    const e = await this.s.get('sl:' + s);
+    if (!e || e.mint !== mint) return '';
+    if (!e.final) await this.s.put('sl:' + s, { ...e, final: true });
+    return s;
+  }
+  async mintOfSlug(slug) {
+    const e = slugOk(slug) ? await this.s.get('sl:' + slug) : null;
+    return e && e.final ? e.mint : null;
+  }
+  async slugOf(mint) {
+    const s = isKey(mint) ? await this.s.get('ms:' + mint) : null;
+    const e = s ? await this.s.get('sl:' + s) : null;
+    return e && e.final && e.mint === mint ? s : '';
+  }
+
   async links(mint) { return isKey(mint) ? (await this.s.get('k:' + mint)) || {} : {}; }
   async setLinks(mint, patch) {
     if (!isKey(mint)) return false;
@@ -182,6 +226,33 @@ export class LaunchBook {
     for (const m of ids) { const e = await this.s.get('l:' + m); if (e) out.push(e); }
     return out;
   }
+}
+
+/* ------------------------------------------------- the token's own site */
+/* <slug>.pumpbubble.fun — a launched token's address, from its ticker or
+   the creator's choice. Reserved for an hour while a launch is being
+   signed, kept for good once it lands; a taken name offers the next free
+   one. Only a landed launch's slug serves a page. */
+export const SUB_BASE = 'pumpbubble.fun';
+export const RESERVED = new Set(['www', 'api', 'app', 'admin', 'mail', 'email', 'smtp', 'ftp', 'ns1', 'ns2', 'm', 't', 'x', 'tg', 'cdn', 'static',
+  'assets', 'img', 'images', 'dev', 'staging', 'stage', 'test', 'beta', 'blog', 'docs', 'help', 'support', 'status', 'shop', 'store', 'launch',
+  'swap', 'bot', 'pay', 'wallet', 'login', 'auth', 'secure', 'account', 'official', 'pumpbubble', 'pumpfun', 'pump', 'solana', 'phantom']);
+export const slugFrom = s => String(s || '').toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 20);
+export const slugOk = s => typeof s === 'string' && /^[a-z0-9](?:[a-z0-9-]{0,18}[a-z0-9])?$/.test(s) && !RESERVED.has(s);
+export function subOf(hostname, base = SUB_BASE) {
+  const h = String(hostname || '').toLowerCase();
+  if (!h.endsWith('.' + base)) return '';
+  const s = h.slice(0, -(base.length + 1));
+  return /^[a-z0-9-]{1,40}$/.test(s) ? s : '';
+}
+export const siteUrl = slug => 'https://' + slug + '.' + SUB_BASE;
+const RESERVE_MS = 3600e3;
+function slugCandidates(want, mint) {
+  const b = slugFrom(want) || 'token';
+  const out = [b];
+  for (let i = 2; i <= 9; i++) out.push(slugFrom(b.slice(0, 19) + i));
+  if (isKey(mint)) out.push(slugFrom(b.slice(0, 14) + '-' + mint.slice(0, 5)));
+  return out.filter(slugOk);
 }
 
 /* Every operation the LaunchDO answers, in one place, so the Durable Object
@@ -206,6 +277,11 @@ export async function launchOp(B, b = {}) {
     case 'pend': await B.pend(b.chat, b.mint); return { ok: true };
     case 'pending': { const mint = await B.pending(b.chat); return mint ? { ok: true, mint } : { ok: false }; }
     case 'clearPending': await B.clearPending(b.chat); return { ok: true };
+    case 'checkSlug': return { ok: true, ...(await B.checkSlug(b.want, b.mint)) };
+    case 'reserveSlug': { const slug = await B.reserveSlug(b.want, b.mint); return { ok: !!slug, slug }; }
+    case 'finalSlug': { const slug = await B.finalSlug(b.mint); return { ok: !!slug, slug }; }
+    case 'mintOfSlug': { const mint = await B.mintOfSlug(b.slug); return mint ? { ok: true, mint } : { ok: false }; }
+    case 'slugOf': { const slug = await B.slugOf(b.mint); return { ok: !!slug, slug }; }
     case 'links': return { ok: true, links: await B.links(b.mint) };
     case 'setLinks': return { ok: await B.setLinks(b.mint, b.patch || {}) };
     default: return { ok: false };

@@ -96,6 +96,9 @@ RELAY_FEE_BPS = "100"
 # only unless they authorise commercial use in writing (being asked 2026-10-22,
 # alongside the partner key). Flip it the day they say yes.
 CARDS_TAB = "off"
+# A launched token's own <slug>.pumpbubble.fun as its website — "on" once the
+# wildcard DNS record (see the routes at the bottom) exists.
+TOKEN_SUBDOMAINS = "off"
 
 # SOLANA_RPC is deliberately NOT here.
 #
@@ -239,6 +242,15 @@ id = "769139d9eb6d428bbe95b7341bb0f09f"
 [[routes]]
 pattern = "pumpbubble.fun"
 custom_domain = true
+
+# Every launched token's own site, <slug>.pumpbubble.fun (src/launch.mjs).
+# Custom domains take no wildcard, so this is a plain route — and it needs one
+# DNS record made by hand in the dashboard: type AAAA, name *, 100::, proxied.
+# TOKEN_SUBDOMAINS (above) stays "off" until that record exists, or launches
+# would carry a website that does not resolve.
+[[routes]]
+pattern = "*.pumpbubble.fun/*"
+zone_name = "pumpbubble.fun"
 
 # The share-card renderer needs its display font as bytes, not as a file the
 # browser fetches: the card is rasterised inside the Worker, where there are no

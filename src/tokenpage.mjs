@@ -33,7 +33,11 @@ export const TOKEN_CSP = "default-src 'self'; img-src 'self' data:; script-src '
 /* `t` is the token as the map knows it (signed image, market cap, moves);
    `raw` is pump.fun's own record (description, creator, curve state);
    `launched` is our Launch Kit's record when it was launched with us. */
-export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbubblebot', now = Date.now(), cardUrl = '', tgSoon = false }) {
+/* `site` is the token's own https://<slug>.pumpbubble.fun when it has one:
+   the page's canonical address then, with every link pointing back at the
+   main site, since on the subdomain a relative link would land on itself. */
+export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbubblebot', now = Date.now(), cardUrl = '', tgSoon = false, site = '' }) {
+  const base = site ? origin : '';
   const mint = t.mint;
   const sym = t.sym || raw.symbol || '?', name = t.name || raw.name || sym;
   const desc = String(raw.description || '').slice(0, 600);
@@ -46,12 +50,15 @@ export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbub
     ['X', https(raw.twitter || t.twitter)],
     ['Telegram', https(raw.telegram || t.telegram)],
     ['Website', https(raw.website || t.website)],
-  ].filter(([, u]) => u && !u.startsWith(origin + '/t/'));
-  const url = origin + '/t/' + mint;
+  ].filter(([, u]) => u && !u.startsWith(origin + '/t/') && !(site && u.replace(/\/+$/, '') === site));
+  const url = site || origin + '/t/' + mint;
   const tweet = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent('$' + sym + ' — ' + name) + '&url=' + encodeURIComponent(url) + '&via=pumpbubblefun';
   const title = '$' + sym + ' — ' + name + ' | pumpbubble.fun';
   const descMeta = (desc || name + ' ($' + sym + ') on pump.fun') + ' · Market cap ' + money(t.mcap) + (pc ? ' · 24h ' + pc : '');
   const og = cardUrl || (img ? origin + img : origin + '/og.png');
+  /* pictures stay relative: the subdomain serves /api/img and the icons
+     itself, and its CSP allows images only from itself */
+  const art = img;
 
   return `<!doctype html>
 <html lang="en">
@@ -93,28 +100,28 @@ h1{margin:16px 0 2px;font-size:clamp(28px,6vw,40px);line-height:1.1;letter-spaci
 </style>
 </head>
 <body><div class="wrap">
-<div class="top"><a href="/"><img class="mk" src="/mark.png" alt="" width="24" height="24"></a><b><a href="/" style="text-decoration:none">pumpbubble.fun</a></b><nav><a href="/">Map</a><a href="/launch">Launch</a><a href="/swap">Swap</a></nav></div>
+<div class="top"><a href="${base}/"><img class="mk" src="/mark.png" alt="" width="24" height="24"></a><b><a href="${base}/" style="text-decoration:none">pumpbubble.fun</a></b><nav><a href="${base}/">Map</a><a href="${base}/launch">Launch</a><a href="${base}/swap">Swap</a></nav></div>
 <div class="hero">
-  <div class="bub" data-l="${esc(sym.slice(0, 1))}">${img ? `<img src="${esc(img)}" alt="">` : esc(sym.slice(0, 1))}</div>
+  <div class="bub" data-l="${esc(sym.slice(0, 1))}">${img ? `<img src="${esc(art)}" alt="">` : esc(sym.slice(0, 1))}</div>
   <h1>$${esc(sym)}<small>${esc(name)}</small></h1>
   ${launched ? '<span class="badge">Launched with pumpbubble</span>' : ''}
   ${tgSoon ? `<p class="desc" style="color:var(--gold)">$${esc(sym)}’s Telegram group is not made yet — its link opens it as soon as the creator adds our bot.</p>` : ''}
   <div class="nums"><div><b>${esc(money(t.mcap))}</b><span>Market cap</span></div>${pc ? `<div><b class="${up ? 'up' : 'dn'}">${esc(pc)}</b><span>24h</span></div>` : ''}<div><b>${grad ? 'Graduated' : 'Bonding curve'}</b><span>pump.fun</span></div></div>
-  <div class="cta"><a class="buy" href="/swap?mint=${esc(mint)}">Buy $${esc(sym)}</a><a href="https://pump.fun/coin/${esc(mint)}" target="_blank" rel="noopener">Chart</a>${links.map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${esc(l)}</a>`).join('')}</div>
+  <div class="cta"><a class="buy" href="${base}/swap?mint=${esc(mint)}">Buy $${esc(sym)}</a><a href="https://pump.fun/coin/${esc(mint)}" target="_blank" rel="noopener">Chart</a>${links.map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${esc(l)}</a>`).join('')}</div>
   ${desc ? `<p class="desc">${esc(desc)}</p>` : ''}
 </div>
 <div class="grid">
   <a class="card" href="${esc(groupLink(bot, mint))}" target="_blank" rel="noopener"><b>Buy alerts in your Telegram</b><span>Add our free bot to a group — set up for $${esc(sym)} the moment it joins.</span></a>
-  <a class="card gold" href="/?boost=${esc(mint)}"><b>Make it gold on the map</b><span>A golden bubble on pumpbubble.fun, sized by what is paid.</span></a>
+  <a class="card gold" href="${base}/?boost=${esc(mint)}"><b>Make it gold on the map</b><span>A golden bubble on pumpbubble.fun, sized by what is paid.</span></a>
   <a class="card" href="${esc(tweet)}" target="_blank" rel="noopener"><b>Share on X</b><span>This page unfurls with $${esc(sym)}'s picture.</span></a>
 </div>
 <div class="facts">
   <div><span>Contract</span><code>${esc(short(mint))}<button type="button" data-copy="${esc(mint)}">copy</button></code></div>
   ${raw.creator ? `<div><span>Creator</span><code>${esc(short(raw.creator))}</code></div>` : ''}
   ${created ? `<div><span>Created</span><b>${esc(ago(created, now))}</b></div>` : ''}
-  <div><span>On the map</span><a href="/?pin=${esc(mint)}" style="color:var(--mint2)">See $${esc(sym)} as a bubble →</a></div>
+  <div><span>On the map</span><a href="${base}/?pin=${esc(mint)}" style="color:var(--mint2)">See $${esc(sym)} as a bubble →</a></div>
 </div>
-<a class="made" href="/launch">Made with pumpbubble — launch your own token →</a>
+<a class="made" href="${base}/launch">Made with pumpbubble — launch your own token →</a>
 <p class="note">Data from pump.fun and the map. Not financial advice: anyone can launch a token, and most go to zero.</p>
 </div>
 <script>

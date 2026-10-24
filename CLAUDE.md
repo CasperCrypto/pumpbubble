@@ -1982,6 +1982,35 @@ token"). pump.fun's metadata cannot change after the create, so every link must 
 - **The picture is optional**: without one, the page draws a bubble from the ticker in a colour
   from the name, live as it is typed; the ticker fills itself from the name.
 
+**Every launch gets its own site, `<slug>.pumpbubble.fun`** (2026-10-24, asked as "and the
+domain he wants to use"). The slug comes from the ticker or the creator's choice in the form
+(availability live from `/api/launch/slug`); a taken name offers `bcat2`… then `bcat-<mint>`; a
+list of names (`www`, `api`, `admin`, `launch`, `pumpbubble`…) is never a token's. It is
+**reserved for an hour** at `/api/launch/meta` (so the website in the metadata is that address)
+and **kept for good** at `/api/launch/done`; only a landed launch's slug serves a page, a lapsed
+reservation is free again. `handle()` reads the host first: `www` → the main site, a slug → its
+token page (canonical the subdomain, every link back to the main site, pictures relative because
+the page's CSP allows images only from its own host — the subdomain serves `/api/img` and the
+icons), anything else on a subdomain → the same path on the main site; `/t/<mint>` of a token with
+a site redirects there.
+- **It needs one DNS record by hand** (Cloudflare's custom domains take no wildcard): AAAA `*` →
+  `100::`, proxied. The Worker side is the `*.pumpbubble.fun/*` route in wrangler.toml.
+- **`TOKEN_SUBDOMAINS` stays "off" until that record exists** — with it off the form hides the
+  address field and launches keep `/t/<mint>` as their website, so no token carries a dead link.
+- A creator's own domain (`bcat.xyz`) is the next step: Cloudflare for SaaS custom hostnames, the
+  creator buys and points it; buying domains for them would mean taking payments.
+
+**One-click Telegram group** (decided 2026-10-24, waiting on the operator): a bot cannot create a
+group, add a person or hand over ownership — `channels.createChannel` and `channels.editCreator`
+are user-only, and the transfer needs 2FA plus a password and a session at least 24 h old. The
+route is a dedicated "launcher" Telegram *user* account (MTProto, GramJS — the one dependency this
+would add) that, after a launch lands, creates the supergroup with the token's picture, adds the
+bot as admin (buy alerts for the CA at once), makes the community invite and a one-time owner
+link; the creator joins with that link, the bot promotes them, the launcher transfers ownership
+and leaves. The two-tap `launch_<code>` flow stays as the fallback. Needs from the operator: a new
+number's account with 2FA, its api_id/api_hash from my.telegram.org, a one-time login in his
+terminal (the session goes straight into a secret).
+
 `/t/<mint>` works for **any** pump.fun token, not only ours: the token as a lit bubble, market
 cap, 24h, curve state, Buy (our swap, 1%), Chart, its own links (https only), the buy-bot link set
 up for it, Boost, Share, and "Made with pumpbubble — launch your own token". Every string a minter

@@ -58,6 +58,8 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
 .fine{margin-top:22px;font-size:12px;color:#5d6678;line-height:1.5}
 .mine{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:6px}.mine li{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:11px;background:rgba(61,240,155,.05);border:1px solid rgba(61,240,155,.16);font-size:13.5px}.mine li b{min-width:72px;color:var(--mint2)}.mine li span{color:#c9d1de}
 .linkbtn{margin-top:8px;font:700 12.5px/1 inherit;color:var(--dim);background:none;border:0;padding:4px 0;cursor:pointer;text-decoration:underline}
+.slug{display:flex;align-items:center;gap:6px;margin-top:6px}.slug input{max-width:220px}.slug span{color:var(--dim);font-weight:700}
+.ok2{color:var(--mint2)}.no2{color:var(--gold)}
 .setx{margin-top:12px;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.03)}.setx label{margin-bottom:6px}.setx .r{display:flex;gap:8px}.setx button{flex:none;font:800 14px/1 inherit;padding:0 16px;border-radius:11px;border:0;background:var(--mint);color:#04140b;cursor:pointer}.setx p{margin:6px 0 0;font-size:12.5px;color:var(--dim)}
 @media (max-width:520px){.row{flex-direction:column;align-items:center}.fields{width:100%}.grid2{grid-template-columns:1fr}}
 </style>
@@ -83,10 +85,14 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
   <div class="sec">
     <label>Links <small>— made for you, in the token from its first second</small></label>
     <ul class="mine" id="mine">
-      <li><b>Website</b><span>its own page at pumpbubble.fun/t/…</span></li>
+      <li><b>Website</b><span id="webTxt">its own page at pumpbubble.fun/t/…</span></li>
       <li><b>Telegram</b><span>its group — made in one tap right after the launch, our buy bot inside</span></li>
       <li><b>X</b><span>live <span id="mineSym">$TICKER</span> posts on X, until you point it at your account — any time</span></li>
     </ul>
+    <div id="slugBox" hidden>
+      <div class="slug"><input id="slug" maxlength="20" autocomplete="off" aria-label="The token's own address" placeholder="bcat"><span>.pumpbubble.fun</span></div>
+      <p class="hint" id="slugMsg"></p>
+    </div>
     <button type="button" class="linkbtn" id="ownBtn">I already have my own links</button>
     <div id="own" hidden>
       <div class="sec grid2">
@@ -195,12 +201,39 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     return c.toDataURL('image/png');
   }
   function drawn() {
+    if (typeof syncSlug === 'function') syncSlug();
     var sym = $('sym').value.trim().replace(/^\$/, '').toUpperCase();
     $('mineSym').textContent = '$' + (sym || 'TICKER');
     if (S.custom) return;
     if (!sym) { S.img = null; $('pic').innerHTML = 'Add a picture<br><small>or we draw one</small>'; $('pic').classList.remove('has'); return; }
     S.img = drawLogo(sym, $('name').value.trim());
     $('pic').innerHTML = ''; var i = document.createElement('img'); i.src = S.img; i.alt = ''; $('pic').appendChild(i); $('pic').classList.add('has');
+  }
+  /* its own <slug>.pumpbubble.fun, when the site has them switched on */
+  var slugOn = false, slugTouched = false, slugTimer = 0;
+  fetch('/api/launch/slug?s=x').then(function (r) { return r.json(); }).then(function (j) {
+    if (!j || !j.enabled) return;
+    slugOn = true; $('slugBox').hidden = false; syncSlug();
+  }).catch(function () { /* stays on /t/ */ });
+  $('slug').addEventListener('input', function () { slugTouched = true; this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, ''); checkSlug(); });
+  function syncSlug() {
+    if (!slugOn) return;
+    if (!slugTouched) $('slug').value = $('sym').value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+    checkSlug();
+  }
+  function checkSlug() {
+    var v = $('slug').value;
+    $('webTxt').textContent = 'its own site at ' + (v || 'yourtoken') + '.pumpbubble.fun';
+    clearTimeout(slugTimer);
+    if (!v) { $('slugMsg').textContent = ''; return; }
+    slugTimer = setTimeout(function () {
+      fetch('/api/launch/slug?s=' + encodeURIComponent(v)).then(function (r) { return r.json(); }).then(function (j) {
+        if ($('slug').value !== v) return;
+        if (j.free) { $('slugMsg').innerHTML = '<span class="ok2">Free.</span>'; return; }
+        $('slugMsg').innerHTML = '<span class="no2">Taken</span> — ' + (j.slug ? '<b></b> is free.' : 'try another.');
+        var b = $('slugMsg').querySelector('b'); if (b) b.textContent = j.slug + '.pumpbubble.fun';
+      }).catch(function () { $('slugMsg').textContent = ''; });
+    }, 350);
   }
   $('ownBtn').addEventListener('click', function () { $('own').hidden = !$('own').hidden; this.textContent = $('own').hidden ? 'I already have my own links' : 'Use the links made for me'; });
 
@@ -341,7 +374,7 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     }).then(function (raw) {
       mint = b58(new Uint8Array(raw));
       step('meta', 'doing');
-      return post('/api/launch/meta', { name: v.name, symbol: v.symbol, description: v.description, twitter: v.twitter, telegram: v.telegram, website: v.website, image: S.img, mint: mint });
+      return post('/api/launch/meta', { name: v.name, symbol: v.symbol, description: v.description, twitter: v.twitter, telegram: v.telegram, website: v.website, image: S.img, mint: mint, slug: slugOn ? $('slug').value : '' });
     }).then(function (r) {
       if (!r.ok) throw new Error(r.error || 'The details could not be saved.');
       meta = r; step('meta', 'done'); step('tx', 'doing');
@@ -419,7 +452,7 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     return (function again() {
       return post('/api/launch/done', { mint: mint, sig: sig, name: v.name, symbol: v.symbol }).then(function (r) {
         if (!r.ok && tries++ < 5) return wait(2000).then(again);
-        show(v, mint, meta, r && r.gold, r && r.claim);
+        show(v, mint, meta, r && r.gold, r && r.claim, r && r.site);
       });
     })();
   }
@@ -441,8 +474,8 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
       msg.textContent = r.ok ? 'Saved — the X link inside your token now opens ' + x : (r.error || 'Not saved.');
     }).catch(function (e) { msg.textContent = /reject|denied|cancel/i.test(String(e && e.message)) ? 'You declined — nothing changed.' : String(e && e.message || e); });
   });
-  function show(v, mint, meta, gold, claim) {
-    var page = location.origin + '/t/' + mint;
+  function show(v, mint, meta, gold, claim, site) {
+    var page = site || location.origin + '/t/' + mint;
     $('form').hidden = true; $('ok').hidden = false; window.scrollTo(0, 0);
     $('okImg').src = S.img;
     $('okTitle').textContent = '$' + v.symbol + ' is live';
@@ -451,7 +484,7 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     S.mint = mint;
     if (v.twitter) $('setx').hidden = true;
     $('nX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent('$' + v.symbol + ' is live — ' + v.name) + '&url=' + encodeURIComponent(page) + '&via=pumpbubblefun';
-    $('nPage').href = '/t/' + mint; $('nPageUrl').textContent = page.replace(/^https?:\/\//, '');
+    $('nPage').href = page; $('nPageUrl').textContent = page.replace(/^https?:\/\//, '');
     $('nBoost').href = '/?boost=' + mint;
     $('nGold').textContent = gold ? 'It is gold on the map for its first hour. Keep it there — sized by what is paid.' : 'A golden bubble on the map, sized by what is paid.';
     $('nPump').href = 'https://pump.fun/coin/' + mint;

@@ -43,7 +43,8 @@ import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } fro
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
 import { mapPayload } from './computemap.mjs';
 import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata, isKey, b64dec, b64enc, parseTx, checkCreateTx, signed,
-         rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile, ownLinks, checkLinks, linksMessage, verifySig, b58dec } from './launch.mjs';
+         rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile, ownLinks, checkLinks, linksMessage, verifySig, b58dec,
+         slugFrom, subOf, siteUrl } from './launch.mjs';
 import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
 import { pumpCoin } from './core.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
@@ -883,6 +884,27 @@ async function computeSitesCached(ctx) {
   return v || sitesMem.v;
 }
 
+/* A token's page, from /t/<mint> or its own <slug>.pumpbubble.fun */
+const MAIN_ORIGIN = 'https://pumpbubble.fun';
+async function renderToken(ctx, url, mint, site = '') {
+  const [t, raw, rec] = await Promise.all([
+    fetchCoin(mint, ctx.env.IMG_SECRET).catch(() => null),
+    pumpCoin(mint).catch(() => null),
+    ctx.launch ? ctx.launch('get', { mint }).catch(() => null) : null,
+  ]);
+  const headers = { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': TOKEN_CSP, 'x-content-type-options': 'nosniff' };
+  if (!t) {
+    /* a token minutes old may not be on pump.fun's API yet */
+    return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="8"><title>Token loading — pumpbubble.fun</title>'
+      + '<body style="background:#06080d;color:#eef2f8;font:16px system-ui;text-align:center;padding:80px 16px"><p>This token is not on pump.fun yet — if it was just launched, this page fills in by itself in a few seconds.</p><p><a style="color:#3df09b" href="' + MAIN_ORIGIN + '/">Open the map</a></p>',
+      { status: 404, headers: { ...headers, 'cache-control': 'no-store' } });
+  }
+  const origin = site ? MAIN_ORIGIN : url.origin;
+  const bot = ctx.env.TG_BOT_USERNAME || 'pumpbubblebot';
+  return new Response(tokenPage({ origin, t, raw: raw || {}, launched: rec && rec.ok ? rec.entry : null, bot, tgSoon: url.searchParams.get('tg') === 'soon', site }),
+    { headers: { ...headers, 'cache-control': 'public, max-age=60' } });
+}
+
 /* A promise, or `fallback` once `ms` have passed — whichever comes first. */
 const within = (p, ms, fallback) => Promise.race([p, new Promise(r => setTimeout(() => r(fallback), ms))]);
 const TREND_FEED_MS = 3500, TREND_MOVERS_MS = 4500;
@@ -981,6 +1003,20 @@ export async function handle(req, ctx) {
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
+  /* <slug>.pumpbubble.fun — a launched token's own site (src/launch.mjs).
+     Its page is the root; art and icons are served as on the main site;
+     anything else goes to the main site. www is the main site. */
+  const sub = subOf(url.hostname);
+  if (sub) {
+    if (sub === 'www') return Response.redirect(MAIN_ORIGIN + url.pathname + url.search, 301);
+    if (path === '/') {
+      const r = ctx.launch ? await ctx.launch('mintOfSlug', { slug: sub }).catch(() => null) : null;
+      if (!r || !r.ok) return Response.redirect(MAIN_ORIGIN + '/launch', 302);
+      return renderToken(ctx, url, r.mint, siteUrl(sub));
+    }
+    if (!/^\/(api\/img|favicon\.png|mark\.png|og\.png|icon-\d+\.png)$/.test(path)) return Response.redirect(MAIN_ORIGIN + url.pathname + url.search, 302);
+  }
+
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -1061,8 +1097,14 @@ export async function handle(req, ctx) {
       const v = chk.value, mint = isKey(body.mint) ? body.mint : '';
       /* links the creator does not have yet are ours, and exist already:
          the page, the group's link (live once they make it), X */
+      let slug = '';
       if (mint) {
         const own = ownLinks(url.origin, mint);
+        /* its own <slug>.pumpbubble.fun, once the wildcard is live */
+        if (!v.website && ctx.env.TOKEN_SUBDOMAINS === 'on' && ctx.launch) {
+          const r = await ctx.launch('reserveSlug', { want: slugFrom(body.slug || v.symbol), mint }).catch(() => null);
+          if (r && r.ok) { slug = r.slug; v.website = siteUrl(slug); }
+        }
         if (!v.website) v.website = own.website;
         if (!v.telegram) v.telegram = own.telegram;
         if (!v.twitter) v.twitter = own.twitter;
@@ -1082,7 +1124,7 @@ export async function handle(req, ctx) {
           await ctx.launch('putFile', { id: mid, type: 'application/json', b64: b64enc(mb) });
           uri = url.origin + '/m/' + mid + '.json';
         }
-        return json({ ok: true, uri, image, value: v });
+        return json({ ok: true, uri, image, value: v, slug });
       } catch (e) {
         return json({ ok: false, error: 'the picture could not be stored — try again in a minute' }, 502);
       }
@@ -1143,13 +1185,15 @@ export async function handle(req, ctx) {
       const v = await verifyLaunch(rpcUrl(ctx.env), b.sig, b.mint).catch(() => ({ ok: false, why: 'unreachable' }));
       if (!v.ok) return json({ ok: false, error: v.why }, 409);
       const chk = checkLaunch(b);
-      const entry = { mint: b.mint, sym: chk.value.symbol || '', name: chk.value.name || '', creator: v.creator, at: v.at || Date.now(), sig: b.sig };
+      const fin = ctx.launch ? await ctx.launch('finalSlug', { mint: b.mint }).catch(() => null) : null;
+      const slug = (fin && fin.slug) || '';
+      const entry = { mint: b.mint, sym: chk.value.symbol || '', name: chk.value.name || '', creator: v.creator, at: v.at || Date.now(), sig: b.sig, ...(slug ? { slug } : {}) };
       if (ctx.launch) await ctx.launch('record', { entry }).catch(() => null);
       /* the launch-day gift: an hour gold on the map, once per token ever */
       const gold = await welcomeGold(ctx.store, { mint: b.mint, sym: entry.sym, name: entry.name }).catch(() => null);
       /* the creator's one-time code for the token's official Telegram group */
       const claim = ctx.launch ? await ctx.launch('newClaim', { mint: b.mint }).catch(() => null) : null;
-      return json({ ok: true, page: '/t/' + b.mint, gold: !!(gold && gold.ok), claim: (claim && claim.code) || '' });
+      return json({ ok: true, page: '/t/' + b.mint, site: slug ? siteUrl(slug) : '', gold: !!(gold && gold.ok), claim: (claim && claim.code) || '' });
     }
     /* The token's own /tg and /x links (in its metadata from the launch):
        the creator's signed choice, else the group the bot made the invite
@@ -1192,6 +1236,13 @@ export async function handle(req, ctx) {
       await ctx.launch('setLinks', { mint: b.mint, patch });
       return json({ ok: true });
     }
+    if (path === '/api/launch/slug') {
+      const enabled = ctx.env.TOKEN_SUBDOMAINS === 'on' && !!ctx.launch;
+      if (!enabled) return json({ ok: true, enabled: false });
+      const want = slugFrom(url.searchParams.get('s') || '');
+      const r = await ctx.launch('checkSlug', { want, mint: url.searchParams.get('mint') || '' }).catch(() => null);
+      return json({ ok: true, enabled: true, want, slug: (r && r.slug) || '', free: !!(r && r.asked) });
+    }
     if (path === '/api/launch/recent') {
       const list = ctx.launch ? await ctx.launch('recent', { n: 30 }).catch(() => null) : null;
       return json({ ok: true, launches: (list && list.launches) || [] }, 200, { 'cache-control': 'public, max-age=60' });
@@ -1199,20 +1250,12 @@ export async function handle(req, ctx) {
     if (path.startsWith('/t/') && req.method === 'GET') {
       const mint = decodeURIComponent(path.slice(3).replace(/\/+$/, ''));
       if (!isKey(mint)) return Response.redirect(url.origin + '/', 302);
-      const [t, raw, rec] = await Promise.all([
-        fetchCoin(mint, ctx.env.IMG_SECRET).catch(() => null),
-        pumpCoin(mint).catch(() => null),
-        ctx.launch ? ctx.launch('get', { mint }).catch(() => null) : null,
-      ]);
-      const headers = { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': TOKEN_CSP, 'x-content-type-options': 'nosniff' };
-      if (!t) {
-        /* a token minutes old may not be on pump.fun's API yet */
-        return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="8"><title>Token loading — pumpbubble.fun</title>'
-          + '<body style="background:#06080d;color:#eef2f8;font:16px system-ui;text-align:center;padding:80px 16px"><p>This token is not on pump.fun yet — if it was just launched, this page fills in by itself in a few seconds.</p><p><a style="color:#3df09b" href="/">Open the map</a></p>',
-          { status: 404, headers: { ...headers, 'cache-control': 'no-store' } });
+      /* a token with its own site sends its /t/ page there */
+      if (ctx.env.TOKEN_SUBDOMAINS === 'on' && ctx.launch) {
+        const sl = await ctx.launch('slugOf', { mint }).catch(() => null);
+        if (sl && sl.ok) return Response.redirect(siteUrl(sl.slug) + url.search, 302);
       }
-      const bot = ctx.env.TG_BOT_USERNAME || 'pumpbubblebot';
-      return new Response(tokenPage({ origin: url.origin, t, raw: raw || {}, launched: rec && rec.ok ? rec.entry : null, bot, tgSoon: url.searchParams.get('tg') === 'soon' }), { headers: { ...headers, 'cache-control': 'public, max-age=60' } });
+      return renderToken(ctx, url, mint);
     }
 
     if (path === '/api/compute/map') {

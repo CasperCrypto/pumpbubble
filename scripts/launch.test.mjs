@@ -159,5 +159,33 @@ console.log('\nthe token\'s own links');
   ok('a file op refuses a bad id', !(await launchOp(B, { op: 'putFile', id: '../x', b64: 'AA' })).ok && !(await launchOp(B, { op: 'nope' })).ok);
 }
 
+console.log('\nthe token\'s own site');
+{
+  const { slugFrom, slugOk, subOf, siteUrl, RESERVED } = await import('../src/launch.mjs');
+  ok('a slug from a ticker or a wish', slugFrom('$BCat!') === 'bcat' && slugFrom('--my--token--') === 'my-token' && slugFrom('x'.repeat(30)).length === 20);
+  ok('reserved names are never a token\'s', ['www', 'api', 'admin', 'launch', 'pumpbubble'].every(n => RESERVED.has(n) && !slugOk(n)) && slugOk('bcat') && !slugOk('-bcat') && !slugOk(''));
+  ok('the host names the slug', subOf('bcat.pumpbubble.fun') === 'bcat' && subOf('pumpbubble.fun') === '' && subOf('evil.com') === '' && subOf('a.b.pumpbubble.fun') === '' && subOf('localhost') === '');
+  ok('its address', siteUrl('bcat') === 'https://bcat.pumpbubble.fun');
+
+  const m = new Map(), B = new LaunchBook({ get: async k => m.get(k), put: async (k, v) => { m.set(k, v); } });
+  const A = fx.mint, Z = fx.user, t0 = 1_800_000_000_000;
+  ok('a free name is reserved for the launch', await B.reserveSlug('bcat', A, t0) === 'bcat');
+  ok('a reserved name is not a page yet', (await B.mintOfSlug('bcat')) === null);
+  ok('someone else gets the next free one', await B.reserveSlug('bcat', Z, t0 + 1000) === 'bcat2');
+  ok('and is told which before they launch', (await B.checkSlug('bcat', Z, t0 + 1000)).slug === 'bcat2' && (await B.checkSlug('bcat', Z, t0 + 1000)).asked === false);
+  ok('the same token asking again keeps its name', await B.reserveSlug('bcat', A, t0 + 2000) === 'bcat');
+  ok('a landed launch keeps it for good', await B.finalSlug(A) === 'bcat' && (await B.mintOfSlug('bcat')) === A && await B.slugOf(A) === 'bcat');
+  ok('a final name is never given away', await B.reserveSlug('bcat', PUMP_PROGRAM, t0 + 10 * 3600e3) !== 'bcat');
+  ok('a reservation nobody launched lapses after an hour', await B.reserveSlug('bcat2', PUMP_PROGRAM, t0 + 2 * 3600e3) === 'bcat2');
+  ok('a token that changes its mind frees the old name', await B.reserveSlug('kitty', Z, t0 + 3000) === 'kitty' && (await B.checkSlug('bcat3', A, t0 + 4000)).asked);
+  ok('nothing without a key', await B.reserveSlug('x', 'nope', t0) === '');
+
+  const html = tokenPage({ origin: 'https://pumpbubble.fun', site: 'https://bcat.pumpbubble.fun', t: { mint: A, sym: 'BCAT', name: 'Bubble Cat', img: '/api/img?u=a&s=b', mcap: 1000 },
+    raw: { website: 'https://bcat.pumpbubble.fun', telegram: 'https://pumpbubble.fun/tg/' + A } });
+  ok('on its own site the canonical is the site', html.includes('<link rel="canonical" href="https://bcat.pumpbubble.fun">'));
+  ok('every link goes back to the main site, pictures stay on the site (its CSP)', html.includes('href="https://pumpbubble.fun/swap?mint=' + A + '"') && html.includes('href="https://pumpbubble.fun/launch"') && html.includes('src="/api/img?u=a&amp;s=b"'));
+  ok('the page does not link to itself as its website', !html.includes('>Website<') && html.includes('>Telegram<'));
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
