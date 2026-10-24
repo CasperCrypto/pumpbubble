@@ -43,6 +43,7 @@ globalThis.fetch = async (url, opts = {}) => {
     getChatMember: { status: 'administrator' },
     sendMessage: { message_id: calls.length },
     editMessageText: { message_id: 7 },
+    createChatInviteLink: { invite_link: 'https://t.me/+official' },
   }[method] ?? true;
   return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
 };
@@ -183,6 +184,19 @@ try {
   await handleUpdate(actx, gm('/start setup_nope', 403));
   msg = take().find(c => c.method === 'sendMessage');
   is('a link without a real address is only help', !!msg && /Admins/.test(msg.body.text) && !msg.body.text.includes('Tracking'), true);
+  /* the Launch Kit's creator, with the one-time code: the group becomes the token's official one */
+  const { LaunchBook, launchOp } = await import('../src/launch.mjs');
+  const lm = new Map(), LB = new LaunchBook({ get: async k => lm.get(k), put: async (k, v) => { lm.set(k, v); } });
+  const lctx = { env, store: mem(), launch: (op, body = {}) => launchOp(LB, { ...body, op }) };
+  const { code } = await launchOp(LB, { op: 'newClaim', mint: MINT });
+  await handleUpdate(lctx, gm('/start@pumpbubblebot launch_' + code, 404));
+  const said = take().filter(c => c.method === 'sendMessage').map(c => c.body.text).join(' | ');
+  is("the creator's code sets the group up for the token", said.includes('Tracking <b>HELL</b>'), true);
+  is('and makes it the official group', said.includes('official $HELL group'), true);
+  is("the token's own Telegram link now opens it", (await launchOp(LB, { op: 'links', mint: MINT })).links.invite, 'https://t.me/+official');
+  await handleUpdate(lctx, gm('/start launch_' + code, 405));
+  msg = take().find(c => c.method === 'sendMessage');
+  is('the same code twice is refused', !!msg && /used already/.test(msg.body.text), true);
   for (const [i, cmd] of ['/status', '/emoji 🔥', '/step 10', '/minbuy 5', '/settings', '/media', '/x https://x.com/hell', '/test', '/stop'].entries()) {
     await handleUpdate(gctx, gm(cmd, 410 + i));
     is(`${cmd.split(' ')[0]} on a set-up group gets an answer`, take().some(x => x.method === 'sendMessage'), true);

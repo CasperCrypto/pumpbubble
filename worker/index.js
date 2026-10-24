@@ -28,7 +28,7 @@ import { logoDataUri } from '../src/share.mjs';
 import { objectStore, StoreDO } from '../src/dostore.mjs';
 import { meterClass } from '../src/dometer.mjs';
 import { readAkashSites, SITES_TTL } from '../src/computemap.mjs';
-import { LaunchBook } from '../src/launch.mjs';
+import { LaunchBook, launchOp } from '../src/launch.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
   form4Feed, form4Entries, form4Text, parseForm4, fromForm4, mergeRows, holdingFrom, withPrices, peopleFrom, withThemes,
@@ -1018,18 +1018,7 @@ export class LaunchDO {
   async fetch(req) {
     let b = {};
     try { b = await req.json(); } catch { /* below */ }
-    const B = this.book, s = this.state.storage;
-    let out = { ok: false };
-    if (b.op === 'putFile' && /^[0-9a-f]{32}$/.test(b.id) && typeof b.b64 === 'string' && b.b64.length < 800_000) {
-      if (!(await s.get('f:' + b.id))) await s.put('f:' + b.id, { type: String(b.type || '').slice(0, 40), b64: b.b64 });
-      out = { ok: true };
-    } else if (b.op === 'getFile' && /^[0-9a-f]{32}$/.test(b.id)) {
-      const f = await s.get('f:' + b.id);
-      out = f ? { ok: true, type: f.type, b64: f.b64 } : { ok: false };
-    } else if (b.op === 'record') out = { ok: await B.record(b.entry) };
-    else if (b.op === 'get') { const e = await B.get(b.mint); out = e ? { ok: true, entry: e } : { ok: false }; }
-    else if (b.op === 'recent') out = { ok: true, launches: await B.recent(+b.n || 30) };
-    return Response.json(out);
+    return Response.json(await launchOp(this.book, b));
   }
 }
 function launchClient(env) {

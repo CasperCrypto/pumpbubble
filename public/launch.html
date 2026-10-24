@@ -56,6 +56,9 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
 .next a.first{background:var(--mint);border-color:var(--mint);color:#04140b}.next a.first span{color:#0b3a22}
 .next a.gold{border-color:rgba(245,197,66,.35)}.next a.gold b{color:var(--gold)}
 .fine{margin-top:22px;font-size:12px;color:#5d6678;line-height:1.5}
+.mine{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:6px}.mine li{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:11px;background:rgba(61,240,155,.05);border:1px solid rgba(61,240,155,.16);font-size:13.5px}.mine li b{min-width:72px;color:var(--mint2)}.mine li span{color:#c9d1de}
+.linkbtn{margin-top:8px;font:700 12.5px/1 inherit;color:var(--dim);background:none;border:0;padding:4px 0;cursor:pointer;text-decoration:underline}
+.setx{margin-top:12px;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.03)}.setx label{margin-bottom:6px}.setx .r{display:flex;gap:8px}.setx button{flex:none;font:800 14px/1 inherit;padding:0 16px;border-radius:11px;border:0;background:var(--mint);color:#04140b;cursor:pointer}.setx p{margin:6px 0 0;font-size:12.5px;color:var(--dim)}
 @media (max-width:520px){.row{flex-direction:column;align-items:center}.fields{width:100%}.grid2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -64,12 +67,12 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
 
 <section id="form">
 <h1>Launch a token — and everything after it</h1>
-<p class="lede">Your token on pump.fun, its own page, a Telegram group with our buy bot already set up, and its first post. One flow.</p>
+<p class="lede">Type a name and press Launch. Your token goes live on pump.fun with its own page, its Telegram and its X link already in it — the group with our buy bot is one tap after.</p>
 <ul class="perks"><li>pump.fun token</li><li>Token page</li><li>Telegram + buy bot</li><li>X post</li><li>1 hour gold on the map</li></ul>
 
 <div class="card">
   <div class="row">
-    <div class="pic" id="pic" role="button" tabindex="0" aria-label="Choose the token's picture">Add a picture<br>PNG, JPG, GIF</div>
+    <div class="pic" id="pic" role="button" tabindex="0" aria-label="Choose the token's picture">Add a picture<br><small>or we draw one</small></div>
     <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
     <div class="fields">
       <div><label for="name">Name</label><input id="name" maxlength="32" placeholder="Bubble Cat" autocomplete="off"></div>
@@ -77,12 +80,23 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     </div>
   </div>
   <div class="sec"><label for="desc">Description <small>— optional, up to 500</small></label><textarea id="desc" maxlength="500" placeholder="What it is, in a sentence or two."></textarea></div>
-  <div class="sec grid2">
-    <div><label for="x">X <small>— optional</small></label><input id="x" placeholder="https://x.com/…" inputmode="url"></div>
-    <div><label for="tg">Telegram <small>— optional</small></label><input id="tg" placeholder="https://t.me/…" inputmode="url"></div>
+  <div class="sec">
+    <label>Links <small>— made for you, in the token from its first second</small></label>
+    <ul class="mine" id="mine">
+      <li><b>Website</b><span>its own page at pumpbubble.fun/t/…</span></li>
+      <li><b>Telegram</b><span>its group — made in one tap right after the launch, our buy bot inside</span></li>
+      <li><b>X</b><span>live <span id="mineSym">$TICKER</span> posts on X, until you point it at your account — any time</span></li>
+    </ul>
+    <button type="button" class="linkbtn" id="ownBtn">I already have my own links</button>
+    <div id="own" hidden>
+      <div class="sec grid2">
+        <div><label for="x">X <small>— optional</small></label><input id="x" placeholder="https://x.com/…" inputmode="url"></div>
+        <div><label for="tg">Telegram <small>— optional</small></label><input id="tg" placeholder="https://t.me/…" inputmode="url"></div>
+      </div>
+      <div class="sec"><label for="web">Website <small>— optional</small></label><input id="web" placeholder="https://…" inputmode="url"></div>
+      <p class="hint">Any you leave empty is still made for you.</p>
+    </div>
   </div>
-  <p class="hint">No group yet? After the launch, one tap makes it — with our buy bot inside and set up. No website? You get one at pumpbubble.fun/t/…</p>
-  <div class="sec"><label for="web">Website <small>— optional</small></label><input id="web" placeholder="https://…" inputmode="url"></div>
   <div class="sec">
     <label for="buy">Your first buy, SOL <small>— optional</small></label>
     <input id="buy" inputmode="decimal" value="0.05">
@@ -116,6 +130,11 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
   <div class="next">
     <a class="first" id="nTg" target="_blank" rel="noopener"><b>Create its Telegram group — bot included</b><span>Telegram opens; pick "New group" (or a group you have). The bot sets itself up for your token.</span></a>
     <a id="nX" target="_blank" rel="noopener"><b>Post it on X</b><span>The link unfurls with your token's picture.</span></a>
+    <div class="setx" id="setx">
+      <label for="xNow">Your X account or community <small>— optional, change it any time</small></label>
+      <div class="r"><input id="xNow" placeholder="https://x.com/yourtoken" inputmode="url"><button type="button" id="xSave">Save</button></div>
+      <p id="xMsg">The X link inside your token opens live posts about it until you set this. Your wallet signs the change — nothing is spent.</p>
+    </div>
     <a id="nPage"><b>Open its page</b><span id="nPageUrl"></span></a>
     <a class="gold" id="nBoost"><b>Make it gold for longer</b><span id="nGold">A golden bubble on the map, sized by what is paid.</span></a>
     <a id="nPump" target="_blank" rel="noopener"><b>See it on pump.fun</b><span>Trading starts on the bonding curve.</span></a>
@@ -149,6 +168,42 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     return { n: n, sigAt: sigAt, msgAt: msgAt, signers: keys.slice(0, req) };
   }
 
+  /* ------------------------------------------- a ticker from the name */
+  var symTouched = false;
+  $('sym').addEventListener('input', function () { symTouched = true; drawn(); });
+  $('name').addEventListener('input', function () {
+    if (!symTouched) $('sym').value = $('name').value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    drawn();
+  });
+  /* No picture of their own: a bubble drawn from the ticker, its colour from
+     the name, shown as they type — so a name is all a launch needs. */
+  function hueOf(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
+  function drawLogo(sym, name) {
+    var c = document.createElement('canvas'), z = 512; c.width = c.height = z;
+    var x = c.getContext('2d'), h = hueOf((name || '') + sym);
+    var bg = x.createLinearGradient(0, 0, z, z); bg.addColorStop(0, 'hsl(' + h + ',70%,14%)'); bg.addColorStop(1, 'hsl(' + ((h + 40) % 360) + ',70%,8%)');
+    x.fillStyle = bg; x.fillRect(0, 0, z, z);
+    var g = x.createRadialGradient(z * 0.38, z * 0.32, z * 0.05, z / 2, z / 2, z * 0.46);
+    g.addColorStop(0, 'hsl(' + h + ',90%,72%)'); g.addColorStop(0.55, 'hsl(' + h + ',80%,48%)'); g.addColorStop(1, 'hsl(' + h + ',75%,26%)');
+    x.beginPath(); x.arc(z / 2, z / 2, z * 0.44, 0, 7); x.fillStyle = g; x.fill();
+    x.beginPath(); x.ellipse(z * 0.37, z * 0.3, z * 0.13, z * 0.07, -0.6, 0, 7); x.fillStyle = 'rgba(255,255,255,0.35)'; x.fill();
+    var t = sym || '?', fs = Math.min(190, (z * 0.7) / Math.max(1, t.length * 0.62));
+    x.font = '900 ' + fs + 'px ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineWidth = fs * 0.08; x.strokeStyle = 'rgba(0,0,0,0.35)'; x.strokeText(t, z / 2, z / 2 + fs * 0.04);
+    x.fillStyle = '#fff'; x.fillText(t, z / 2, z / 2 + fs * 0.04);
+    return c.toDataURL('image/png');
+  }
+  function drawn() {
+    var sym = $('sym').value.trim().replace(/^\$/, '').toUpperCase();
+    $('mineSym').textContent = '$' + (sym || 'TICKER');
+    if (S.custom) return;
+    if (!sym) { S.img = null; $('pic').innerHTML = 'Add a picture<br><small>or we draw one</small>'; $('pic').classList.remove('has'); return; }
+    S.img = drawLogo(sym, $('name').value.trim());
+    $('pic').innerHTML = ''; var i = document.createElement('img'); i.src = S.img; i.alt = ''; $('pic').appendChild(i); $('pic').classList.add('has');
+  }
+  $('ownBtn').addEventListener('click', function () { $('own').hidden = !$('own').hidden; this.textContent = $('own').hidden ? 'I already have my own links' : 'Use the links made for me'; });
+
   /* ----------------------------------------------------------- picture */
   $('pic').addEventListener('click', function () { $('file').click(); });
   $('pic').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
@@ -176,7 +231,7 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     rd.readAsDataURL(f);
   });
   function setPic(dataUrl) {
-    S.img = dataUrl;
+    S.img = dataUrl; S.custom = true;
     $('pic').innerHTML = '';
     var i = document.createElement('img'); i.src = dataUrl; i.alt = '';
     $('pic').appendChild(i); $('pic').classList.add('has'); $('pic').classList.remove('bad');
@@ -246,12 +301,14 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
   var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
   function read() {
+    var own = !$('own').hidden;
     var v = {
       name: $('name').value.trim(), symbol: $('sym').value.trim().replace(/^\$/, '').toUpperCase(), description: $('desc').value.trim(),
-      twitter: $('x').value.trim(), telegram: $('tg').value.trim(), website: $('web').value.trim(),
+      twitter: own ? $('x').value.trim() : '', telegram: own ? $('tg').value.trim() : '', website: own ? $('web').value.trim() : '',
     };
     var bad = [];
-    if (!S.img) bad.push(['pic', 'Add a picture.']);
+    if (!S.img && /^[A-Z0-9]{1,10}$/.test(v.symbol)) drawn();
+    if (!S.img) bad.push(['pic', 'Add a picture, or a ticker to draw one from.']);
     if (!v.name) bad.push(['name', 'Give it a name.']);
     if (!/^[A-Z0-9]{1,10}$/.test(v.symbol)) bad.push(['sym', 'A ticker of 1–10 letters or digits.']);
     if (v.twitter && !/^https:\/\/(www\.)?(x|twitter)\.com\//i.test(v.twitter)) bad.push(['x', 'An X link starts https://x.com/']);
@@ -362,16 +419,37 @@ input:focus,textarea:focus{border-color:rgba(61,240,155,.6)}textarea{min-height:
     return (function again() {
       return post('/api/launch/done', { mint: mint, sig: sig, name: v.name, symbol: v.symbol }).then(function (r) {
         if (!r.ok && tries++ < 5) return wait(2000).then(again);
-        show(v, mint, meta, r && r.gold);
+        show(v, mint, meta, r && r.gold, r && r.claim);
       });
     })();
   }
-  function show(v, mint, meta, gold) {
+  /* Point the token's X link at the creator's account: their wallet signs a
+     message naming the token and the link; nothing is sent on chain. */
+  $('xSave').addEventListener('click', function () {
+    var x = $('xNow').value.trim(), msg = $('xMsg');
+    if (!/^https:\/\/(www\.)?(x|twitter)\.com\/[^\s]{1,120}$/i.test(x)) { msg.textContent = 'An X link starts https://x.com/'; return; }
+    var f = S.wallet && S.wallet.features['solana:signMessage'];
+    if (!f || !f.signMessage) { msg.textContent = 'This wallet cannot sign messages — set it later from the token page.'; return; }
+    var at = Date.now();
+    var text = ['pumpbubble.fun \u2014 set the links of a token', 'token: ' + S.mint, 'x: ' + x, 'telegram: -', 'website: -', 'time: ' + at].join('\n');
+    msg.textContent = 'Confirm in your wallet\u2026';
+    Promise.resolve(f.signMessage({ account: S.acct, message: new TextEncoder().encode(text) })).then(function (out) {
+      var first = Array.isArray(out) ? out[0] : out, sg = first && first.signature;
+      if (!sg) throw new Error('The wallet returned no signature.');
+      return post('/api/launch/links', { mint: S.mint, x: x, at: at, signature: b58(sg instanceof Uint8Array ? sg : new Uint8Array(sg)) });
+    }).then(function (r) {
+      msg.textContent = r.ok ? 'Saved — the X link inside your token now opens ' + x : (r.error || 'Not saved.');
+    }).catch(function (e) { msg.textContent = /reject|denied|cancel/i.test(String(e && e.message)) ? 'You declined — nothing changed.' : String(e && e.message || e); });
+  });
+  function show(v, mint, meta, gold, claim) {
     var page = location.origin + '/t/' + mint;
     $('form').hidden = true; $('ok').hidden = false; window.scrollTo(0, 0);
     $('okImg').src = S.img;
     $('okTitle').textContent = '$' + v.symbol + ' is live';
-    $('nTg').href = 'https://t.me/pumpbubblebot?startgroup=setup_' + mint + '&admin=delete_messages+restrict_members+pin_messages+invite_users+change_info';
+    /* the creator's one-time code makes their group the token's official one */
+    $('nTg').href = 'https://t.me/pumpbubblebot?startgroup=' + (claim ? 'launch_' + claim : 'setup_' + mint) + '&admin=delete_messages+restrict_members+pin_messages+invite_users+change_info';
+    S.mint = mint;
+    if (v.twitter) $('setx').hidden = true;
     $('nX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent('$' + v.symbol + ' is live — ' + v.name) + '&url=' + encodeURIComponent(page) + '&via=pumpbubblefun';
     $('nPage').href = '/t/' + mint; $('nPageUrl').textContent = page.replace(/^https?:\/\//, '');
     $('nBoost').href = '/?boost=' + mint;

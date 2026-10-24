@@ -1960,6 +1960,28 @@ The flow, and the line it holds — **non-custodial**:
    Telegram delivers `/start setup_<mint>` and the bot runs `/setup` for that token with nothing
    typed), Post on X (the page unfurls), its page, Boost, pump.fun.
 
+**A name is all a launch needs, and the links exist before the token does** (2026-10-24, asked as
+"it must generate the Telegram, the X and the website in the same moment, so they go into the
+token"). pump.fun's metadata cannot change after the create, so every link must be real at signing:
+- **Website** `pumpbubble.fun/t/<mint>` — the mint key is made in the browser first, so its page's
+  address is known before the launch.
+- **Telegram** `pumpbubble.fun/tg/<mint>` — a bot cannot create a group (Telegram's rule), so the
+  metadata carries our address, and right after the launch the creator makes the group in one tap
+  with `startgroup=launch_<code>`. The **code is one-time and only the creator gets it** (from
+  `/api/launch/done`): anybody can add the bot with `setup_<mint>`, but only the creator's group
+  becomes the one the token's link opens — otherwise the first stranger to add the bot would own
+  the token's Telegram. The bot sets the group up, makes an invite link (`createChatInviteLink`),
+  sets the token's picture as the group's and pins a welcome (`bindGroup`); without admin rights
+  yet, the bind waits and completes when the bot is promoted. Before that, `/tg/` opens the token
+  page with a note.
+- **X** `pumpbubble.fun/x/<mint>` — X accounts cannot be made by software (X's rule), so it opens a
+  live `$TICKER` search until the creator points it at their account or community. **Changing it
+  is signed by the creator's wallet** (`solana:signMessage`; the message is rebuilt server-side,
+  minutes-old timestamps only, Ed25519 verified with WebCrypto against the creator from our record
+  or pump.fun's). pump.fun's links are frozen at launch; ours can be fixed later.
+- **The picture is optional**: without one, the page draws a bubble from the ticker in a colour
+  from the name, live as it is typed; the ticker fills itself from the name.
+
 `/t/<mint>` works for **any** pump.fun token, not only ours: the token as a lit bubble, market
 cap, 24h, curve state, Buy (our swap, 1%), Chart, its own links (https only), the buy-bot link set
 up for it, Boost, Share, and "Made with pumpbubble — launch your own token". Every string a minter

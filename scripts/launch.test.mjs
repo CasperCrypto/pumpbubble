@@ -117,5 +117,47 @@ console.log('\nthe token page');
   ok('the market cap and the move', html.includes('$12.3K') && html.includes('+12.5%'));
 }
 
+console.log('\nthe token\'s own links');
+{
+  const { ownLinks, checkLinks, linksMessage, verifySig, launchOp, claimLink } = await import('../src/launch.mjs');
+  const own = ownLinks('https://pumpbubble.fun', fx.mint);
+  ok('page, group and X exist before the launch', own.website.endsWith('/t/' + fx.mint) && own.telegram.endsWith('/tg/' + fx.mint) && own.twitter.endsWith('/x/' + fx.mint));
+  ok('our own links pass pump.fun\'s metadata as https', Object.values(own).every(u => /^https:\/\//.test(u)));
+  const cl = checkLinks({ x: 'https://x.com/bcat', telegram: 'https://t.me/bcat', website: 'https://bcat.example' });
+  ok('a creator may point them at their accounts', cl.ok && cl.links.x && cl.links.tg && cl.links.web);
+  const bad = checkLinks({ x: 'https://evil.example/x', telegram: 'javascript:alert(1)', website: 'http://plain.example' });
+  ok('only X to X, Telegram to t.me, a site over https', !bad.ok && bad.bad.join() === 'x,telegram,website');
+  ok('the claim link carries a code, not the token', claimLink('pumpbubblebot', 'ABC123def456').includes('startgroup=launch_ABC123def456') && ('launch_' + 'x'.repeat(24)).length <= 64);
+
+  /* a creator's key signs; a stranger's does not count */
+  const { webcrypto: wc } = await import('node:crypto');
+  const kp = await wc.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const pub = b58enc(new Uint8Array(await wc.subtle.exportKey('raw', kp.publicKey)));
+  const at = Date.now(), msg = linksMessage(fx.mint, { x: 'https://x.com/bcat' }, at);
+  const sig = new Uint8Array(await wc.subtle.sign({ name: 'Ed25519' }, kp.privateKey, new TextEncoder().encode(msg)));
+  ok('the message names the token, each link and the time', msg.includes('token: ' + fx.mint) && msg.includes('x: https://x.com/bcat') && msg.includes('telegram: -') && msg.endsWith('time: ' + at));
+  ok('the creator\'s signature verifies', await verifySig(pub, msg, sig));
+  ok('another key\'s does not', !(await verifySig(fx.user, msg, sig)));
+  ok('a changed link does not', !(await verifySig(pub, linksMessage(fx.mint, { x: 'https://x.com/evil' }, at), sig)));
+  ok('garbage is not a signature', !(await verifySig(pub, msg, new Uint8Array(10))) && !(await verifySig('nope', msg, sig)));
+
+  /* the object's operations */
+  const m = new Map(), B = new LaunchBook({ get: async k => m.get(k), put: async (k, v) => { m.set(k, v); } });
+  const c = await launchOp(B, { op: 'newClaim', mint: fx.mint });
+  ok('a claim code is made for a token', c.ok && /^[1-9A-HJ-NP-Za-km-z]{12,24}$/.test(c.code));
+  const u1 = await launchOp(B, { op: 'useClaim', code: c.code }), u2 = await launchOp(B, { op: 'useClaim', code: c.code });
+  ok('it opens once, and only once', u1.ok && u1.mint === fx.mint && !u2.ok);
+  ok('a made-up code opens nothing', !(await launchOp(B, { op: 'useClaim', code: 'AAAAAAAAAAAAAAAA' })).ok);
+  await launchOp(B, { op: 'pend', chat: -100, mint: fx.mint });
+  ok('a bind can wait for admin rights', (await launchOp(B, { op: 'pending', chat: -100 })).mint === fx.mint);
+  await launchOp(B, { op: 'clearPending', chat: -100 });
+  ok('and is cleared when done', !(await launchOp(B, { op: 'pending', chat: -100 })).ok);
+  await launchOp(B, { op: 'setLinks', mint: fx.mint, patch: { invite: 'https://t.me/+abc', chat: -100 } });
+  await launchOp(B, { op: 'setLinks', mint: fx.mint, patch: { x: 'https://x.com/bcat' } });
+  const L = (await launchOp(B, { op: 'links', mint: fx.mint })).links;
+  ok('links merge: the invite stays when X is set', L.invite === 'https://t.me/+abc' && L.x === 'https://x.com/bcat');
+  ok('a file op refuses a bad id', !(await launchOp(B, { op: 'putFile', id: '../x', b64: 'AA' })).ok && !(await launchOp(B, { op: 'nope' })).ok);
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

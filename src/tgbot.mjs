@@ -801,6 +801,10 @@ async function onMembership(ctx, m) {
     await resync(ctx);
     return;
   }
+  if (status === 'administrator' && ctx.launch && (m.old_chat_member && m.old_chat_member.status) !== 'administrator') {
+    const p = await ctx.launch('pending', { chat: chat.id }).catch(() => null);
+    if (p && p.ok) await bindGroup(ctx, chat.id, p.mint).catch(() => null);
+  }
   if (status === 'member' || status === 'administrator') {
     const old = m.old_chat_member && m.old_chat_member.status;
     if (old === 'left' || old === 'kicked' || !old) {
@@ -855,6 +859,10 @@ async function onGroup(ctx, msg) {
      adds the bot, nothing typed. Telegram delivers it as "/start <payload>". */
   const auto = c.cmd === 'start' && /^setup_([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/.exec(c.arg || '');
   if (auto && await isAdmin(env, msg)) return runSetup(ctx, msg, auto[1], '');
+  /* startgroup=launch_<code>: the Launch Kit's creator making the token's
+     official group — set up, and bound to the token's own /tg link */
+  const claim = c.cmd === 'start' && /^launch_([1-9A-HJ-NP-Za-km-z]{12,24})$/.exec(c.arg || '');
+  if (claim && await isAdmin(env, msg)) return launchGroup(ctx, msg, claim[1]);
   if (c.cmd === 'help' || c.cmd === 'start') return say(env, chatId, HELP);
   /* anyone may buy for the token; the purchase itself happens in private */
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') {
@@ -888,6 +896,55 @@ async function onGroup(ctx, msg) {
   const g = await getGroup(store, chatId);
   if (!g) return say(env, chatId, 'Run /setup <code>&lt;contract address&gt;</code> first.');
   return groupCommand(ctx, msg, c, g);
+}
+
+/* The Launch Kit's group: the one-time code becomes the token, the group is
+   set up for it (a token seconds old may not be on pump.fun's API yet, so
+   it is asked a few times), and the group becomes the token's official one. */
+async function launchGroup(ctx, msg, code) {
+  const { env } = ctx, chatId = msg.chat.id;
+  const r = ctx.launch ? await ctx.launch('useClaim', { code }).catch(() => null) : null;
+  if (!r || !r.ok) return say(env, chatId, 'This launch link was used already or has expired. <code>/setup &lt;address&gt;</code> sets me up for any token.');
+  for (let i = 0; i < 4 && !(await resolveAnyToken(r.mint, env.IMG_SECRET).catch(() => null)); i++) await new Promise(ok => setTimeout(ok, 2500));
+  await runSetup(ctx, msg, r.mint, '');
+  return bindGroup(ctx, chatId, r.mint);
+}
+
+/* The group becomes what the token's own pumpbubble.fun/tg/<mint> opens: an
+   invite link the bot makes, the token's picture as the group's, and a
+   pinned welcome. Without admin rights yet, it waits for them. */
+export async function bindGroup(ctx, chatId, mint) {
+  const { env } = ctx;
+  let invite = '';
+  try { invite = (await tg(env, 'createChatInviteLink', { chat_id: chatId, name: 'pumpbubble' })).invite_link || ''; } catch { /* not an admin yet */ }
+  if (!invite) {
+    if (ctx.launch) await ctx.launch('pend', { chat: chatId, mint }).catch(() => null);
+    return say(env, chatId, 'Make me an admin (with "Invite users") and this becomes your token\u2019s official group — the Telegram link in its pump.fun page will open it.');
+  }
+  if (ctx.launch) {
+    await ctx.launch('setLinks', { mint, patch: { invite, chat: chatId } }).catch(() => null);
+    await ctx.launch('clearPending', { chat: chatId }).catch(() => null);
+  }
+  const t = await resolveAnyToken(mint, env.IMG_SECRET).catch(() => null);
+  const sym = (t && t.sym) || 'TOKEN';
+  /* the token's picture as the group's, when the bot may change it */
+  try {
+    const raw = await pumpCoin(mint).catch(() => null);
+    const src = raw && typeof raw.image_uri === 'string' && /^https:\/\//.test(raw.image_uri) ? raw.image_uri : '';
+    if (src) {
+      const res = await fetch(src, { signal: AbortSignal.timeout(8000) });
+      const bytes = res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+      if (bytes && bytes.length > 100 && bytes.length < 5e6) await tgUpload(env, 'setChatPhoto', { chat_id: chatId }, 'photo', bytes, 'token.png').catch(() => null);
+    }
+  } catch { /* the group keeps its own picture */ }
+  const page = site(env) + '/t/' + mint;
+  const sent = await say(env, chatId,
+    `\u{1FAE7} <b>The official $${tgEsc(sym)} group</b>\n\n`
+    + `The Telegram link on $${tgEsc(sym)}\u2019s pump.fun page opens this group. Buys post here as they happen.\n\n`
+    + `<a href="${page}">Token page</a> \u00b7 <a href="https://pump.fun/coin/${mint}">pump.fun</a>`,
+    { reply_markup: { inline_keyboard: [[{ text: '\u{1F7E2} Buy $' + sym, url: site(env) + '/swap?mint=' + mint }, { text: '\u{1F4C8} Chart', url: 'https://pump.fun/coin/' + mint }]] } });
+  if (sent && sent.message_id) await tg(env, 'pinChatMessage', { chat_id: chatId, message_id: sent.message_id, disable_notification: true }).catch(() => null);
+  return sent;
 }
 
 /* A setup that broke half-way used to say nothing at all — the webhook

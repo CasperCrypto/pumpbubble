@@ -33,7 +33,7 @@ export const TOKEN_CSP = "default-src 'self'; img-src 'self' data:; script-src '
 /* `t` is the token as the map knows it (signed image, market cap, moves);
    `raw` is pump.fun's own record (description, creator, curve state);
    `launched` is our Launch Kit's record when it was launched with us. */
-export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbubblebot', now = Date.now(), cardUrl = '' }) {
+export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbubblebot', now = Date.now(), cardUrl = '', tgSoon = false }) {
   const mint = t.mint;
   const sym = t.sym || raw.symbol || '?', name = t.name || raw.name || sym;
   const desc = String(raw.description || '').slice(0, 600);
@@ -98,6 +98,7 @@ h1{margin:16px 0 2px;font-size:clamp(28px,6vw,40px);line-height:1.1;letter-spaci
   <div class="bub" data-l="${esc(sym.slice(0, 1))}">${img ? `<img src="${esc(img)}" alt="">` : esc(sym.slice(0, 1))}</div>
   <h1>$${esc(sym)}<small>${esc(name)}</small></h1>
   ${launched ? '<span class="badge">Launched with pumpbubble</span>' : ''}
+  ${tgSoon ? `<p class="desc" style="color:var(--gold)">$${esc(sym)}’s Telegram group is not made yet — its link opens it as soon as the creator adds our bot.</p>` : ''}
   <div class="nums"><div><b>${esc(money(t.mcap))}</b><span>Market cap</span></div>${pc ? `<div><b class="${up ? 'up' : 'dn'}">${esc(pc)}</b><span>24h</span></div>` : ''}<div><b>${grad ? 'Graduated' : 'Bonding curve'}</b><span>pump.fun</span></div></div>
   <div class="cta"><a class="buy" href="/swap?mint=${esc(mint)}">Buy $${esc(sym)}</a><a href="https://pump.fun/coin/${esc(mint)}" target="_blank" rel="noopener">Chart</a>${links.map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener nofollow">${esc(l)}</a>`).join('')}</div>
   ${desc ? `<p class="desc">${esc(desc)}</p>` : ''}

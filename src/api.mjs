@@ -43,7 +43,7 @@ import { SOURCES, DEFAULT_SOURCE, sourceOf, publicSources, setCoingeckoKey } fro
 import { gpuBoard, COMPUTE_STOCKS, computeCgIds, gpuFeed, HIST_KEY as GPU_HIST_KEY } from './compute.mjs';
 import { mapPayload } from './computemap.mjs';
 import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata, isKey, b64dec, b64enc, parseTx, checkCreateTx, signed,
-         rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile } from './launch.mjs';
+         rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile, ownLinks, checkLinks, linksMessage, verifySig, b58dec } from './launch.mjs';
 import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
 import { pumpCoin } from './core.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
@@ -1059,7 +1059,14 @@ export async function handle(req, ctx) {
       if (!type) return json({ ok: false, error: 'the picture is not a PNG, JPG, GIF or WebP', fields: ['image'] }, 400);
       if (bytes.length > MAX_IMG) return json({ ok: false, error: 'the picture is over 512 KB', fields: ['image'] }, 400);
       const v = chk.value, mint = isKey(body.mint) ? body.mint : '';
-      if (!v.website && mint) v.website = url.origin + '/t/' + mint;
+      /* links the creator does not have yet are ours, and exist already:
+         the page, the group's link (live once they make it), X */
+      if (mint) {
+        const own = ownLinks(url.origin, mint);
+        if (!v.website) v.website = own.website;
+        if (!v.telegram) v.telegram = own.telegram;
+        if (!v.twitter) v.twitter = own.twitter;
+      }
       try {
         let image, uri;
         if (ctx.env.PINATA_JWT) {
@@ -1140,7 +1147,50 @@ export async function handle(req, ctx) {
       if (ctx.launch) await ctx.launch('record', { entry }).catch(() => null);
       /* the launch-day gift: an hour gold on the map, once per token ever */
       const gold = await welcomeGold(ctx.store, { mint: b.mint, sym: entry.sym, name: entry.name }).catch(() => null);
-      return json({ ok: true, page: '/t/' + b.mint, gold: !!(gold && gold.ok) });
+      /* the creator's one-time code for the token's official Telegram group */
+      const claim = ctx.launch ? await ctx.launch('newClaim', { mint: b.mint }).catch(() => null) : null;
+      return json({ ok: true, page: '/t/' + b.mint, gold: !!(gold && gold.ok), claim: (claim && claim.code) || '' });
+    }
+    /* The token's own /tg and /x links (in its metadata from the launch):
+       the creator's signed choice, else the group the bot made the invite
+       for, else the token's page / a live search for its ticker on X. */
+    const own = /^\/(tg|x)\/([1-9A-HJ-NP-Za-km-z]{32,44})$/.exec(path);
+    if (own && req.method === 'GET' && isKey(own[2])) {
+      const mint = own[2];
+      const L = ctx.launch ? ((await ctx.launch('links', { mint }).catch(() => null)) || {}).links || {} : {};
+      const to = u => Response.redirect(u, 302);
+      if (own[1] === 'tg') return to(L.tg || L.invite || url.origin + '/t/' + mint + '?tg=soon');
+      if (L.x) return to(L.x);
+      let sym = L.sym || '';
+      if (!sym) { const rec = ctx.launch ? await ctx.launch('get', { mint }).catch(() => null) : null; sym = (rec && rec.entry && rec.entry.sym) || ''; }
+      if (!sym) { const c = await pumpCoin(mint).catch(() => null); sym = (c && c.symbol) || ''; }
+      return to('https://x.com/search?q=' + encodeURIComponent(sym ? '$' + sym : mint) + '&f=live');
+    }
+    /* A creator points their token's links where they want, signed by the
+       wallet that created it. The message is rebuilt here from the fields —
+       never taken from the request — and must be minutes old. */
+    if (path === '/api/launch/links' && req.method === 'POST') {
+      const limited = rateLimit(req, 'llinks', 20, 3600_000);
+      if (limited) return limited;
+      let b = null;
+      try { b = await req.json(); } catch { return json({ ok: false, error: 'bad request' }, 400); }
+      if (!isKey(b.mint) || !(Math.abs(Date.now() - +b.at) < 10 * 60_000)) return json({ ok: false, error: 'bad request' }, 400);
+      const chk = checkLinks(b);
+      if (!chk.ok) return json({ ok: false, error: 'check ' + chk.bad.join(', ') }, 400);
+      const rec = ctx.launch ? await ctx.launch('get', { mint: b.mint }).catch(() => null) : null;
+      const creator = (rec && rec.entry && rec.entry.creator) || ((await pumpCoin(b.mint).catch(() => null)) || {}).creator || '';
+      if (!isKey(creator)) return json({ ok: false, error: 'no creator known for this token' }, 404);
+      let sig = null;
+      try { sig = /^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(b.signature) ? b58dec(b.signature) : b64dec(b.signature); } catch { sig = null; }
+      const msg = linksMessage(b.mint, { x: b.x, telegram: b.telegram, website: b.website }, +b.at);
+      if (!(await verifySig(creator, msg, sig))) return json({ ok: false, error: 'not signed by the token\u2019s creator' }, 403);
+      /* a field not sent is left as it is; one sent empty is cleared */
+      const patch = {};
+      if (b.x !== undefined) patch.x = chk.links.x || null;
+      if (b.telegram !== undefined) patch.tg = chk.links.tg || null;
+      if (b.website !== undefined) patch.web = chk.links.web || null;
+      await ctx.launch('setLinks', { mint: b.mint, patch });
+      return json({ ok: true });
     }
     if (path === '/api/launch/recent') {
       const list = ctx.launch ? await ctx.launch('recent', { n: 30 }).catch(() => null) : null;
@@ -1162,7 +1212,7 @@ export async function handle(req, ctx) {
           { status: 404, headers: { ...headers, 'cache-control': 'no-store' } });
       }
       const bot = ctx.env.TG_BOT_USERNAME || 'pumpbubblebot';
-      return new Response(tokenPage({ origin: url.origin, t, raw: raw || {}, launched: rec && rec.ok ? rec.entry : null, bot }), { headers: { ...headers, 'cache-control': 'public, max-age=60' } });
+      return new Response(tokenPage({ origin: url.origin, t, raw: raw || {}, launched: rec && rec.ok ? rec.entry : null, bot, tgSoon: url.searchParams.get('tg') === 'soon' }), { headers: { ...headers, 'cache-control': 'public, max-age=60' } });
     }
 
     if (path === '/api/compute/map') {

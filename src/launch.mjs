@@ -145,11 +145,70 @@ export class LaunchBook {
     return true;
   }
   async get(mint) { return isKey(mint) ? (await this.s.get('l:' + mint)) || null : null; }
+
+  /* The token's Telegram group: a one-time code for its creator, spent when
+     they add the bot to the group they made — so nobody else's group can
+     become the one the token's own link opens. */
+  async newClaim(mint, now = Date.now()) {
+    if (!isKey(mint)) return '';
+    const code = b58enc(crypto.getRandomValues(new Uint8Array(12)));
+    await this.s.put('c:' + code, { mint, exp: now + 7 * 864e5 });
+    return code;
+  }
+  async useClaim(code, now = Date.now()) {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{12,24}$/.test(String(code || ''))) return null;
+    const c = await this.s.get('c:' + code);
+    if (!c || c.used || c.exp < now) return null;
+    await this.s.put('c:' + code, { ...c, used: now });
+    return c.mint;
+  }
+  /* a bind waiting for the bot to be made an admin */
+  async pend(chat, mint) { await this.s.put('p:' + chat, { mint, at: Date.now() }); }
+  async pending(chat) { const p = await this.s.get('p:' + chat); return p && Date.now() - p.at < 864e5 ? p.mint : null; }
+  async clearPending(chat) { await this.s.put('p:' + chat, null); }
+
+  /* where the token's own /tg and /x links go: the creator's choice, signed,
+     else the group the bot made the invite for */
+  async links(mint) { return isKey(mint) ? (await this.s.get('k:' + mint)) || {} : {}; }
+  async setLinks(mint, patch) {
+    if (!isKey(mint)) return false;
+    const cur = (await this.s.get('k:' + mint)) || {};
+    await this.s.put('k:' + mint, { ...cur, ...patch, at: Date.now() });
+    return true;
+  }
   async recent(n = 30) {
     const ids = ((await this.s.get('recent')) || []).slice(0, Math.min(100, n));
     const out = [];
     for (const m of ids) { const e = await this.s.get('l:' + m); if (e) out.push(e); }
     return out;
+  }
+}
+
+/* Every operation the LaunchDO answers, in one place, so the Durable Object
+   and the dev server's in-memory copy cannot drift apart. */
+export async function launchOp(B, b = {}) {
+  const s = B.s;
+  switch (b.op) {
+    case 'putFile':
+      if (!/^[0-9a-f]{32}$/.test(b.id) || typeof b.b64 !== 'string' || b.b64.length > 800_000) return { ok: false };
+      if (!(await s.get('f:' + b.id))) await s.put('f:' + b.id, { type: String(b.type || '').slice(0, 40), b64: b.b64 });
+      return { ok: true };
+    case 'getFile': {
+      if (!/^[0-9a-f]{32}$/.test(b.id)) return { ok: false };
+      const f = await s.get('f:' + b.id);
+      return f ? { ok: true, type: f.type, b64: f.b64 } : { ok: false };
+    }
+    case 'record': return { ok: await B.record(b.entry) };
+    case 'get': { const e = await B.get(b.mint); return e ? { ok: true, entry: e } : { ok: false }; }
+    case 'recent': return { ok: true, launches: await B.recent(+b.n || 30) };
+    case 'newClaim': return { ok: true, code: await B.newClaim(b.mint) };
+    case 'useClaim': { const mint = await B.useClaim(b.code); return mint ? { ok: true, mint } : { ok: false }; }
+    case 'pend': await B.pend(b.chat, b.mint); return { ok: true };
+    case 'pending': { const mint = await B.pending(b.chat); return mint ? { ok: true, mint } : { ok: false }; }
+    case 'clearPending': await B.clearPending(b.chat); return { ok: true };
+    case 'links': return { ok: true, links: await B.links(b.mint) };
+    case 'setLinks': return { ok: await B.setLinks(b.mint, b.patch || {}) };
+    default: return { ok: false };
   }
 }
 
@@ -255,5 +314,45 @@ export async function pinFile(jwt, bytes, name, type, fetcher = fetch) {
   return 'https://ipfs.io/ipfs/' + cid;
 }
 
+/* ------------------------------------------------- the token's own links */
+/* What goes into the metadata when the creator has no links of their own:
+   addresses on our domain that exist from the first second and lead
+   somewhere real — the page, the group once it is made, and X (a live
+   $TICKER search until the creator points it at their account). pump.fun's
+   metadata cannot change after the launch; these can. */
+export const ownLinks = (origin, mint) => ({
+  website: origin + '/t/' + mint, telegram: origin + '/tg/' + mint, twitter: origin + '/x/' + mint,
+});
+
+/* where a creator may point them: their X account or community, a t.me
+   link, any https site — never a script, never another scheme */
+export function checkLinks(l = {}) {
+  const out = {}, bad = [];
+  const x = okLink(l.x, /^(www\.)?(x|twitter)\.com$/);
+  const tg = okLink(l.telegram, /^(www\.)?(t\.me|telegram\.me)$/);
+  const web = okLink(l.website);
+  if (x === null) bad.push('x'); else if (x) out.x = x;
+  if (tg === null) bad.push('telegram'); else if (tg) out.tg = tg;
+  if (web === null) bad.push('website'); else if (web) out.web = web;
+  return { ok: !bad.length, bad, links: out };
+}
+
+/* The message a creator's wallet signs to set them, built the same way on
+   both sides — the server never trusts the text it was sent. */
+export function linksMessage(mint, l, at) {
+  return ['pumpbubble.fun — set the links of a token', 'token: ' + mint, 'x: ' + (l.x || '-'), 'telegram: ' + (l.telegram || '-'),
+    'website: ' + (l.website || '-'), 'time: ' + at].join('\n');
+}
+export async function verifySig(pubB58, message, sigBytes) {
+  const pub = b58dec(pubB58);
+  if (!pub || pub.length !== 32 || !sigBytes || sigBytes.length !== 64) return false;
+  try {
+    const key = await crypto.subtle.importKey('raw', pub, { name: 'Ed25519' }, false, ['verify']);
+    return await crypto.subtle.verify({ name: 'Ed25519' }, key, sigBytes, new TextEncoder().encode(message));
+  } catch { return false; }
+}
+
 /* the startgroup link that sets the bot up for this token, rights included */
 export const groupLink = (bot, mint) => 'https://t.me/' + (bot || 'pumpbubblebot') + '?startgroup=setup_' + mint + '&admin=delete_messages+restrict_members+pin_messages+invite_users+change_info';
+/* the creator's one: it makes that group the token's official one */
+export const claimLink = (bot, code) => 'https://t.me/' + (bot || 'pumpbubblebot') + '?startgroup=launch_' + code + '&admin=delete_messages+restrict_members+pin_messages+invite_users+change_info';
