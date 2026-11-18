@@ -21,7 +21,7 @@
    ========================================================================== */
 
 import { pumpFetch, pumpPaused, pumpStatus, isChallenge, _resetPumpGate, PUMP_PAUSE_MS } from '../src/pumpgate.mjs';
-import { normalizeJup, fetchPumpFeed, feedVia, enrich, fetchCoin, scoreQuality, _resetFeedMem, _dexMemForTests } from '../src/core.mjs';
+import { normalizeJup, fetchPumpFeed, feedVia, enrich, fetchCoin, scoreQuality, _resetFeedMem, _dexMemForTests, freshPasses } from '../src/core.mjs';
 import { jupRows, paced } from '../src/jupfeed.mjs';
 
 let pass = 0, fail = 0;
@@ -189,6 +189,24 @@ try {
     is('a deployer address with 4,590 launches is not a statement about the coin', a.flags.includes('serial'), false);
     is('…and none of them takes the bubble away', a.solid, true);
     is('ordinary numbers raise nothing', b.flags.filter(f => ['dev', 'tophold'].includes(f)).length, 0);
+  }
+
+  console.log('\nFresh');
+  {
+    const NOW = Date.parse('2026-11-18T12:00:00Z');
+    const young = o => normalizeJup(jrow(1, { firstPool: { createdAt: '2026-11-18T08:00:00Z' }, ...o }));
+    is('a young coin that passes every check is in', freshPasses(young(), NOW), true);
+    is('a day and a half old is not fresh', freshPasses(normalizeJup(jrow(1, { firstPool: { createdAt: '2026-11-17T00:00:00Z' } })), NOW), false);
+    is('unknown age is not fresh', freshPasses({ ...young(), created: 0 }, NOW), false);
+    is('thin liquidity is out', freshPasses(young({ liquidity: 3000 }), NOW), false);
+    is('few traders is out', freshPasses(young({ stats24h: { ...jrow(1).stats24h, numTraders: 12 } }), NOW), false);
+    is('top holders at 60% is out', freshPasses(young({ audit: { topHoldersPercentage: 60, devBalancePercentage: 1 } }), NOW), false);
+    is('a deployer holding 15% is out', freshPasses(young({ audit: { topHoldersPercentage: 20, devBalancePercentage: 15 } }), NOW), false);
+    is('one-way trading is out', freshPasses(young({ stats24h: { ...jrow(1).stats24h, numBuys: 600, numSells: 20 } }), NOW), false);
+    is('"low" organic score with 5% organic volume is out', freshPasses(young({ organicScoreLabel: 'low' }), NOW), false);
+    is('"low" score but 30% organic volume is in', freshPasses(young({ organicScoreLabel: 'low',
+      stats24h: { ...jrow(1).stats24h, buyOrganicVolume: 18_000, sellOrganicVolume: 12_000 } }), NOW), true);
+    is('an unaudited coin is not refused for that alone', freshPasses(young({ audit: undefined }), NOW), true);
   }
 
   console.log('\npacing');

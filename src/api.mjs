@@ -644,7 +644,7 @@ async function cardsSnapshot(ctx) {
   };
 }
 /* feeds whose empty answer is a state (nothing yet), not an outage */
-const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
+const EMPTY_OK = new Set(['taps', 'fresh', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
   'kols-all', 'kols-1m', 'kols-1w', 'kols-1d', 'cards']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */
@@ -1372,6 +1372,11 @@ export async function handle(req, ctx) {
          the second is joined on beside it, never added into it, so the page
          can tell a trader from a KOL whose income is partly rewards. */
       if (src.id.startsWith('traders-')) {
+        try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
+      }
+      /* Top callers too: who earns the most from calling, beside how good
+         the calls are (daily → 1d, weekly → 1w, monthly → 1m, as for traders) */
+      if (src.id.startsWith('callers-')) {
         try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
       }
       /* Compute mixes both, so each row takes the windows of its own kind:

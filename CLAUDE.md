@@ -486,6 +486,18 @@ access control: it is respected, never worked around** — no browser impersonat
 - The Solana buy watcher had **never** polled in production (`polls: 0`): Alchemy answered 429
   and every keyless RPC refuses Cloudflare. Not fixed in code — it needs a keyed RPC with headroom.
 
+### Fresh (2026-11-18)
+
+The **Fresh** tab (`fresh` source, `fetchFresh()` / `freshPasses()` in core.mjs): pump.fun coins
+under 24 h old that pass every measured check — $20K+ cap, $8K+ liquidity, 40+ distinct traders in
+24 h, top holders under 50%, deployer under 10%, not one-way, and trading Jupiter scores above
+"low" organic (or ≥10% of volume organic). Read from Jupiter whether or not pump.fun answers,
+because those fields exist nowhere else; it shares the pump.fun feed's twenty-second row memo, so
+it costs no extra request. On the first live run 11 of ~200 new launches passed. The card lists the
+checks and ends "checks, not a guarantee"; an empty tab says nothing passed rather than reading as
+an outage (`EMPTY_OK`, `EMPTY_MODES`). Note: Jupiter's organic *score* and the organic *share* of
+volume differ — GTAVI scored "medium" with 3% of volume organic — so the card prints both.
+
 ## When DexScreener refuses the Worker
 
 **Measured:** DexScreener answered **429 to every request from the Worker** (`/api/health` → `dex`)
@@ -913,6 +925,11 @@ inside data"):
   20 slots go to KOLs pump.fun pays (`paidWallets`), to callers with a 2× record, and to callers
   with no record — and the top slots' median multiple now against every other live call. A
   measurement of the feed, not a claim about intent. Both need pump.fun to answer again.
+
+**Who earns the most from calling** (2026-11-18): Top callers carry the same payout join as
+Traders (`withRewards`, the window's payout board) — a Callout rewards column, "earned $X" on the
+phone line, a "Most earned" sort and a "Paid callers" filter, and a line naming the top earner
+beside their hit rate. On the boards read 13 Nov, 39 of the week's top 100 callers were paid KOLs.
 
 **On the page** both views are tables in the Smart money tables' container (`TABLE_MODES`), rows
 as the feed pipeline expects: a call is a token row (`kind: 'call'`, one per call — two callers on
