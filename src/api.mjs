@@ -494,6 +494,30 @@ async function callsSnapshot(ctx) {
   };
 }
 
+/* The trader board as last read (the CallersDO keeps each PnL-board row it
+   saw, with the read's time): realized profit and rank only — open positions
+   and totals were not kept, so they are null, never guessed. */
+async function lastTraders(ctx, period) {
+  const d = await callersRead(ctx, 'traders', { period });
+  if (!d || !d.at || !Array.isArray(d.rows) || !d.rows.length) return null;
+  const tokens = [];
+  for (const r of d.rows) {
+    tokens.push({
+      id: 'trader:' + r.wallet, kind: 'trader', mint: '', addr: '', wallet: r.wallet,
+      sym: r.name, name: r.xh ? '@' + r.xh : r.name, xh: r.xh || '', verified: !!r.verified,
+      img: await signedImg(ctx, r.avatar),
+      mcap: r.realized, realized: r.realized, unrealized: null, total: null, positions: null, top: [],
+      rank: r.rank, pumpRank: 0, period, pc: NULL_PC(),
+      vol: 0, liq: 0, price: 0, grad: true, solid: true, flags: [], copies: 1, boost: 0,
+    });
+  }
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
+    sampleArt: '', solid: tokens.length, signed: true, source: 'traders-' + period, sourceLabel: 'Traders', boostable: false,
+    tokens, asOf: d.at,
+  };
+}
+
 /* Callout rewards by wallet: the all-time payout board and the one for the
    trader board's own window (daily → 1d, weekly → 1w, monthly → 1m). */
 const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m' };
@@ -858,6 +882,12 @@ async function snapshot(ctx, source, force = false) {
           const saved = await ctx.store.get(kvKey);
           if (saved) { cache.data = saved; return saved; }
         } catch { /* fall through to the throw */ }
+      }
+      /* Traders: pump.fun's PnL board as the Calls watcher last read it, dated,
+         rather than an empty table while pump.fun refuses servers. */
+      if (src.id.startsWith('traders-')) {
+        const last = await lastTraders(ctx, src.id.slice(8)).catch(() => null);
+        if (last) { cache.data = last; cache.at = Date.now(); return last; }
       }
       throw e;
     } finally {
@@ -1520,6 +1550,8 @@ export async function handle(req, ctx) {
         boostable: snap.boostable,
         /* which upstream answered: 'jupiter' while pump.fun refuses servers */
         upstream: snap.upstream || undefined,
+        /* a board served from its last read (Traders while pump.fun refuses), and when */
+        asOf: snap.asOf || undefined,
         sources: publicSources(),
         /* Sent once per response rather than per token: 300 near-identical
            URLs for a button most visitors never press is wasted payload. */
@@ -1832,24 +1864,6 @@ export async function handle(req, ctx) {
       const t = await resolveAnyToken(mint, ctx.env.IMG_SECRET);
       if (!t) return json({ ok: false, error: 'no token found with that contract address' }, 404);
       return json({ ok: true, token: t, from: t.chain || 'pump.fun' });
-    }
-
-    /* ------------------------------------------------- /api/wallet/who */
-    /* What we already know about a wallet, for the wallet page: a ranked
-       caller (their record, what they banked on pump.fun's PnL boards), a KOL
-       pump.fun pays (rewards, what their calls did for holders). Read from the
-       CallersDO's book — no upstream call. The swaps themselves are read by
-       the visitor's browser from a public RPC (public/wallet.html). */
-    if (path === '/api/wallet/who') {
-      const limited = rateLimit(req, 'who', 30, 60_000);
-      if (limited) return limited;
-      const w = (url.searchParams.get('w') || '').trim();
-      if (!isMint(w)) return json({ ok: false, error: 'that is not a Solana wallet address' }, 400);
-      let d = null;
-      try { d = ctx.callers ? await ctx.callers('who', { wallet: w }) : null; } catch { d = null; }
-      const caller = d && d.caller, kol = d && d.kol;
-      return json({ ok: true, wallet: w, caller: caller || null, kol: kol || null, join: pumpJoin(ctx.env) || undefined },
-        200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* ------------------------------------------------------- /api/card */

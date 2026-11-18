@@ -485,14 +485,20 @@ export class CallerBook {
     };
   }
 
-  /* One wallet as a caller — for the wallet page. */
-  who(wallet, now = Date.now()) {
-    const p = this.callers.get(wallet);
-    if (!p) return null;
-    const row = this.board('weekly', now).find(r => r.wallet === wallet) || null;
-    return { name: p.name, xh: p.xh || '', verified: !!p.verified, calls: p.calls || 0,
-      stats: p.stats || null, statsAt: p.statsAt || 0, board: p.board || null,
-      weeklyRank: row ? row.rank : 0, exits: row ? row.exits : null };
+  /* pump.fun's PnL board for a period as this book last read it — the
+     Traders table's fallback while pump.fun refuses servers. Every row of one
+     read carries that read's time, so the newest time is the last board. */
+  tradersBoard(period) {
+    let at = 0;
+    const all = [];
+    for (const p of this.callers.values()) {
+      const b = p.board && p.board[period];
+      if (b && b.rank > 0 && b.realized > 0) { all.push({ p, b }); at = Math.max(at, b.at || 0); }
+    }
+    const rows = all.filter(r => (r.b.at || 0) === at).sort((x, y) => x.b.rank - y.b.rank).slice(0, 100)
+      .map(({ p, b }) => ({ wallet: p.wallet, name: p.name, xh: p.xh || '', avatar: p.avatar || '', verified: !!p.verified,
+        rank: b.rank, realized: b.realized }));
+    return { at: rows.length ? at : 0, rows };
   }
 
   status(now = Date.now()) {

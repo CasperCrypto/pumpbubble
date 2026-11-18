@@ -13,11 +13,11 @@ import { Guard, runGuard } from '../src/guard.mjs';
 import { guardExpire, onEvmBuys, sendDm, formatCallAlert, onTrade as solTrade, tracked as solTracked } from '../src/tgbot.mjs';
 import { Endpoints, rpcList as solRpcs, watchList as solWatchList, poll as solPoll, solPolling, EVERY as SOL_EVERY, IDLE_EVERY as SOL_IDLE, QUIET_MS as SOL_QUIET } from '../src/solwatch.mjs';
 import { CallerBook, pollOnce, defaultHttp as callersHttp, WINDOWS as CALL_WINDOWS, tradingMap } from '../src/callers.mjs';
-import { KolBook, pollKols, KOL_PERIODS, paidWallets, kolOf } from '../src/kols.mjs';
+import { KolBook, pollKols, KOL_PERIODS, paidWallets } from '../src/kols.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
-import { SWAP_CSP, WALLET_CSP } from '../src/refs.mjs';
+import { SWAP_CSP } from '../src/refs.mjs';
 import { histToJSON, histFromJSON, pruneHistory, altGateways, fetchSolPrice } from '../src/core.mjs';
 import { flush as flushStats } from '../src/stats.mjs';
 import { tick as xbotTick } from '../src/xbot.mjs';
@@ -767,12 +767,8 @@ export class CallersDO {
         /* whom pump.fun's ranked feed puts at the top, against the KOLs it pays */
         promo: this.book.promotion(paidWallets(this.kols), now) }; break;
       case 'status': out = { ok: true, ...this.book.status(now), kols: this.kols.status(now) }; break;
-      /* one wallet: is it a ranked caller, a trader on the PnL boards, a paid KOL */
-      case 'who': {
-        const w = String(b.wallet || '');
-        out = { ok: true, caller: this.book.who(w, now), kol: kolOf(this.kols, w) };
-        break;
-      }
+      /* the last PnL board read, for the Traders tab while pump.fun refuses servers */
+      case 'traders': out = { ok: true, ...this.book.tradersBoard(['daily', 'weekly', 'monthly'].includes(b.period) ? b.period : 'weekly') }; break;
       case 'kols': {
         const period = KOL_PERIODS[b.period] !== undefined ? b.period : 'all';
         out = { ok: true, period, ...this.kols.board(period, tradingMap(this.book)), status: this.kols.status(now) };
@@ -1179,18 +1175,6 @@ export default {
       const h = new Headers(res.headers);
       h.set('content-security-policy', SWAP_CSP);
       h.set('cross-origin-opener-policy', 'same-origin-allow-popups');
-      h.set('cache-control', 'public, max-age=0, must-revalidate');
-      return new Response(res.body, { status: res.status, headers: h });
-    }
-
-    /* /wallet reads the chain from the visitor's browser, so it needs the
-       public RPCs and Jupiter in connect-src (WALLET_CSP in src/refs.mjs) */
-    if (p === '/wallet') {
-      const page = new URL(request.url);
-      page.pathname = '/wallet';
-      const res = await env.ASSETS.fetch(new Request(page, { headers: request.headers }));
-      const h = new Headers(res.headers);
-      h.set('content-security-policy', WALLET_CSP);
       h.set('cache-control', 'public, max-age=0, must-revalidate');
       return new Response(res.body, { status: res.status, headers: h });
     }

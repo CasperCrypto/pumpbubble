@@ -199,27 +199,6 @@ export function paidWallets(kb) {
   return out;
 }
 
-/* One wallet on the payout boards, with its record — for the wallet page. */
-export function kolOf(kb, wallet) {
-  if (!kb || !wallet) return null;
-  const out = {};
-  let key = '';
-  for (const [period, b] of Object.entries(kb.boards || {})) {
-    const r = (b.rows || []).find(x => x.wallet === wallet || (x.wallets || []).includes(wallet));
-    if (!r) continue;
-    out[period] = { rank: r.rank, paid: r.paid, payouts: r.payouts, lastPaidAt: r.lastPaidAt, name: r.name, verified: r.verified, at: b.at };
-    key = key || r.wallet;
-  }
-  if (!Object.keys(out).length) return null;
-  const main = out.all || Object.values(out)[0];
-  /* the record lives under the row's main Solana wallet */
-  const p = kb.people.get(key || wallet) || null;
-  const h = p && p.hist, f = p && p.profile;
-  return { boards: out, name: main.name, verified: main.verified,
-    followers: f ? f.followers : null, xh: f ? f.xh : '',
-    record: h && h.n ? { n: h.n, medPeak: h.medPeak, hit2: h.hit2, medNow: h.medNow, inProfit: h.inProfit, avgMcap: h.avgMcap, at: p.histAt || 0 } : null };
-}
-
 export class KolBook {
   constructor() {
     this.boards = {};          // period → { at, total, rows: [payout] }
