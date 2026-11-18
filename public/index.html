@@ -2093,11 +2093,22 @@ function renderCallerTable(box,list){
    ours: the median multiple today for a follower who bought at the call and
    never sold — paid is not the same as good. */
 let KL_SORT='paid',KL_FILTER='all';
+/* "Best for followers" ranks KOLs by the share of their calls still above the
+   call price, at the lower edge of its 95% Wilson interval (the same rule the
+   Top callers ranking uses), from KOL_MIN_CALLS calls up. Not the median: on
+   the 13 Nov board the median put FrankieMelli first at 0.78× with 5% of calls
+   in profit — calls that lost a little, never ones anybody made money on — and
+   a KOL with 15 calls fourth. It measures the calls, not real followers: a
+   follower who bought after the call paid more (bots buy in the first
+   seconds), so even this flatters the KOL. */
+const KOL_MIN_CALLS=10;
+function wilsonLo(k,n,z=1.96){if(!(n>0))return 0;const p=Math.min(1,Math.max(0,k/n)),z2=z*z;return Math.max(0,(p+z2/(2*n)-z*Math.sqrt((p*(1-p)+z2/(4*n))/n))/(1+z2/n))}
+const followScore=k=>k&&k.n>=KOL_MIN_CALLS&&k.inProfit!=null?wilsonLo(Math.round(k.inProfit*k.n),k.n):-1;
 /* the KOL filters: whose calls a follower kept money on, who calls coins
    with room to grow, and who also banks trading */
 const KL_FILTERS={
   all:()=>true,
-  up:t=>t.kol.medNow!=null&&t.kol.medNow>=1,
+  up:t=>t.kol.n>=KOL_MIN_CALLS&&t.kol.medNow!=null&&t.kol.medNow>=1,
   real:t=>t.kol.avgMcap!=null&&t.kol.avgMcap>=1e5,
   traders:t=>!!t.kol.trading,
 };
@@ -2108,7 +2119,8 @@ const fmtK=v=>v==null||!isFinite(v)?'—':v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e4?M
 function renderKolTable(box,list){
   const nn=v=>v==null||!isFinite(v)?-1:+v;
   const key={paid:t=>t.kol.paid||0,rank:t=>-(t.rank||1e9),mcap:t=>nn(t.kol.avgMcap),fol:t=>nn(t.kol.followers),
-             med:t=>nn(t.kol.medPeak),avg:t=>nn(t.kol.avgPeak),now:t=>nn(t.kol.medNow),hit:t=>nn(t.kol.hit2)}[KL_SORT]||(t=>0);
+             med:t=>nn(t.kol.medPeak),avg:t=>nn(t.kol.avgPeak),now:t=>nn(t.kol.medNow),hit:t=>nn(t.kol.hit2),
+             follow:t=>followScore(t.kol)*10+(t.kol.medNow||0)/100}[KL_SORT]||(t=>0);
   const allRows=list.filter(t=>t.kol);
   if(!allRows.length){box.innerHTML=emptyNote(loadNote()||pumpQuiet()||'Reading pump.fun’s payout board… KOLs appear within a minute of a fresh start, their records over the next few.');return}
   const rows=allRows.filter(KL_FILTERS[KL_FILTER]||KL_FILTERS.all).sort((a,b)=>key(b)-key(a));
@@ -2119,15 +2131,16 @@ function renderKolTable(box,list){
   let sum=sm&&sm.paid?'<b>'+esc(fmtUsd(sm.paid))+'</b> paid to these '+sm.kols+' KOLs · the top 10 took <b>'+pc(sm.top10Share)+'</b>'
     +(sm.withRecord?' · for <b>'+pc(sm.holdersDownHalf)+'</b> of the '+sm.withRecord+' with a record, a follower who bought at the call and held is down more than half (median <b>'+mult(sm.medHoldNow)+'</b>)'
       +' · <span title="Spearman rank correlation across these KOLs: +1 means more pay always goes with more of it, −1 with less">pay vs 2× rate <b>'+rho(sm.payVsHit2)+'</b>, pay vs what holders kept <b>'+rho(sm.payVsHoldNow)+'</b></span>':''):'';
-  /* whose followers kept the most: hold-now first, then the share of calls above the call price */
-  const kept=allRows.filter(t=>t.kol.n>=10&&t.kol.medNow!=null).sort((a,b)=>b.kol.medNow-a.kol.medNow||(b.kol.inProfit||0)-(a.kol.inProfit||0)).slice(0,3);
-  if(kept.length)sum=(sum?sum+'<br>':'')+'Where followers kept the most: '+kept.map(t=>'<b>'+esc(t.xh?'@'+t.xh:t.sym)+'</b> <span class="'+multCls(t.kol.medNow)+'">'+mult(t.kol.medNow)+'</span>'+(t.kol.inProfit!=null?' ('+Math.round(t.kol.inProfit*100)+'% of calls in profit)':'')).join(' · ');
+  /* the KOLs with the most calls a holder is still up on (followScore) */
+  const kept=allRows.filter(t=>followScore(t.kol)>=0).sort((a,b)=>followScore(b.kol)-followScore(a.kol)).slice(0,3);
+  if(kept.length)sum=(sum?sum+'<br>':'')+'Most calls still in profit ('+KOL_MIN_CALLS+'+ calls): '+kept.map(t=>'<b>'+esc(t.xh?'@'+t.xh:t.sym)+'</b> '+Math.round(t.kol.inProfit*100)+'% of '+t.kol.n).join(' · ')
+    +' <span title="Measured from the calls: someone who bought at the call price and held. Followers who bought after the call paid more, so they did worse.">— from the call price; real followers bought later and did worse</span>';
   if(stale)sum=(sum?sum+'<br>':'')+stale+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':'');
   const nUp=allRows.filter(KL_FILTERS.up).length,nReal=allRows.filter(KL_FILTERS.real).length,nTr=allRows.filter(KL_FILTERS.traders).length;
   const chips=tchip('klf','all',KL_FILTER,'All')
     +tchip('klf','up',KL_FILTER,'Holders up '+nUp,'KOLs whose calls are above the call price today, at the median — a follower who held kept money')
     +tchip('klf','real',KL_FILTER,'Calls ≥ $100K '+nReal,'KOLs whose average call is at $100K market cap or more')
-    +'<button class="'+(KL_SORT==='now'?'on':'')+'" data-ksort="now" title="Rank by what a follower who bought at the call and held has today, at the median">Best for followers</button>'
+    +'<button class="'+(KL_SORT==='follow'?'on':'')+'" data-ksort="follow" title="Rank by the share of their calls still above the call price ('+KOL_MIN_CALLS+'+ calls, adjusted for how many). Measured from the call price — followers who bought later did worse">Most calls in profit</button>'
     +(nTr?tchip('klf','traders',KL_FILTER,'Also top traders '+nTr,'KOLs who are also on pump.fun’s PnL boards for what they banked trading'):'');
   const bar=tbar(sum,chips);
   if(!rows.length){box.innerHTML=bar+emptyNote('No KOL on this board fits that filter.');return}
