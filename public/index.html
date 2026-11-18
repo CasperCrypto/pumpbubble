@@ -1844,8 +1844,13 @@ function rebuild(){
      filtering is the same lie as showing the paper caps in the first place. */
   const hn=document.getElementById('hiddenNote');
   const via=S.upstream==='jupiter'&&(S.mode==='pumpfun'||S.mode==='bonding')?'via Jupiter':'';
-  hn.textContent=[via,S.degraded?'prices refreshing \u2014 showing all':S.hidden?`${S.hidden} unbacked hidden`:''].filter(Boolean).join(' \u00b7 ');
-  hn.title=[via?'pump.fun is refusing requests from servers, so its coins are read from Jupiter\u2019s token data: the same launches, priced by Jupiter.':'',
+  /* The live pill that said "live · 14m old" is gone from the header, so an
+     old copy says its age here: Crypto served a 14-minute-old copy while
+     CoinPaprika refused the Worker, Robinhood one five hours old. */
+  const am=Math.round((S.age||0)/6e4);
+  const old=S.live&&S.serverStale&&am>=5?'prices '+(am<90?am+'m':Math.round(am/60)+'h')+' old':'';
+  hn.textContent=[via,old,S.degraded?'prices refreshing \u2014 showing all':S.hidden?`${S.hidden} unbacked hidden`:''].filter(Boolean).join(' \u00b7 ');
+  hn.title=[old?'The source has not answered for a while, so this is the last good copy it gave.':'',via?'pump.fun is refusing requests from servers, so its coins are read from Jupiter\u2019s token data: the same launches, priced by Jupiter.':'',
     S.hidden?'Hidden: market cap far above pool liquidity, no trading, a ticker shared across many mints, or below the size worth charting.':''].filter(Boolean).join(' ');
   stats();
 }

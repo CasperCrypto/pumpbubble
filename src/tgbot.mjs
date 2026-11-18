@@ -30,6 +30,7 @@
    ========================================================================== */
 
 import { resolveAnyToken, pumpCoin, isCA, isMint, isEvmAddr, clean } from './core.mjs';
+import { jupByMint } from './jupfeed.mjs';
 import { CHAINS, isChain, poolsFrom, tokenFacts, ethUsd as evmEthUsd } from './evmbuy.mjs';
 import { buyOrSwap, pumpJoin, swapPath } from './refs.mjs';
 import { buysFromPayload, walletSwapsFromPayload } from './solbuy.mjs';
@@ -673,6 +674,20 @@ async function poolAndSocials(mint) {
       if (web) socials.web = web;
       if (x) socials.x = x;
       if (t) socials.tg = t;
+    }
+  } catch { /* Jupiter, then DexScreener, below */ }
+  if (pool && socials.x) return { pool, socials };
+  /* pump.fun refuses servers since 2026-11-13: Jupiter's row names the
+     graduated pool and the creator's links (src/jupfeed.mjs), and is asked
+     before DexScreener, which refuses the Worker often */
+  try {
+    const j = (await jupByMint([mint])).get(mint);
+    if (j) {
+      if (!pool && isMint(String(j.graduatedPool || ''))) pool = String(j.graduatedPool);
+      const web = okUrl(j.website), x = okUrl(j.twitter), t = okUrl(j.telegram);
+      if (web && !socials.web) socials.web = web;
+      if (x && !socials.x) socials.x = x;
+      if (t && !socials.tg) socials.tg = t;
     }
   } catch { /* DexScreener below */ }
   if (pool && socials.x) return { pool, socials };
