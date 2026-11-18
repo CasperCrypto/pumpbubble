@@ -29,6 +29,7 @@
    ========================================================================== */
 
 import { clean } from './core.mjs';
+import { pumpFetch } from './pumpgate.mjs';
 
 export const LB = 'https://frontend-api-v3.pump.fun/pnl-leaderboard';
 export const PERIODS = { daily: 'h24', weekly: 'd7', monthly: 'd30' };
@@ -36,7 +37,7 @@ const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 const num = v => { const n = +v; return Number.isFinite(n) ? n : null; };
 
 export async function board(period, sort) {
-  const r = await fetch(`${LB}?period=${period}&sort=${sort}&limit=100`, {
+  const r = await pumpFetch(`${LB}?period=${period}&sort=${sort}&limit=100`, {
     headers: { accept: 'application/json', 'user-agent': UA },
     signal: AbortSignal.timeout(10000),
   });

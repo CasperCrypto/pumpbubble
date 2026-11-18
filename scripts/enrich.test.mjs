@@ -40,7 +40,12 @@ const activity = () => ({
 
 const real = globalThis.fetch;
 let calls = 0, pumpCalls = 0, mode = 'ok', pumpMode = 'ok';
+let jupCalls = 0;
 globalThis.fetch = async (url, opts) => {
+  /* Jupiter's token search sits between DexScreener and pump.fun's activity;
+     here it has never heard of these mints, so the pump.fun path is what is
+     tested (scripts/jupfeed.test.mjs covers the Jupiter one) */
+  if (String(url).includes('jup.ag')) { jupCalls++; return new Response('[]', { status: 200 }); }
   if (String(url).includes('swap-api.pump.fun')) {
     pumpCalls++;
     if (pumpMode === 'refuse') return new Response('{}', { status: 429 });

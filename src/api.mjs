@@ -13,7 +13,12 @@ import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page, logoDataUri } from './share.mjs';
 import { seedFor } from './bubblecard.mjs';
 import { buildTableSvg, UP as T_UP, DN as T_DN, DIM as T_DIM } from './tablecard.mjs';
-import { svgToPng } from './png.mjs';
+/* png.mjs reaches its WASM and font through wrangler's [[rules]], which Node
+   cannot load, so it is imported on the first card rather than at startup.
+   As a static import it stopped `npm run dev` from starting at all (since
+   2026-10-01). esbuild bundles a literal dynamic import into the Worker. */
+let pngMod = null;
+const svgToPng = async (svg, w) => (pngMod || (pngMod = await import('./png.mjs'))).svgToPng(svg, w);
 import { creds as xCreds, KEY as XBOT_KEY, topMovers, build as buildPost } from './xbot.mjs';
 import {
   enabled as tgEnabled, webhookSecret as tgWebhookSecret, handleUpdate as tgUpdate,
@@ -46,7 +51,8 @@ import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata,
          rpcUrl, rpc, simulateCost, costCap, buildCreateTx, verifyLaunch, pinFile, ownLinks, checkLinks, linksMessage, verifySig, b58dec,
          slugFrom, subOf, siteUrl } from './launch.mjs';
 import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
-import { pumpCoin } from './core.mjs';
+import { pumpCoin, pumpStatus, jupStatus, feedVia } from './core.mjs';
+import { setJupKey } from './jupfeed.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
@@ -484,8 +490,33 @@ async function callsSnapshot(ctx) {
   return {
     ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length, withArt: tokens.filter(t => t.img).length,
     sampleArt: '', solid: tokens.length, signed: true, source: 'calls', sourceLabel: 'Live calls', boostable: true,
-    tokens, callers: callersMeta(d),
+    tokens, callers: { ...(callersMeta(d) || {}), promo: (d && d.promo) || null },
   };
+}
+
+/* Callout rewards by wallet: the all-time payout board and the one for the
+   trader board's own window (daily → 1d, weekly → 1w, monthly → 1m). */
+const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m' };
+async function withRewards(ctx, tokens, period) {
+  const [all, win] = await Promise.all([
+    callersRead(ctx, 'kols', { period: 'all' }),
+    REWARD_WIN[period] ? callersRead(ctx, 'kols', { period: REWARD_WIN[period] }) : null,
+  ]);
+  const index = d => {
+    const m = new Map();
+    for (const r of (d && d.rows) || []) for (const w of [r.wallet, ...(r.wallets || [])]) if (w && !m.has(w)) m.set(w, r);
+    return m;
+  };
+  const A = index(all), W = index(win && win.period === REWARD_WIN[period] ? win : null);
+  if (!A.size && !W.size) return tokens;
+  return tokens.map(t => {
+    const a = A.get(t.wallet), w = W.get(t.wallet);
+    if (!a && !w) return t;
+    return { ...t, rewards: {
+      paid: a ? a.paid : null, payouts: a ? a.payouts : null, rank: a ? a.rank : 0,
+      paidWin: w ? w.paid : null, rankWin: w ? w.rank : 0, at: (all && all.at) || 0,
+    } };
+  });
 }
 
 /* Top callers as people rows, like Top traders: no mint and no address, so
@@ -501,7 +532,8 @@ async function callersSnapshot(ctx, win) {
       mcap: Math.max(1, Math.round((r.score || 0) * 1e6)), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
       grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'caller', rank: r.rank, period: win,
       caller: { n: r.n, hit2: r.hit2, hit15: r.hit15, med: r.med, avg: r.avg, ttpMs: r.ttpMs, best: r.best, score: r.score,
-        banked: r.banked, soldOf: r.soldOf, seenCalls: r.seenCalls, lastAt: r.lastAt, recent: r.recent || [] },
+        banked: r.banked, soldOf: r.soldOf, exits: r.exits || null, seenCalls: r.seenCalls, lastAt: r.lastAt, statsAt: r.statsAt || 0,
+        recent: r.recent || [] },
     });
   }
   return {
@@ -522,10 +554,12 @@ async function kolsSnapshot(ctx, period) {
       sym: r.name, name: r.xh ? '@' + r.xh : r.name, xh: r.xh || '', verified: !!r.verified,
       img: await signedImg(ctx, r.avatar),
       mcap: Math.max(1, Math.round(r.paid || 0)), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
-      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'kol', rank: r.rank, period,
+      /* the window actually served — a missing one falls back to all-time */
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'kol', rank: r.rank, period: (d && d.period) || period,
       kol: { paid: r.paid, payouts: r.payouts, perPayout: r.perPayout, lastPaidAt: r.lastPaidAt, followers: r.followers,
         n: r.n, avgMcap: r.avgMcap, medMcap: r.medMcap, under100k: r.under100k, medPeak: r.medPeak, avgPeak: r.avgPeak,
-        hit2: r.hit2, medNow: r.medNow, inProfit: r.inProfit, firstAt: r.firstAt, lastAt: r.lastAt },
+        hit2: r.hit2, medNow: r.medNow, inProfit: r.inProfit, firstAt: r.firstAt, lastAt: r.lastAt,
+        histAt: r.histAt || 0, trading: r.trading || null },
     });
   }
   const st = d && d.status;
@@ -534,7 +568,8 @@ async function kolsSnapshot(ctx, period) {
     sampleArt: '', solid: tokens.length, signed: true, source: 'kols-' + period, sourceLabel: 'KOLs', boostable: false,
     tokens,
     kols: st ? { at: d.at || 0, earners: d.total || 0, withRecord: st.withHist, withProfile: st.withProfile,
-      lastOk: st.lastOk, lastError: String(st.lastError || '').slice(0, 120), backoffS: Math.round((st.backoff || 0) / 1000) } : null,
+      lastOk: st.lastOk, lastError: String(st.lastError || '').slice(0, 120), backoffS: Math.round((st.backoff || 0) / 1000),
+      summary: d.summary || null } : null,
   };
 }
 /* Insiders as rows: one trade each, from Congress, the White House or a
@@ -999,6 +1034,8 @@ function mapRank(key) {
 
 export async function handle(req, ctx) {
   setCoingeckoKey(ctx.env.COINGECKO_KEY);
+  /* optional: Jupiter's keyed host, a quota of our own (src/jupfeed.mjs) */
+  setJupKey(ctx.env.JUP_API_KEY);
   if (!ctx.mapRank) ctx.mapRank = mapRank;
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
@@ -1329,6 +1366,14 @@ export async function handle(req, ctx) {
       if (src.id === 'majors') {
         try { tokens = applyCryptoWin(tokens, await loadCryptoWin(ctx.store)); } catch {}
       }
+      /* A top trader who is also a paid KOL earns two ways: what they banked
+         trading (pump.fun's PnL board, per position) and the USDC pump.fun
+         paid them for calling (its payout board). The board ranks the first;
+         the second is joined on beside it, never added into it, so the page
+         can tell a trader from a KOL whose income is partly rewards. */
+      if (src.id.startsWith('traders-')) {
+        try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
+      }
       /* Compute mixes both, so each row takes the windows of its own kind:
          keyed by symbol, a coin and a company sharing a ticker would trade
          numbers otherwise. */
@@ -1468,6 +1513,8 @@ export async function handle(req, ctx) {
         source: snap.source,
         sourceLabel: snap.sourceLabel,
         boostable: snap.boostable,
+        /* which upstream answered: 'jupiter' while pump.fun refuses servers */
+        upstream: snap.upstream || undefined,
         sources: publicSources(),
         /* Sent once per response rather than per token: 300 near-identical
            URLs for a button most visitors never press is wasted payload. */
@@ -3228,9 +3275,13 @@ export async function handle(req, ctx) {
       dexStatus.memSize = _dexMemForTests().size;
       return json({
         ok: true,
-        cachedAt: cacheFor('graduated').at,
-        cachedTokens: cacheFor('graduated').data?.count || 0,
-        lastError: cacheFor('graduated').err,
+        /* the default feed's cache. This read 'graduated', a mode no source
+           has had since the sources became adapters, so it said 0 tokens
+           whether the map was full or empty. */
+        cachedAt: cacheFor(DEFAULT_SOURCE).at,
+        cachedTokens: cacheFor(DEFAULT_SOURCE).data?.count || 0,
+        lastError: cacheFor(DEFAULT_SOURCE).err,
+        upstream: cacheFor(DEFAULT_SOURCE).data?.upstream || '',
         modes: [...caches.keys()],
         treasury: !!ctx.env.TREASURY_WALLET,
         rpc: !!ctx.env.SOLANA_RPC,
@@ -3239,11 +3290,18 @@ export async function handle(req, ctx) {
         /* the one line that answers "why is nobody able to buy a boost?" */
         boostsOpen: !!(ctx.env.TREASURY_WALLET && ctx.env.SOLANA_RPC && ctx.store.available),
         dex: dexStatus,
+        /* pump.fun's challenge, as this isolate last saw it (src/pumpgate.mjs),
+           and the Jupiter feed that stands in for it */
+        pump: { ...pumpStatus, via: feedVia.pumpfun, viaError: feedVia.error },
+        jupiter: jupStatus,
       });
     }
 
     return null;   // not an API route — the adapter serves static files
   } catch (e) {
-    return json({ ok: false, error: String(e && e.message || e) }, 502);
+    /* A feed that died on pump.fun's challenge says so, with when it started,
+       so the page can say "pump.fun is refusing servers" instead of "502". */
+    return json({ ok: false, error: String(e && e.message || e),
+      pump: pumpStatus.blocked ? { blocked: true, since: pumpStatus.since } : undefined }, 502);
   }
 }

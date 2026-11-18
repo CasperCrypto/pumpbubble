@@ -32,6 +32,7 @@
    ========================================================================== */
 
 import { clean, fastImage, isMint, isEvmAddr } from './core.mjs';
+import { pumpFetch } from './pumpgate.mjs';
 import { board } from './traders.mjs';
 import { fetchActivity } from './activity.mjs';
 
@@ -59,7 +60,7 @@ export async function fetchCoins(mints) {
   for (let i = 0; i < mints.length; i += 100) {
     const chunk = mints.slice(i, i + 100);
     try {
-      const r = await fetch(COINS, {
+      const r = await pumpFetch(COINS, {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': UA },
         body: JSON.stringify({ mints: chunk }),

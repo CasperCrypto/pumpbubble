@@ -25,6 +25,17 @@ Unusual Whales (they sell this data, and copying their pages breaks their terms)
 SECForm4 (front-ends over the same SEC filings, read here directly); the House Clerk's PTR PDFs
 directly (they are encrypted PDFs with CID fonts — possible later, not needed while the API works).
 
+## pump.fun tab while pump.fun refuses servers (`src/jupfeed.mjs`)
+
+Since 2026-11-13 pump.fun answers every server request with a Cloudflare challenge (CLAUDE.md →
+"When pump.fun refuses servers"). That is respected, not worked around; the same coins are read here:
+
+| Data | Source | Notes, as read on 2026-11-18 |
+|---|---|---|
+| pump.fun's coins (name, ticker, art, market cap, liquidity, change, volume, holders, audit, organic score) | [Jupiter Tokens API v2](https://dev.jup.ag/docs/token-api) — `lite-api.jup.ag/tokens/v2/{toptrending,toporganicscore}/<interval>`, `/recent`, `/search?query=<≤100 mints>`, filtered to `launchpad: "pump.fun"` | keyless; ~5 requests a second per caller (`x-ratelimit-*`); `JUP_API_KEY` uses `api.jup.ag` with a key of our own. The site already uses Jupiter's API for /swap. **Its API terms have not been re-read for screener use — do that before relying on it long-term** |
+| SOL price | `lite-api.jup.ag/price/v3` | as above |
+| The established coins kept on the map | `src/pumpseed.mjs`, from Jupiter's verified list, generated offline by `scripts/pumpseed.mjs` | mints only are committed |
+
 ## Calls tab: KOLs (`src/kols.mjs`)
 
 | Data | Source | Notes, as read on 2026-10-11 |

@@ -34,6 +34,10 @@ try {
      silent switch to another source would change what the site is */
   if (snap.source !== 'pumpfun') fail('default source', 'expected pumpfun, got ' + snap.source);
   else pass('default source is pump.fun');
+  /* pump.fun has refused servers since 2026-11-13 (Cloudflare challenge);
+     the feed then reads its coins from Jupiter. Not a failure — the map is
+     full — but worth seeing after every deploy. /api/health → pump says more. */
+  if (snap.upstream === 'jupiter') pass('pump.fun feed', 'read from Jupiter — pump.fun is refusing servers');
 
   const withMcap = snap.tokens.filter(t => t.mcap > 0).length;
   const withSym  = snap.tokens.filter(t => t.sym && t.sym !== '?').length;

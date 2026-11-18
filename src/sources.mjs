@@ -20,7 +20,7 @@
 
 import { tradersFor } from './traders.mjs';
 import { smartMoney } from './smartmoney.mjs';
-import { normalizeCoin, fetchPumpCoins, fastImage, clean, txnsOf } from './core.mjs';
+import { normalizeCoin, fetchPumpCoins, fetchPumpFeed, feedVia, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
 import { chainTokens, padTokens, predictionTokens, casinoTokens } from './flows.mjs';
@@ -243,12 +243,15 @@ export const SOURCES = {
     /* DexScreener covers ~98% of graduated pump.fun mints, so a build that
        enriched under a quarter of them is a refused pass, not a market. */
     minEnrich: 0.25,
-    fetch: () => fetchPumpCoins({ pages: 6, sort: 'market_cap', complete: true }),
+    /* pump.fun's own list while it answers servers, Jupiter's view of the
+       same launches while it does not (core.mjs fetchPumpFeed) */
+    fetch: () => fetchPumpFeed({ pages: 6, sort: 'market_cap', complete: true }),
+    upstream: () => feedVia.pumpfun,
   },
   bonding: {
     id: 'bonding', label: 'pump.fun bonding', group: 'Solana launchpads',
     chain: 'solana', ttl: 10_000, enrich: true, boostable: true, quality: 'memecoin',
-    fetch: () => fetchPumpCoins({ pages: 6, sort: 'last_trade_timestamp', complete: false }),
+    fetch: () => fetchPumpFeed({ pages: 6, sort: 'last_trade_timestamp', complete: false }),
   },
   /* The wider market. Deliberately a longer TTL: Bitcoin's market cap does not
      move enough in ten seconds to be worth a request, and the budget is better

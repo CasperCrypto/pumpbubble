@@ -382,6 +382,13 @@ h3 .ic{vertical-align:-.12em}
 /* a company's full legal name is long: one line, cut, on every screen */
 #smTable td.itrade{overflow:hidden;max-width:320px}
 #smTable td.itrade b,#smTable td.itrade small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the summary and filters above a people table */
+#smTable .tbar{max-width:1100px;margin:2px auto 4px;display:flex;flex-direction:column;gap:7px}
+#smTable .tsum{font-size:12px;color:var(--dim);font-weight:700;line-height:1.55}
+#smTable .tsum b{color:var(--ink)}
+#smTable .tsum .old{color:#e8b04a}
+#smTable .tseg{align-self:flex-start;flex-wrap:wrap;border-radius:16px}
+#smTable .tseg button{min-height:30px;font-size:11.5px}
 #smTable .smEmpty{max-width:520px;margin:56px auto;text-align:center;color:var(--dim);font-weight:700;font-size:13px;line-height:1.6}
 @media (max-width:700px){#smTable .i-ph{display:inline}#smTable .i-dt{display:none}}
 /* phone-only cells: the two numbers that matter, stacked in one column */
@@ -1529,7 +1536,9 @@ const WARN={
   new:t=>`${t.ageH<1?'under an hour':Math.round(t.ageH)+'h'} old — 24h figures mean little`,
   /* Both from pump.fun's own indexer. A measurement, stated as one. */
   dev:t=>`deployer still holds ${(+t.dev).toFixed(1)}% of supply`,
-  top10:t=>`top 10 wallets hold ${Math.round(t.top10)}%`
+  top10:t=>`top 10 wallets hold ${Math.round(t.top10)}%`,
+  /* Jupiter's audit: its top-holder share, stated as Jupiter's */
+  tophold:t=>`top holders own ${Math.round(t.topHold)}% of supply`
 };
 function warnLine(t){
   const f=(t.flags||[]).filter(k=>WARN[k]);
@@ -1565,7 +1574,9 @@ function tone(t){
 async function jget(u,ms=12000){
   const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);
   try{const r=await fetch(u,{signal:c.signal,headers:{Accept:'application/json'}});
-    if(!r.ok)throw new Error(r.status);return await r.json()}
+    /* keep the server's reason: "pnl-leaderboard 403" says what a bare 502 does not */
+    if(!r.ok){let b=null;try{b=await r.json()}catch{}const e=new Error((b&&b.error)||String(r.status));e.body=b;throw e}
+    return await r.json()}
   finally{clearTimeout(t)}
 }
 async function fetchLive(){
@@ -1577,12 +1588,14 @@ async function fetchLive(){
   const src=feedId();
   try{ j=await jget('/api/tokens?source='+encodeURIComponent(src),12000) }
   catch(e){ j=await jget('/api/tokens?source='+encodeURIComponent(src),15000) }
-  if(!j||!j.ok||!Array.isArray(j.tokens))throw new Error('empty');
+  if(!j||!j.ok||!Array.isArray(j.tokens)){const e=new Error((j&&j.error)||'empty');e.body=j;throw e}
   /* An empty arena is a state, not a failure: nobody has added a token yet,
      and the bar says so. Every other feed empty means the feed is down. */
   if(!j.tokens.length&&!EMPTY_MODES.has(S.mode))throw new Error('empty');
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
+  /* 'jupiter' while pump.fun refuses servers: the toolbar says where the coins came from */
+  S.upstream=j.upstream||''; S.kolMeta=j.kols||null;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   /* the board rides the Compute feed; a response without one keeps the last */
   if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
@@ -1619,7 +1632,7 @@ async function fetchLive(){
     /* `kol` on a trending token is pump.fun's count of KOLs in it; on the KOLs
        tab it is a KOL's record. One key held both, and the record's line below
        overwrote the count with null, so the card's "N KOLs" never showed. */
-    rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
+    rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), topHold:NN(t.topHold), organic:t.organic||'', dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
     positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
@@ -1631,6 +1644,8 @@ async function fetchLive(){
        escaped wherever they are written */
     call:t.call&&typeof t.call==='object'?t.call:null, caller:t.caller&&typeof t.caller==='object'?t.caller:null,
     kol:t.kol&&typeof t.kol==='object'?t.kol:null,
+    /* a trader's callout rewards, joined from pump.fun's payout board */
+    rewards:t.rewards&&typeof t.rewards==='object'?t.rewards:null,
     /* an insider's trade (src/insiders.mjs), escaped wherever it is written */
     ins:t.ins&&typeof t.ins==='object'?t.ins:null,
     /* a Collector Crypt pack machine (src/cards.mjs), escaped wherever it is written */
@@ -1680,21 +1695,43 @@ function demo(){
   });
 }
 
+/* Generated bubbles only where there is no server at all (the page opened as
+   a file, or ?demo=1). On the live site they were the default tab's fallback:
+   when pump.fun shut its API to servers on 2026-11-13, every first visit for
+   days got invented memecoins moving on their own, with the live pill that
+   would have said "demo data" already removed from the header. */
+const DEMO_OK=location.protocol==='file:'||/[?&]demo=1\b/.test(location.search);
+/* Why a feed could not load, in words a visitor can use. */
+function loadNote(){
+  const e=String(S.loadErr||'');
+  if(!e)return'';
+  if(S.loadPump||/pnl-leaderboard|pump\.fun|challenge/i.test(e))
+    /* no date: the gate's `since` is when this server copy first saw it, not when it began */
+    return 'pump.fun is refusing requests from servers right now'
+      +' — a Cloudflare challenge in front of its API. This view is read from pump.fun and comes back the moment it answers. The pump.fun map itself keeps working from Jupiter’s data.';
+  return 'This view could not load ('+e.slice(0,90)+'). It tries again every few seconds.';
+}
 async function refresh(first){
+  const want=feedId();
   try{
-    merge(await fetchLive()); S.live=true;
+    merge(await fetchLive()); S.live=true; S.tokensFor=want; S.loadErr=''; S.loadPump=null;
     const s=Math.round((S.age||0)/1000);
     setLive(true, S.serverStale ? 'live · '+(s<90?s+'s':Math.round(s/60)+'m')+' old' : 'live');
     tapbar();
   }
   catch(e){
     S.live=false;
+    S.loadErr=String((e&&e.message)||'could not load'); S.loadPump=(e&&e.body&&e.body.pump)||null;
+    /* A failed tab must not draw the last tab's tokens under its own name —
+       switching to Traders while pump.fun refused left the pump.fun coins on
+       screen, and the traders table tried to read them as traders. */
+    if(S.tokensFor&&S.tokensFor!==feedId()){S.tokens=[];S.tokensFor=''}
     /* The generated set is pump.fun-shaped memecoins. Showing it under "Whole
        market" would label invented bubbles as Bitcoin's market — the exact
        dishonesty the rest of the map exists to avoid. Only the default feed
        falls back to demo; every other source says it could not load and keeps
        whatever was already on screen. */
-    if(S.mode===DEFAULT_SOURCE){
+    if(S.mode===DEFAULT_SOURCE&&DEMO_OK){
       if(!S.tokens.length)merge(demo());
       setLive(false,'demo data');
     }else{
@@ -1715,7 +1752,11 @@ function merge(fresh){
   fresh.forEach(t=>{const o=old.get(t.id);
     if(o){t.x=o.x;t.y=o.y;t.vx=o.vx;t.vy=o.vy;t.r=o.r;t.ph=o.ph;
       if(!S.live)t.boost=o.boost}});
-  old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
+  /* Demo only, like the line above. Live, the server re-adds every paid
+     bubble itself; carrying them here kept a boost the server had ended — or
+     a token the console had hidden — on screen as gold until a reload, and
+     walked the last tab's gold bubbles onto the next tab. */
+  if(DEMO_OK&&!S.live)old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
   S.tokens=fresh;
 }
 /* The live/demo pill is gone from the header — it was chrome that said
@@ -1791,6 +1832,11 @@ function rebuild(){
   L.sort((a,b)=>RANK(b)-RANK(a));
   /* the table shows the whole ranked list, not the bubble limit */
   if(TABLE_MODES.has(S.mode))renderSmartTable(L);else renderSmartTable([]);
+  /* nothing to draw yet, or because the feed failed: say which, over the empty map */
+  if(!TABLE_MODES.has(S.mode)&&!S.tokens.length&&(S.loadErr||!S.live)){
+    const box=document.getElementById('smTable');box.hidden=false;
+    box.innerHTML=emptyNote(S.loadErr?loadNote():'Loading the map…');
+  }
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
   /* a partner's pinned token stays on screen regardless of ranking */
@@ -1801,8 +1847,15 @@ function rebuild(){
   /* Say what was hidden and why — a filtered screener that hides the fact it is
      filtering is the same lie as showing the paper caps in the first place. */
   const hn=document.getElementById('hiddenNote');
-  hn.textContent=S.degraded?'prices refreshing \u2014 showing all':S.hidden?`${S.hidden} unbacked hidden`:'';
-  hn.title=S.hidden?'Hidden: market cap far above pool liquidity, no trading, a ticker shared across many mints, or below the size worth charting.':'';
+  const via=S.upstream==='jupiter'&&(S.mode==='pumpfun'||S.mode==='bonding')?'via Jupiter':'';
+  /* The live pill that said "live · 14m old" is gone from the header, so an
+     old copy says its age here: Crypto served a 14-minute-old copy while
+     CoinPaprika refused the Worker, Robinhood one five hours old. */
+  const am=Math.round((S.age||0)/6e4);
+  const old=S.live&&S.serverStale&&am>=5?'prices '+(am<90?am+'m':Math.round(am/60)+'h')+' old':'';
+  hn.textContent=[via,old,S.degraded?'prices refreshing \u2014 showing all':S.hidden?`${S.hidden} unbacked hidden`:''].filter(Boolean).join(' \u00b7 ');
+  hn.title=[old?'The source has not answered for a while, so this is the last good copy it gave.':'',via?'pump.fun is refusing requests from servers, so its coins are read from Jupiter\u2019s token data: the same launches, priced by Jupiter.':'',
+    S.hidden?'Hidden: market cap far above pool liquidity, no trading, a ticker shared across many mints, or below the size worth charting.':''].filter(Boolean).join(' ');
   stats();
 }
 /* Smart money's holdings as rows. Sorted by holders unless a header says
@@ -1848,31 +1901,62 @@ function renderSmartTable(list){
     }).join('')
     +'</tbody></table>';
 }
+/* The bar above a people table: what the table adds up to, and its filters. */
+function tbar(sum,chips){return '<div class="tbar">'+(sum?'<div class="tsum">'+sum+'</div>':'')+(chips?'<div class="seg tseg">'+chips+'</div>':'')+'</div>'}
+function tchip(attr,val,cur,label,tip){return `<button class="${cur===val?'on':''}" data-${attr}="${esc(val)}"${tip?' title="'+esc(tip)+'"':''}>${label}</button>`}
+/* "read 4d ago" once data is older than a couple of hours — pump.fun stopped
+   answering servers, and a four-week-old record must not pass for today's */
+function readAgo(ts,what){return ts&&Date.now()-ts>2*36e5?'<span class="old">'+esc(what)+' read '+esc(since(ts))+'</span>':''}
+const rho=v=>v==null||!isFinite(v)?'—':(v>=0?'+':'\u2212')+Math.abs(v).toFixed(2);
+
 /* Top traders as rows: banked first — it is the ranking — then the rest of
-   the picture, and what they hold. A row opens the trader's card. */
-let TR_SORT='realized';
+   the picture, and what they hold. A row opens the trader's card.
+   Rewards: what pump.fun paid the same wallet in callout rewards, from its
+   payout board. Banked is trading profit only — pump.fun's PnL board counts
+   positions — so a KOL's rewards are shown beside it, never inside it, and
+   one tap leaves only the people whose money came from trading. */
+let TR_SORT='realized',TR_FILTER='all';
 function renderTraderTable(box,list){
+  if(!list.some(t=>t.kind==='trader')){box.innerHTML=emptyNote(loadNote()||'Reading pump.fun’s trader leaderboard…');return}
   const key={realized:t=>t.realized||0,total:t=>t.total==null?-1e15:t.total,open:t=>t.unrealized==null?-1e15:t.unrealized,
-             positions:t=>t.positions||0}[TR_SORT];
-  const rows=[...list].sort((a,b)=>key(b)-key(a));
+             positions:t=>t.positions||0,rewards:t=>t.rewards?(t.rewards.paidWin!=null?t.rewards.paidWin:t.rewards.paid||0):-1}[TR_SORT]||(t=>0);
+  const all=list.filter(t=>t.kind==='trader');
+  const paidRows=all.filter(t=>t.rewards&&(t.rewards.paid>0||t.rewards.paidWin>0));
+  const win={daily:'today',weekly:'this week',monthly:'this month'}[(all[0]||{}).period]||'in this window';
+  let sum='';
+  if(paidRows.length){
+    const rw=paidRows.reduce((s,t)=>s+(t.rewards.paidWin||0),0),rAll=paidRows.reduce((s,t)=>s+(t.rewards.paid||0),0);
+    const bank=paidRows.reduce((s,t)=>s+(t.realized||0),0);
+    sum='<b>'+paidRows.length+'</b> of these '+all.length+' traders are also KOLs pump.fun pays to call coins'
+      +(rw?' — <b>'+esc(fmtUsd(rw))+'</b> in callout rewards '+esc(win):'')+(rAll?' ('+esc(fmtUsd(rAll))+' all time)':'')
+      +', beside <b>'+esc(fmtUsd(bank))+'</b> they banked trading. Banked is trading profit only; rewards are paid on top, in USDC.';
+  }
+  const rows=all.filter(t=>TR_FILTER==='all'||(TR_FILTER==='paid'?paidRows.includes(t):!paidRows.includes(t))).sort((a,b)=>key(b)-key(a));
+  const chips=paidRows.length?tchip('trf','all',TR_FILTER,'All traders')
+    +tchip('trf','pure',TR_FILTER,'Traders only','Leave out everyone pump.fun pays callout rewards to')
+    +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins'):'';
+  const bar=tbar(sum,chips);
   /* under a dollar is flat: "$0" in grey, never "\u2212$0" */
   const money=v=>v==null||!Number.isFinite(+v)?'<span style="color:var(--dim)">\u2014</span>'
     :Math.abs(v)<1?'<span style="color:var(--dim)">$0</span>'
     :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'\u2212'}${esc(fmtUsd(Math.abs(v)))}</span>`;
   const th=(k,label,cls='')=>`<th class="${cls}${TR_SORT===k?' on':''}" ${k?'data-tsort="'+k+'"':''}>${label}${TR_SORT===k?' \u2193':''}</th>`;
   const sp=(k,label)=>`<span class="${TR_SORT===k?'on':''}" data-tsort="${k}">${label}${TR_SORT===k?' \u2193':''}</span>`;
-  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num c-dt')+th('open','Open positions','num c-h1')
-    +th('total','Total PnL','num c-dt')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+  const rew=r=>!r?'<span style="color:var(--dim)">—</span>'
+    :'<b class="mid">'+esc(fmtUsd(r.paidWin!=null?r.paidWin:(r.paid||0)))+'</b>'+(r.paidWin!=null&&r.paid?'<br><span class="htxt">'+esc(fmtUsd(r.paid))+' all time</span>':r.paidWin==null?'<br><span class="htxt">all time</span>':'');
+  box.innerHTML=bar+'<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num c-dt')+th('open','Open positions','num c-h1')
+    +th('total','Total PnL','num c-dt')+th('rewards','Callout rewards','num c-dt')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
     +'<th class="num c-ph">'+sp('realized','Banked')+' \u00b7 '+sp('total','Total')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
       const handle=t.xh?'@'+t.xh:'';
       return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
-        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc(handle)}</small></div></div></td>`
+        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc([handle,paidRows.includes(t)?'paid KOL':''].filter(Boolean).join(' · '))}</small></div></div></td>`
         +`<td class="num c-dt"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
         +`<td class="num c-h1">${money(t.unrealized)}</td>`
         +`<td class="num c-dt">${money(t.total)}</td>`
+        +`<td class="num c-dt">${rew(t.rewards)}</td>`
         +`<td class="num c-vol">${t.positions!=null?esc(String(t.positions)):'\u2014'}</td>`
         +`<td class="who c-who">${(t.top||[]).map(p=>'<b>$'+esc(p.sym)+'</b>').join(', ')}</td>`
         +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td>`
@@ -1894,6 +1978,15 @@ function holdChip(s){return s==='holding'?'<span class="hc up">'+ic('hand')+' st
   :s==='sold'?'<span class="hc dn">'+ic('exit')+' sold</span>':'<span style="color:var(--dim)">—</span>'}
 const HOLD_TXT={holding:'the caller still holds it',trimmed:'the caller took some profit and still holds',sold:'the caller has sold'};
 function emptyNote(msg){return '<div class="smEmpty">'+esc(msg)+'</div>'}
+/* The Calls tab's watcher reads pump.fun itself, in a Durable Object. When
+   pump.fun refuses it, an empty table is an outage, not "nothing yet". */
+function pumpQuiet(){
+  const m=S.mode==='kols'?S.kolMeta:S.callMeta;
+  const e=String((m&&m.lastError)||'');
+  return /403|refuses|challenge/.test(e)
+    ?'pump.fun is refusing requests from servers right now — a Cloudflare challenge in front of its API — so new calls and records cannot be read. What was read before it closed stays here; the table fills again when pump.fun answers.'
+    :'';
+}
 function avatarOf(img,label){return img?`<img src="${esc(img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(label||'?')},40%,30%)">${esc(String(label||'?')[0])}</span>`}
 
 let CL_SORT='new';
@@ -1901,10 +1994,15 @@ function renderCallsTable(box,list){
   const key={new:t=>t.call.at||0,peak:t=>+t.call.peak||0,now:t=>+t.call.now||0,
              caller:t=>t.call.by&&t.call.by.rank?1e4-t.call.by.rank:(t.call.by&&t.call.by.hit2!=null?t.call.by.hit2:-1),views:t=>+t.call.views||0}[CL_SORT]||(t=>0);
   const rows=list.filter(t=>t.call).sort((a,b)=>key(b)-key(a));
-  if(!rows.length){box.innerHTML=emptyNote('Listening to pump.fun’s calls… the first ones land within a minute of a fresh start.');return}
+  if(!rows.length){box.innerHTML=emptyNote(loadNote()||pumpQuiet()||'Listening to pump.fun’s calls… the first ones land within a minute of a fresh start.');return}
+  /* whom pump.fun's own ranked feed puts at the top (src/callers.mjs promotion) */
+  const pr=S.callMeta&&S.callMeta.promo;
+  const bar=pr&&pr.top?tbar('pump.fun’s ranked feed'+(pr.at?' ('+esc(since(pr.at))+')':'')+': <b>'+pr.paidTop+' of the top '+pr.top+'</b> slots are KOLs pump.fun pays'
+    +' · <b>'+pr.provenTop+'</b> from callers whose calls reach 2× at least a quarter of the time, <b>'+pr.unknownTop+'</b> from callers with no weekly record'
+    +(pr.nowTop!=null&&pr.nowRest!=null?' · the top slots’ calls are at <b class="'+multCls(pr.nowTop)+'">'+mult(pr.nowTop)+'</b> at the median, every other live call <b class="'+multCls(pr.nowRest)+'">'+mult(pr.nowRest)+'</b>':''),''):'';
   const th=(k,label,cls='')=>`<th class="${cls}${CL_SORT===k?' on':''}" ${k?'data-csort="'+k+'"':''}>${label}${CL_SORT===k?' ↓':''}</th>`;
   const sp=(k,label)=>`<span class="${CL_SORT===k?'on':''}" data-csort="${k}">${label}${CL_SORT===k?' ↓':''}</span>`;
-  box.innerHTML='<table><thead><tr>'+th('','#')+th('','Token')+th('caller','Called by','c-who')+th('','Called at','num c-dt')
+  box.innerHTML=bar+'<table><thead><tr>'+th('','#')+th('','Token')+th('caller','Called by','c-who')+th('','Called at','num c-dt')
     +th('peak','Peak','num c-dt')+th('now','Now','num c-dt')+th('new','When','num c-vol')+th('','Caller','c-h1')
     +'<th class="num c-ph">'+sp('now','Now')+' · '+sp('peak','Peak')+'</th>'
     +'</tr></thead><tbody>'
@@ -1928,11 +2026,18 @@ let CR_SORT='rank';
 function renderCallerTable(box,list){
   const key={rank:t=>-(t.rank||1e9),hit:t=>t.caller.hit2||0,med:t=>+t.caller.med||0,calls:t=>t.caller.n||0,banked:t=>t.caller.banked||0}[CR_SORT]||(t=>0);
   const rows=list.filter(t=>t.caller).sort((a,b)=>key(b)-key(a));
-  if(!rows.length){box.innerHTML=emptyNote('Reading the callers’ records… the board fills within a few minutes of a fresh start.');return}
+  if(!rows.length){box.innerHTML=emptyNote(loadNote()||pumpQuiet()||'Reading the callers’ records… the board fills within a few minutes of a fresh start.');return}
+  const st=rows.map(t=>t.caller.statsAt||0).filter(Boolean);
+  const nEx=rows.filter(t=>t.caller.exits&&t.caller.exits.n).length;
+  const old=st.length?readAgo(Math.max(...st),'newest record'):'';
+  const bar=tbar([old?old+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':''):'',
+    nEx?'<b>'+nEx+'</b> of these callers took profit on a call of their own while a follower who bought at the call was under water':''].filter(Boolean).join('<br>'),'');
   const th=(k,label,cls='')=>`<th class="${cls}${CR_SORT===k?' on':''}" ${k?'data-rsort="'+k+'"':''}>${label}${CR_SORT===k?' ↓':''}</th>`;
   const sp=(k,label)=>`<span class="${CR_SORT===k?'on':''}" data-rsort="${k}">${label}${CR_SORT===k?' ↓':''}</span>`;
-  box.innerHTML='<table><thead><tr>'+th('rank','#')+th('','Caller')+th('hit','Hit 2×','num c-dt')+th('med','Median peak','num c-dt')
-    +th('calls','Calls','num c-vol')+th('','Best','num c-h1')+th('','Time to peak','num c-vol')+th('banked','Banked','num c-vol')+th('','Recent calls','c-who')
+  box.innerHTML=bar+'<table><thead><tr>'+th('rank','#')+th('','Caller')+th('hit','Hit 2×','num c-dt')+th('med','Median peak','num c-dt')
+    +th('calls','Calls','num c-vol')+th('','Best','num c-h1')+th('','Time to peak','num c-vol')+th('banked','Banked','num c-vol')
+    +'<th class="num c-vol" title="Calls we saw where the caller took profit on their own position while a follower who bought at the call is under water">Banked, holders down</th>'
+    +th('','Recent calls','c-who')
     +'<th class="num c-ph">'+sp('hit','Hit 2×')+' · '+sp('med','Median')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map(t=>{
@@ -1947,6 +2052,7 @@ function renderCallerTable(box,list){
         +`<td class="num c-h1">${esc(c.best||'—')}</td>`
         +`<td class="num c-vol">${c.ttpMs?esc(dur(c.ttpMs)):'—'}</td>`
         +`<td class="num c-vol">${c.banked?'<span class="up">+'+esc(fmtUsd(c.banked))+'</span>':'<span style="color:var(--dim)">—</span>'}</td>`
+        +`<td class="num c-vol">${c.exits?'<span class="'+(c.exits.n?'dn':'')+'">'+esc(String(c.exits.n))+' of '+esc(String(c.exits.of))+'</span>':'<span style="color:var(--dim)">—</span>'}</td>`
         +`<td class="who c-who">${recent||'<span style="color:var(--dim)">none seen yet</span>'}</td>`
         +`<td class="num c-ph stk"><b class="up">${pct}% hit 2×</b><small>median ${mult(c.med)} · ${esc(String(c.n||0))} calls</small></td></tr>`;
     }).join('')
@@ -1959,7 +2065,15 @@ function renderCallerTable(box,list){
    in between, red for dust calls and medians under 1.5×. "Hold now" is
    ours: the median multiple today for a follower who bought at the call and
    never sold — paid is not the same as good. */
-let KL_SORT='paid';
+let KL_SORT='paid',KL_FILTER='all';
+/* the KOL filters: whose calls a follower kept money on, who calls coins
+   with room to grow, and who also banks trading */
+const KL_FILTERS={
+  all:()=>true,
+  up:t=>t.kol.medNow!=null&&t.kol.medNow>=1,
+  real:t=>t.kol.avgMcap!=null&&t.kol.avgMcap>=1e5,
+  traders:t=>!!t.kol.trading,
+};
 const kolMc=v=>v==null?'':v>=1e6?'up':v>=1e5?'mid':'dn';
 const kolPk=v=>v==null?'':v>=2.5?'up':v>=1.5?'mid':'dn';
 const kolAvg=v=>v==null?'':v>=5?'up':v>=2.5?'mid':'dn';
@@ -1968,12 +2082,28 @@ function renderKolTable(box,list){
   const nn=v=>v==null||!isFinite(v)?-1:+v;
   const key={paid:t=>t.kol.paid||0,rank:t=>-(t.rank||1e9),mcap:t=>nn(t.kol.avgMcap),fol:t=>nn(t.kol.followers),
              med:t=>nn(t.kol.medPeak),avg:t=>nn(t.kol.avgPeak),now:t=>nn(t.kol.medNow),hit:t=>nn(t.kol.hit2)}[KL_SORT]||(t=>0);
-  const rows=list.filter(t=>t.kol).sort((a,b)=>key(b)-key(a));
-  if(!rows.length){box.innerHTML=emptyNote('Reading pump.fun’s payout board… KOLs appear within a minute of a fresh start, their records over the next few.');return}
+  const allRows=list.filter(t=>t.kol);
+  if(!allRows.length){box.innerHTML=emptyNote(loadNote()||pumpQuiet()||'Reading pump.fun’s payout board… KOLs appear within a minute of a fresh start, their records over the next few.');return}
+  const rows=allRows.filter(KL_FILTERS[KL_FILTER]||KL_FILTERS.all).sort((a,b)=>key(b)-key(a));
+  /* what the board adds up to (src/kols.mjs boardSummary) */
+  const m=S.kolMeta||{},sm=m.summary||null,pc=v=>v==null?'—':Math.round(v*100)+'%';
+  const hist=allRows.map(t=>t.kol.histAt||0).filter(Boolean);
+  const stale=[readAgo(m.at,'payout board'),hist.length?readAgo(Math.max(...hist),'newest call record'):''].filter(Boolean).join(' · ');
+  let sum=sm&&sm.paid?'<b>'+esc(fmtUsd(sm.paid))+'</b> paid to these '+sm.kols+' KOLs · the top 10 took <b>'+pc(sm.top10Share)+'</b>'
+    +(sm.withRecord?' · for <b>'+pc(sm.holdersDownHalf)+'</b> of the '+sm.withRecord+' with a record, a follower who bought at the call and held is down more than half (median <b>'+mult(sm.medHoldNow)+'</b>)'
+      +' · <span title="Spearman rank correlation across these KOLs: +1 means more pay always goes with more of it, −1 with less">pay vs 2× rate <b>'+rho(sm.payVsHit2)+'</b>, pay vs what holders kept <b>'+rho(sm.payVsHoldNow)+'</b></span>':''):'';
+  if(stale)sum=(sum?sum+'<br>':'')+stale+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':'');
+  const nUp=allRows.filter(KL_FILTERS.up).length,nReal=allRows.filter(KL_FILTERS.real).length,nTr=allRows.filter(KL_FILTERS.traders).length;
+  const chips=tchip('klf','all',KL_FILTER,'All')
+    +tchip('klf','up',KL_FILTER,'Holders up '+nUp,'KOLs whose calls are above the call price today, at the median — a follower who held kept money')
+    +tchip('klf','real',KL_FILTER,'Calls ≥ $100K '+nReal,'KOLs whose average call is at $100K market cap or more')
+    +(nTr?tchip('klf','traders',KL_FILTER,'Also top traders '+nTr,'KOLs who are also on pump.fun’s PnL boards for what they banked trading'):'');
+  const bar=tbar(sum,chips);
+  if(!rows.length){box.innerHTML=bar+emptyNote('No KOL on this board fits that filter.');return}
   const th=(k,label,cls='',tip='')=>`<th class="${cls}${KL_SORT===k?' on':''}" ${k?'data-ksort="'+k+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}${KL_SORT===k?' ↓':''}</th>`;
   const sp=(k,label)=>`<span class="${KL_SORT===k?'on':''}" data-ksort="${k}">${label}${KL_SORT===k?' ↓':''}</span>`;
   const dash='<span style="color:var(--dim)">—</span>';
-  box.innerHTML='<table><thead><tr>'+th('rank','#')+th('','KOL')
+  box.innerHTML=bar+'<table><thead><tr>'+th('rank','#')+th('','KOL')
     +th('paid','Rewards','num c-dt','USDC pump.fun has paid this caller in callout rewards')
     +th('mcap','Avg mcap at call','num c-dt','Average market cap when they called, over their last 100 calls. Under $100K is red: tiny coins, little room for a follower')
     +th('fol','Followers','num c-vol','Followers on pump.fun')
@@ -1985,7 +2115,8 @@ function renderKolTable(box,list){
     +'</tr></thead><tbody>'
     +rows.map(t=>{
       const k=t.kol,handle=t.xh?'@'+t.xh:'';
-      const sub=[handle,k.followers!=null?fmtK(k.followers)+' followers':''].filter(Boolean).join(' · ');
+      const tw=k.trading&&(k.trading.weekly||k.trading.monthly||k.trading.daily);
+      const sub=[handle,k.followers!=null?fmtK(k.followers)+' followers':'',tw?'trader #'+tw.rank:''].filter(Boolean).join(' · ');
       const hit=k.hit2!=null?Math.round(k.hit2*100):null;
       return `<tr class="row" data-id="${esc(t.id)}"><td>${esc(String(t.rank||''))}</td>`
         +`<td><div class="tk">${avatarOf(t.img,t.sym)}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc(sub||(k.payouts?k.payouts+' payouts':''))}</small></div></div></td>`
@@ -2012,7 +2143,11 @@ function kolLine(t){
       +(k.hit2!=null?' · '+Math.round(k.hit2*100)+'% hit 2×':'')
       +' · a follower who held has <b class="'+multCls(k.medNow)+'">'+mult(k.medNow)+'</b> at the median'
       +(k.inProfit!=null?' ('+Math.round(k.inProfit*100)+'% of calls above the call price)':'')
-      +'</div>':'<div class="warn" style="opacity:.7">ⓘ reading this KOL’s calls…</div>');
+      +(k.histAt&&Date.now()-k.histAt>2*36e5?' · <span style="color:#e8b04a">record read '+esc(since(k.histAt))+'</span>':'')
+      +'</div>':'<div class="warn" style="opacity:.7">ⓘ reading this KOL’s calls…</div>')
+    +(k.trading?'<div class="warn" style="opacity:.9">'+ic('banknote')+'Also on pump.fun’s PnL boards for trading: '
+      +['daily','weekly','monthly'].filter(w=>k.trading[w]).map(w=>'#'+esc(String(k.trading[w].rank))+' '+({daily:'today',weekly:'this week',monthly:'this month'}[w])+', banked <span class="up">+'+esc(fmtUsd(k.trading[w].realized||0))+'</span>').join(' · ')
+      +' — on top of the rewards</div>':'');
 }
 /* Insiders: one trade a row, newest filing first. The amount is what the
    filing says — a range for Congress and the White House (all the law asks
@@ -2261,12 +2396,17 @@ function callerLine(t){
     +(c.best?' · best call '+esc(c.best):'')
     +(c.banked?' · banked <span class="up">+'+esc(fmtUsd(c.banked))+'</span> on pump.fun':'')
     +(c.soldOf?' · sold '+esc(String(c.soldOf.sold))+' of the '+esc(String(c.soldOf.of))+' calls we saw':'')
+    +(c.exits&&c.exits.n?' · <b class="dn">took profit on '+esc(String(c.exits.n))+' of '+esc(String(c.exits.of))+'</b> while a follower who bought at the call was under water':'')
     +((c.recent||[]).length?' · recent: '+c.recent.map(r=>'$'+esc(r.sym)+' <span class="'+multCls(r.now)+'">'+mult(r.now)+'</span>').join(', '):'')
     +'</div>';
 }
 
 document.getElementById('smTable').addEventListener('click',e=>{
   if(e.target.closest('a'))return;
+  const tf=e.target.closest('[data-trf]');
+  if(tf){TR_FILTER=tf.dataset.trf;rebuild();return}
+  const kf=e.target.closest('[data-klf]');
+  if(kf){KL_FILTER=kf.dataset.klf;rebuild();return}
   if(e.target.closest('[data-iclear]')){S.insPerson='';S.insPersonRows=null;rebuild();return}
   const ip=e.target.closest('tr[data-ip]');
   if(ip){openInsider(ip.dataset.ip);return}
@@ -3264,7 +3404,13 @@ function openCard(t){
         : 'golden by taps — <b>'+nf(t.tapGold)+' taps</b> in Tap wars, not paid for')
       +'</div>'
     : '';
-  const pumpLine=(t.via==='pump'
+  /* a pump.fun coin read from Jupiter: what Jupiter measures that pump.fun's record never carried */
+  const jupLine=t.via==='jupiter'&&(t.holders!=null||t.organic)
+    ? '<div class="warn" style="opacity:.9">'+ic('chart')+[t.holders!=null?nf(t.holders)+' holders':'',
+        t.txns&&t.txns.traders?nf(t.txns.traders)+' traders 24h':'',
+        t.organic?'organic activity: <b>'+esc(t.organic)+'</b> (Jupiter’s score of how much trading is not bots)':''].filter(Boolean).join(' · ')+'</div>'
+    : '';
+  const pumpLine=jupLine+(t.via==='pump'
     ? '<div class="warn" style="opacity:.9">'+ic('flame')+'#'+esc(String(t.rank))+' on pump.fun trending'+(t.pumpHot?' · <b>HOT</b>':'')+(t.verified?' · '+ic('verified','up')+'verified':'')
       +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
       +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
@@ -4526,12 +4672,14 @@ async function initEmbed(){
 /* Paint something immediately.
    A cold worker builds the whole snapshot before it answers, so the first
    request can take seconds — and waiting for it left an empty canvas, which
-   reads as a broken site rather than a loading one. Seed the map with the
-   generated set, labelled honestly as such in the status chip, and let the
-   live data replace it the moment it lands. */
+   reads as a broken site rather than a loading one. The generated set used to
+   fill that gap, "labelled honestly in the status chip" — but the chip was
+   removed from the header, so for those seconds every visitor saw 113 coins
+   that do not exist, with prices. Now the map says it is loading, and the
+   generated set is kept for a page with no server behind it (DEMO_OK). */
 captureRef();
 initEmbed();
-merge(demo());
+if(DEMO_OK)merge(demo());
 setLive(false,'loading…');
 resize();rebuild();rail();loop();
 refresh(true);loadAds();resumePendingOrder();shareTenBtn();

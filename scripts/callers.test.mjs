@@ -17,7 +17,7 @@
        stops asking the stats endpoint the moment it says 429.
    ========================================================================== */
 
-import { CallerBook, shapeCall, shapeStats, holdStatus, nowMultiple, wilson, pollOnce,
+import { CallerBook, shapeCall, shapeStats, holdStatus, nowMultiple, wilson, pollOnce, isExit, tradingMap,
   FEED, FEED_NEW, COINS, MIN_CALLS, KEEP_NEW_MIN_CALLS, ALERT_MAX_AGE, STATS_TTL } from '../src/callers.mjs';
 
 let pass = 0, fail = 0;
@@ -207,6 +207,58 @@ console.log('\nsaving — the object is recycled between ticks, so what is saved
   ok('a full book fits one storage value (2 MB) with room to spare', bytes < 1.6 * 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : (no('size', bytes), ''));
   is('at most SAVE_CALLERS callers are written', saved.callers.length, 1000);
   ok('callers with a record are written first', saved.callers.every(p => p.stats || p.board) ? '' : (no('priority'), ''));
+}
+
+console.log('\nbanked while holders were under water');
+{
+  const c = shapeCall(row({ held: 0, heldUsd: 0, realized: 400, mcapCall: 100_000, mcapNow: 40_000 }), NOW);
+  is('sold at a profit, holders at 0.4×: an exit', isExit(c), true);
+  is('trimmed at a profit, holders at 0.4×: an exit', isExit(shapeCall(row({ realized: 400, mcapNow: 40_000 }), NOW)), true);
+  is('sold at a profit, holders up: not one', isExit(shapeCall(row({ held: 0, heldUsd: 0, realized: 400, mcapNow: 300_000 }), NOW)), false);
+  is('sold at a loss: not one', isExit(shapeCall(row({ held: 0, heldUsd: 0, realized: -50, mcapNow: 40_000 }), NOW)), false);
+  is('still holding: not one', isExit(shapeCall(row({ mcapNow: 40_000 }), NOW)), false);
+  is('no position read: not one', isExit({ ...c, held: null }), false);
+
+  const b = new CallerBook();
+  const W = addr(9, 'E');
+  b.ingest({ coins: [
+    row({ id: 'e1', wallet: W, held: 0, heldUsd: 0, realized: 300, mcapNow: 30_000, at: NOW - 3_600_000 }),
+    row({ id: 'e2', wallet: W, mint: addr(11), held: 0, heldUsd: 0, realized: 200, mcapNow: 50_000, at: NOW - 7_200_000 }),
+    row({ id: 'e3', wallet: W, mint: addr(12), mcapNow: 400_000, at: NOW - 9_000_000 }),
+  ] }, NOW, 'feed');
+  b.applyStats(W, stats(20, 60), NOW);
+  const r = b.board('weekly', NOW).find(x => x.wallet === W);
+  is('the board counts them', JSON.stringify(r && r.exits), JSON.stringify({ n: 2, of: 3 }));
+  is('…and says when the record was read', r && r.statsAt, NOW);
+}
+
+console.log('\nwhom pump.fun’s ranked feed promotes');
+{
+  const b = new CallerBook();
+  const KOL = addr(20, 'K'), GOOD = addr(21, 'G'), NEW = addr(22, 'N');
+  const feed = [];
+  for (let i = 0; i < 8; i++) feed.push(row({ id: 'f' + i, wallet: i < 5 ? KOL : GOOD, mint: addr(30 + i), mcapNow: i < 5 ? 50_000 : 200_000, at: NOW - 60_000 * (i + 1) }));
+  b.ingest({ coins: feed }, NOW, 'feed');
+  b.ingest({ coins: [row({ id: 'n1', wallet: NEW, mint: addr(40), mcapNow: 300_000, calls: 30 })] }, NOW, 'new');
+  b.applyStats(KOL, stats(20, 10), NOW);   // pump.fun pays it; its calls rarely reach 2×
+  b.applyStats(GOOD, stats(20, 60), NOW);
+  const p = b.promotion(new Set([KOL]), NOW, 5);
+  is('reads the feed in pump.fun’s order', p && p.slots, 8);
+  is('the top five are the paid KOL’s', p && p.paidTop, 5);
+  is('none of the top five is from a proven caller', p && p.provenTop, 0);
+  is('the top five are at 0.5× now', p && p.nowTop, 0.5);
+  is('every other live call: 3×', p && p.nowRest, 3);
+  is('the order is saved with the book', JSON.stringify(CallerBook.from(JSON.parse(JSON.stringify(b.toJSON(NOW)))).feedTop.slice(0, 2)), JSON.stringify(['f0', 'f1']));
+  is('a feed too small to read says nothing', new CallerBook().promotion(new Set(), NOW), null);
+}
+
+console.log('\nwhat callers banked, by wallet');
+{
+  const b = new CallerBook();
+  b.seedBoard([{ walletAddress: addr(50, 'T'), rank: 3, realizedPnlUsd: 9000, username: 'trader' }], 'weekly', NOW);
+  const m = tradingMap(b);
+  is('a PnL-board caller is in the map', m.get(addr(50, 'T')).weekly.rank, 3);
+  is('nobody else is', m.size, 1);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

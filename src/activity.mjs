@@ -12,6 +12,8 @@
    A window the API did not answer for is absent, not zero.
    ========================================================================== */
 
+import { pumpFetch } from './pumpgate.mjs';
+
 export const ACTIVITY = 'https://swap-api.pump.fun/v1/coins/market-activity/batch';
 const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 
@@ -21,7 +23,7 @@ export async function fetchActivity(addresses) {
   for (let i = 0; i < addresses.length; i += 50) chunks.push(addresses.slice(i, i + 50));
   await Promise.all(chunks.map(async chunk => {
     try {
-      const r = await fetch(ACTIVITY, {
+      const r = await pumpFetch(ACTIVITY, {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': UA },
         body: JSON.stringify({
