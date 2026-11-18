@@ -1075,7 +1075,16 @@ the peak a perfect seller could have caught, not what a follower ends up with. *
 top 100** had followers above the call price at the median — the "Holders up" filter reads 0.
 The summary states correlations and shares; it never says why pump.fun pays as it does.
 
-- Filters: Holders up (hold-now ≥ 1×), Calls ≥ $100K, Also top traders. **Trading is joined on**
+- **"Most calls in profit" (was "Best for followers") ranks the share of a KOL's calls still above
+  the call price, at the lower edge of its 95% Wilson interval, from 10 calls up** (`followScore`).
+  The median hold-now ranked FrankieMelli first at 0.78× with only 5% of calls in profit — calls
+  that each lost a little, never ones anybody made money on — and put a 15-call KOL fourth. On the
+  13 Nov board the new order is sapphy 31% of 86, hexiecs 30% of 83, zinceth 24% of 99. **It
+  measures calls, not followers**: a follower bought after the call (bots front-run in seconds, and
+  a caller can bundle), so the real outcome is worse, and the page says so. "% of a KOL's tailers in
+  profit" would need who tailed each call — pump.fun knows (it pays rewards on tailers' volume) but
+  publishes no such endpoint we found, and reading it on-chain needs a keyed RPC.
+- Filters: Holders up (hold-now ≥ 1×, 10+ calls), Calls ≥ $100K, Also top traders. **Trading is joined on**
   (`tradingOf`, from the PnL-board ranks the CallersDO already reads): a KOL's card says where the
   same wallets sit on pump.fun's trading boards — "on top of the rewards".
 - **Record age is shown** (`histAt`): every record's newest call was 22–23 Oct while the payout
