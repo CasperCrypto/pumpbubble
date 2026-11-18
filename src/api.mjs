@@ -1374,6 +1374,11 @@ export async function handle(req, ctx) {
       if (src.id.startsWith('traders-')) {
         try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
       }
+      /* Top callers too: who earns the most from calling, beside how good
+         the calls are (daily → 1d, weekly → 1w, monthly → 1m, as for traders) */
+      if (src.id.startsWith('callers-')) {
+        try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
+      }
       /* Compute mixes both, so each row takes the windows of its own kind:
          keyed by symbol, a coin and a company sharing a ticker would trade
          numbers otherwise. */

@@ -914,6 +914,11 @@ inside data"):
   with no record — and the top slots' median multiple now against every other live call. A
   measurement of the feed, not a claim about intent. Both need pump.fun to answer again.
 
+**Who earns the most from calling** (2026-11-18): Top callers carry the same payout join as
+Traders (`withRewards`, the window's payout board) — a Callout rewards column, "earned $X" on the
+phone line, a "Most earned" sort and a "Paid callers" filter, and a line naming the top earner
+beside their hit rate. On the boards read 13 Nov, 39 of the week's top 100 callers were paid KOLs.
+
 **On the page** both views are tables in the Smart money tables' container (`TABLE_MODES`), rows
 as the feed pipeline expects: a call is a token row (`kind: 'call'`, one per call — two callers on
 one coin are two rows), so the card's Chart, Buy and Boost work; a caller is a people row like a
