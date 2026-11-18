@@ -210,6 +210,8 @@ export function normalizeJup(j) {
     topHold: pctOf(a.topHoldersPercentage),
     dev: pctOf(a.devBalancePercentage),
     organic: ['low', 'medium', 'high'].includes(j.organicScoreLabel) ? j.organicScoreLabel : '',
+    /* the share of 24h volume Jupiter counts as organic (not bots), for Fresh and the card */
+    organicShare: d && volOf(d) > 0 ? (num(d.buyOrganicVolume) + num(d.sellOrganicVolume)) / volOf(d) : null,
     curveSol: 0,
     nsfw: false,
     banned: false,
@@ -244,8 +246,7 @@ export async function fetchPumpFeed(opts = {}, { jup = jupRows, seed = PUMP_SEED
     }
   } else err = pumpStatus.lastError || 'pump.fun paused';
   const now = Date.now();
-  let rows = jupMem.rows && now - jupMem.at < JUP_MEM_MS ? jupMem.rows : null;
-  if (!rows) { rows = await jup({ mints: seed }); jupMem = { at: now, rows }; }
+  const rows = await jupPumpRows(jup, seed, now);
   const want = opts.complete;
   const out = [];
   for (const r of rows) {
@@ -261,6 +262,54 @@ export async function fetchPumpFeed(opts = {}, { jup = jupRows, seed = PUMP_SEED
   return out;
 }
 export function _resetFeedMem() { jupMem = { at: 0, rows: null }; }
+
+/* Jupiter's rows, shared by the pump.fun feed and Fresh for twenty seconds. */
+async function jupPumpRows(jup = jupRows, seed = PUMP_SEED, now = Date.now()) {
+  if (jupMem.rows && now - jupMem.at < JUP_MEM_MS) return jupMem.rows;
+  const rows = await jup({ mints: seed });
+  jupMem = { at: now, rows };
+  return rows;
+}
+
+/* Fresh: pump.fun coins under a day old that pass what can be measured.
+
+   pump.fun launches ~21,700 coins a day and most never trade past their
+   first; a list of everything new is a list of noise. So a coin is on this
+   tab only when every check passes, and the card says which checks those
+   are. Each is a measurement, never a verdict — passing is not safety:
+   - under 24 hours old, at least $20K market cap and $8K of liquidity;
+   - at least 40 distinct traders in 24 hours;
+   - top holders under 50% of supply, the deployer under 10%
+     (Jupiter's audit; a coin it has not audited is not refused for that);
+   - not one-way: past 30 trades, at least a tenth are sells;
+   - real trading: Jupiter's organic score above "low", or at least 10% of
+     volume organic — measured on 211 pump.fun coins (2026-11-18) the median
+     share was 4.5%, so most volume is bots.
+   Read from Jupiter whether or not pump.fun answers: these are fields
+   pump.fun's record never carried. */
+export const FRESH = { maxAgeH: 24, minMcap: 20_000, minLiq: 8_000, minTraders: 40, maxTopHold: 50, maxDev: 10, minOrganic: 0.10 };
+export function freshPasses(t, now = Date.now(), f = FRESH) {
+  if (!t || !t.created) return false;
+  const ageH = (now - t.created) / 36e5;
+  if (!(ageH >= 0 && ageH < f.maxAgeH)) return false;
+  if (!(t.mcap >= f.minMcap) || !(t.liq >= f.minLiq)) return false;
+  if (!(t.txns && t.txns.traders >= f.minTraders)) return false;
+  if (t.topHold != null && t.topHold >= f.maxTopHold) return false;
+  if (t.dev != null && t.dev >= f.maxDev) return false;
+  if (t.txns.n >= ONEWAY_MIN_TXNS && t.txns.sellShare < ONEWAY_SELL_SHARE) return false;
+  if (t.organic !== 'medium' && t.organic !== 'high' && !(t.organicShare >= f.minOrganic)) return false;
+  return true;
+}
+export async function fetchFresh({ jup = jupRows, seed = PUMP_SEED, now = Date.now() } = {}) {
+  const rows = await jupPumpRows(jup, seed, now);
+  const out = [];
+  for (const r of rows) {
+    if (!r || r.launchpad !== 'pump.fun') continue;
+    const t = normalizeJup(r);
+    if (t && freshPasses(t, now)) { t.fresh = true; out.push(t); }
+  }
+  return out.sort((a, b) => b.mcap - a.mcap);
+}
 
 /* Look up one token by mint, whatever its state. The ranked feed only carries
    the top 300, so anything outside that — a small cap, a fresh launch, a

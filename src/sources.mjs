@@ -20,7 +20,7 @@
 
 import { tradersFor } from './traders.mjs';
 import { smartMoney } from './smartmoney.mjs';
-import { normalizeCoin, fetchPumpCoins, fetchPumpFeed, feedVia, fastImage, clean, txnsOf } from './core.mjs';
+import { normalizeCoin, fetchPumpCoins, fetchPumpFeed, fetchFresh, feedVia, fastImage, clean, txnsOf } from './core.mjs';
 import { loadRegistry, discover, priceAll, prune } from './rhchain.mjs';
 import { baseTokens } from './basechain.mjs';
 import { chainTokens, padTokens, predictionTokens, casinoTokens } from './flows.mjs';
@@ -247,6 +247,14 @@ export const SOURCES = {
        same launches while it does not (core.mjs fetchPumpFeed) */
     fetch: () => fetchPumpFeed({ pages: 6, sort: 'market_cap', complete: true }),
     upstream: () => feedVia.pumpfun,
+  },
+  /* New pump.fun coins that pass measured checks (core.mjs fetchFresh), read
+     from Jupiter — the one source carrying organic volume and an audit. An
+     empty tab is a state: nothing passed in this minute. */
+  fresh: {
+    id: 'fresh', label: 'Fresh', group: 'Solana launchpads',
+    chain: 'solana', ttl: 20_000, enrich: true, boostable: true, quality: 'memecoin',
+    fetch: () => fetchFresh(),
   },
   bonding: {
     id: 'bonding', label: 'pump.fun bonding', group: 'Solana launchpads',

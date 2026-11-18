@@ -644,7 +644,7 @@ async function cardsSnapshot(ctx) {
   };
 }
 /* feeds whose empty answer is a state (nothing yet), not an outage */
-const EMPTY_OK = new Set(['taps', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
+const EMPTY_OK = new Set(['taps', 'fresh', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
   'kols-all', 'kols-1m', 'kols-1w', 'kols-1d', 'cards']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */

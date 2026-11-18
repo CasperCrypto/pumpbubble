@@ -966,6 +966,8 @@ body.embed #brandbadge.on{display:flex}
        a second reason to visit, not a replacement for the first. -->
   <div class="seg" id="mode">
     <button data-mode="trending"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg>Trending</button>
+    <!-- new pump.fun coins that pass measured checks (src/core.mjs fetchFresh) -->
+    <button data-mode="fresh" title="pump.fun coins under a day old that pass liquidity, holder, deployer, sell-side and real-trading checks"><svg class="ic" aria-hidden="true"><use href="#i-rocket"/></svg>Fresh</button>
     <!-- shown when the server says the feed is on (cardsOn in /api/tokens) -->
     <button data-mode="cards" hidden><svg class="ic" aria-hidden="true"><use href="#i-cards"/></svg>Cards</button>
     <button data-mode="taps"><svg class="ic" aria-hidden="true"><use href="#i-tap"/></svg>Tap wars</button>
@@ -1339,7 +1341,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>
 const FLOW_MODES=new Set(['chains','pads','prediction','casinos']);
 /* tabs drawn as tables rather than bubbles, and tabs allowed to be empty */
 const TABLE_MODES=new Set(['smart','traders','calls','callers','kols','insiders','packs','pulls','hits']);
-const EMPTY_MODES=new Set(['taps','calls','callers','kols','insiders','cards','packs','pulls','hits']);
+const EMPTY_MODES=new Set(['taps','fresh','calls','callers','kols','insiders','cards','packs','pulls','hits']);
 /* the Cards tab's four views, all one feed: the machines as bubbles, their
    value board, the pulls as they land, the big hits */
 const CARD_MODES=new Set(['cards','packs','pulls','hits']);
@@ -1454,7 +1456,7 @@ function subbar(){
   document.querySelectorAll('#smBoard [data-sb]').forEach(b=>b.classList.toggle('on',b.dataset.sb===(S.smartBoard||'all')));
   document.getElementById('smNote').textContent=S.mode==='smart'
     ?'what pump.fun\u2019s top traders by realized profit hold right now \u00b7 tap a row for chart, buy and boost'
-    :'ranked by realized profit, not paper gains \u00b7 24H / 1W / 1M pick the board';
+    :'ranked by trading profit actually banked \u2014 not paper gains, not callout rewards (shown apart) \u00b7 24H / 1W / 1M pick the board';
 }
 /* The Compute tab's price strip: what one GPU rents for, an hour, on the
    open market (src/compute.mjs says why that market and not the clouds'). The
@@ -1632,7 +1634,7 @@ async function fetchLive(){
     /* `kol` on a trending token is pump.fun's count of KOLs in it; on the KOLs
        tab it is a KOL's record. One key held both, and the record's line below
        overwrote the count with null, so the card's "N KOLs" never showed. */
-    rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), topHold:NN(t.topHold), organic:t.organic||'', dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
+    rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), topHold:NN(t.topHold), organic:t.organic||'', organicShare:NN(t.organicShare), fresh:!!t.fresh, dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
     positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
@@ -1836,6 +1838,10 @@ function rebuild(){
   if(!TABLE_MODES.has(S.mode)&&!S.tokens.length&&(S.loadErr||!S.live)){
     const box=document.getElementById('smTable');box.hidden=false;
     box.innerHTML=emptyNote(S.loadErr?loadNote():'Loading the map…');
+  }
+  if(S.mode==='fresh'&&S.live&&!S.tokens.length&&!S.loadErr){
+    const box=document.getElementById('smTable');box.hidden=false;
+    box.innerHTML=emptyNote('No pump.fun coin under a day old passes every check right now. The list refreshes every 20 seconds.');
   }
   let P=L.slice(0,S.limit);
   S.tokens.forEach(t=>{if(t.boost>0&&!P.includes(t))P.unshift(t)});
@@ -3422,13 +3428,20 @@ function openCard(t){
         : 'golden by taps — <b>'+nf(t.tapGold)+' taps</b> in Tap wars, not paid for')
       +'</div>'
     : '';
+  /* Fresh: the checks it passed, said as checks — passing is not a promise */
+  const freshLine=t.fresh
+    ? '<div class="warn" style="opacity:.9">'+ic('rocket')+'<b>Fresh</b>: '+esc(t.ageH!=null?(t.ageH<1?'under an hour':Math.round(t.ageH)+'h')+' old':'under a day old')
+      +' · passed: $8K+ liquidity, 40+ traders, top holders under 50%, deployer under 10%, sells as well as buys'
+      +(t.organic?', Jupiter organic score <b>'+esc(t.organic)+'</b>':'')
+      +(t.organicShare!=null?' · '+Math.round(t.organicShare*100)+'% of 24h volume counted organic':'')+' · checks, not a guarantee</div>'
+    : '';
   /* a pump.fun coin read from Jupiter: what Jupiter measures that pump.fun's record never carried */
   const jupLine=t.via==='jupiter'&&(t.holders!=null||t.organic)
     ? '<div class="warn" style="opacity:.9">'+ic('chart')+[t.holders!=null?nf(t.holders)+' holders':'',
         t.txns&&t.txns.traders?nf(t.txns.traders)+' traders 24h':'',
         t.organic?'organic activity: <b>'+esc(t.organic)+'</b> (Jupiter’s score of how much trading is not bots)':''].filter(Boolean).join(' · ')+'</div>'
     : '';
-  const pumpLine=jupLine+(t.via==='pump'
+  const pumpLine=freshLine+jupLine+(t.via==='pump'
     ? '<div class="warn" style="opacity:.9">'+ic('flame')+'#'+esc(String(t.rank))+' on pump.fun trending'+(t.pumpHot?' · <b>HOT</b>':'')+(t.verified?' · '+ic('verified','up')+'verified':'')
       +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
       +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
