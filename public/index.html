@@ -1013,7 +1013,6 @@ body.embed #brandbadge.on{display:flex}
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
   <a class="iconbtn sw" href="/swap" title="Swap any Solana token from your own wallet"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>Swap</a>
-  <a class="iconbtn" href="/wallet" title="Any Solana wallet's win rate, realized profit and holdings, read from its own swaps"><svg class="ic" aria-hidden="true"><use href="#i-wallet"/></svg>Wallet X-ray</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Market overview</a>
   <a class="iconbtn" href="/partners" title="Partner with us, or embed a live map on your site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Partners</a>
   <a class="iconbtn" href="/launch" title="Launch a pump.fun token with its page, a Telegram group and the buy bot"><svg class="ic" aria-hidden="true"><use href="#i-rocket"/></svg>Launch a token</a>
@@ -1600,7 +1599,7 @@ async function fetchLive(){
   S.sol=j.sol||0; S.age=j.age||0; S.goldShare=j.goldShare||0; S.serverStale=!!j.stale;
   S.degraded=!!j.degraded;
   /* 'jupiter' while pump.fun refuses servers: the toolbar says where the coins came from */
-  S.upstream=j.upstream||''; S.kolMeta=j.kols||null;
+  S.upstream=j.upstream||''; S.kolMeta=j.kols||null; S.asOf=+j.asOf||0;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   /* the board rides the Compute feed; a response without one keeps the last */
   if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
@@ -1944,6 +1943,8 @@ function renderTraderTable(box,list){
   const chips=paidRows.length?tchip('trf','all',TR_FILTER,'All traders')
     +tchip('trf','pure',TR_FILTER,'Traders only','Leave out everyone pump.fun pays callout rewards to')
     +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins'):'';
+  /* pump.fun refusing servers: the board as last read, and what that copy lacks */
+  if(S.asOf)sum='<span class="old">pump.fun’s board as last read, '+esc(since(S.asOf))+'</span> — pump.fun is refusing requests from servers, so this is the newest copy we have. Banked profit and rank only; open positions were not part of it.'+(sum?'<br>'+sum:'');
   const bar=tbar(sum,chips);
   /* under a dollar is flat: "$0" in grey, never "\u2212$0" */
   const money=v=>v==null||!Number.isFinite(+v)?'<span style="color:var(--dim)">\u2014</span>'
@@ -3471,10 +3472,7 @@ function openCard(t){
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  /* people: their own swaps, read from the chain, one tap away */
-  const xray=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')&&t.wallet
-    ?'<div class="warn" style="opacity:.95">'+ic('wallet')+'<a href="/wallet?w='+encodeURIComponent(t.wallet)+'" style="color:var(--ink);font-weight:800">X-ray this wallet</a> — win rate, realized profit and holdings from its own swaps</div>':'';
-  e('cWarn').innerHTML=xray+(t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
+  e('cWarn').innerHTML=(t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */

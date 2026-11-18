@@ -498,33 +498,15 @@ checks and ends "checks, not a guarantee"; an empty tab says nothing passed rath
 an outage (`EMPTY_OK`, `EMPTY_MODES`). Note: Jupiter's organic *score* and the organic *share* of
 volume differ — GTAVI scored "medium" with 3% of volume organic — so the card prints both.
 
-### Wallet X-ray (2026-11-18)
+### Wallet X-ray — built and removed (2026-11-18)
 
-`/wallet?w=<address>` (`public/wallet.html`, `public/js/walletscan.mjs`, `/api/wallet/who`), asked
-for as "every wallet is visible on pump.fun anyway". **The chain is read in the visitor's
-browser**, because every keyless Solana RPC refuses the Worker but answers a browser and limits per
-visitor: solana-rpc.publicnode.com first (CORS `*`), api.mainnet-beta.solana.com second. So it costs
-us no request and no key. `WALLET_CSP` (src/refs.mjs) is the map's policy plus those hosts and
-Jupiter; the worker serves the page like `/swap` (`run_worker_first`).
-
-- **The bot's own parser runs in the browser**: `solbuy.mjs` has no imports, so it moved to
-  `public/js/solbuy.mjs` and `src/solbuy.mjs` re-exports it — one parser for alerts and the page.
-- **`maxSupportedTransactionVersion: 1`**, as everywhere since v1 transactions: with 0, 38 of 60
-  reads failed on the first run. **`signers()` returns a Set** — `.includes()` threw inside the read
-  loop and silently dropped every transaction until it was `.has()`.
-- **Busy wallets are flooded with transfers they never signed**: a paid KOL's last 1,000
-  transactions covered nine hours, none his own. A page with few swaps reads on, up to 300
-  transactions, and the page says how many were the wallet's own, how many could not be read, and
-  the dates covered. A 429 backs off twice before moving to the next node; a later page failing
-  keeps what earlier pages read.
-- Swaps under 0.0005 SOL are dust (the parser's `MIN_SOL`) — bot wallets doing 0.00013 SOL trades
-  show no swaps, correctly. Profit is average-cost, in SOL; sells of tokens bought before the
-  window are "sold from earlier", never profit; closed at 99% sold; win rate over closed only.
-- `/api/wallet/who` joins what we already hold — paid KOL (rewards, what holders kept), ranked
-  caller (weekly record, exits), PnL-board ranks — from the CallersDO (`who`, `kolOf`), no upstream.
-- Every token row has **Buy** (our swap, our fee); **Follow in Telegram** is the bot's
-  `?start=track_<wallet>`; the operator's pump.fun invite shows to anyone not on pump.fun yet.
-  Linked from the toolbar and from every trader, caller and KOL card ("X-ray this wallet").
+A `/wallet` page read a wallet's last few hundred transactions in the visitor's browser and summed its
+swaps. **Removed the same day at the operator's call**: pump.fun's own profile shows every token's
+buys, sells and prices, and a partial window of public-RPC history could not match it — busy wallets
+are flooded with transfers they never signed (a paid KOL's last 1,000 transactions covered nine
+hours, none his own). What stayed: the swap parser lives in `public/js/solbuy.mjs` (re-exported by
+`src/solbuy.mjs`), and the bot takes `?start=track_<wallet>`. Lessons: `getTransaction` needs
+`maxSupportedTransactionVersion: 1`, and `signers()` returns a Set.
 
 ### Where the money is (2026-11-18 audit, ~20,000 visitors a month)
 
@@ -534,7 +516,7 @@ Jupiter; the worker serves the page like `/swap` (`run_worker_first`).
 - **pump.fun invite**: `PUMP_JOIN` is now `https://pump.fun/u/HermesCryptos` — pump.fun moved invites
   to `/u/<name>`, and the validator (`PUMP_JOIN_RE`, server and page) accepted only `/join/`, so the
   new link would have vanished from every card silently. Shown on Solana cards, the bot's Start
-  menu and the wallet page; never behind a Buy button (it opens a sign-up, not a coin).
+  menu; never behind a Buy button (it opens a sign-up, not a coin).
 - **Boosts, ads, bot ads** — self-serve, unchanged. The KOL board's "Best for followers" sort and
   "where followers kept the most" line are the shareable angle for the X account.
 
@@ -797,6 +779,13 @@ row (`withRewards`: all-time, and the board for the same window — daily → 1d
 monthly → 1m — matched on every Solana wallet the payout row lists) **beside banked, never added
 into it**. The table shows a Callout rewards column, a line saying how many of the hundred are paid
 KOLs and what they were paid against what they banked, and "Traders only" / "Paid KOLs" filters.
+
+**While pump.fun refuses servers, Top traders shows its last read** (`lastTraders()` in api.mjs,
+`tradersBoard()` in callers.mjs, the CallersDO's `traders` op): the Calls watcher kept every
+PnL-board row it read (rank and realized, with the read's time), so the table serves the newest
+read for the period — dated in amber, with "banked profit and rank only; open positions were not
+part of it" — instead of an empty table. Open, total and positions are null, never guessed. On
+2026-11-18 the weekly board was from 13 Nov and the daily from 1 Nov.
 
 **Node's fetch is blocked, the Worker's is not.** From a laptop, `pnl-leaderboard` answered curl 200
 and Node's built-in `fetch` 403 with Cloudflare `rule_id 0.07` — identical headers, so it is the TLS

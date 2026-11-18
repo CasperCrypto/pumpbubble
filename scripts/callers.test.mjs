@@ -261,5 +261,18 @@ console.log('\nwhat callers banked, by wallet');
   is('nobody else is', m.size, 1);
 }
 
+console.log('\nthe trader board as last read');
+{
+  const b = new CallerBook();
+  const e = (i, rank, realized) => ({ walletAddress: addr(60 + i, 'L'), rank, realizedPnlUsd: realized, username: 't' + i });
+  b.seedBoard([e(1, 1, 9000), e(2, 2, 5000), e(3, 3, 0)], 'weekly', NOW - 86_400_000);   // an older read
+  b.seedBoard([e(1, 2, 9500), e(4, 1, 12_000)], 'weekly', NOW);                          // the last one
+  const t = b.tradersBoard('weekly');
+  is('the last read only', t.rows.map(r => r.name).join(','), 't4,t1');
+  is('…in its order, with what was banked', t.rows[0].realized, 12_000);
+  is('…and when it was read', t.at, NOW);
+  is('a period never read is empty, with no date', JSON.stringify(b.tradersBoard('monthly')), JSON.stringify({ at: 0, rows: [] }));
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

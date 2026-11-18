@@ -118,24 +118,6 @@ export const SWAP_CSP = [
   "form-action 'none'",
   "frame-ancestors 'none'",
 ].join('; ');
-/* /wallet reads a wallet's swaps from the visitor's own browser — public
-   Solana RPCs rate-limit per visitor there, where from the Worker every one
-   of them refuses Cloudflare — and its holdings and prices from Jupiter. So
-   its policy is the map's plus those hosts, and https: token art. It moves
-   no money: there is no wallet connection on it. */
-export const WALLET_RPCS = ['https://solana-rpc.publicnode.com', 'https://api.mainnet-beta.solana.com'];
-export const WALLET_CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https:",
-  "connect-src 'self' " + JUP_HOSTS.join(' ') + ' ' + WALLET_RPCS.join(' '),
-  "font-src 'self'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-  "frame-ancestors 'none'",
-].join('; ');
 export const JUP_FEE_MIN = 50, JUP_FEE_MAX = 255;
 export const RELAY_FEE_DEFAULT = 100, RELAY_FEE_MAX = 300;
 export function swapConfig(env = {}) {
