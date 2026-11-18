@@ -210,7 +210,6 @@ export function normalizeJup(j) {
     topHold: pctOf(a.topHoldersPercentage),
     dev: pctOf(a.devBalancePercentage),
     organic: ['low', 'medium', 'high'].includes(j.organicScoreLabel) ? j.organicScoreLabel : '',
-    organicVol: d ? num(d.buyOrganicVolume) + num(d.sellOrganicVolume) : null,
     curveSol: 0,
     nsfw: false,
     banned: false,

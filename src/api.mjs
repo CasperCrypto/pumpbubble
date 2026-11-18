@@ -554,7 +554,8 @@ async function kolsSnapshot(ctx, period) {
       sym: r.name, name: r.xh ? '@' + r.xh : r.name, xh: r.xh || '', verified: !!r.verified,
       img: await signedImg(ctx, r.avatar),
       mcap: Math.max(1, Math.round(r.paid || 0)), vol: 0, liq: 0, price: 0, pc: NULL_PC(),
-      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'kol', rank: r.rank, period,
+      /* the window actually served — a missing one falls back to all-time */
+      grad: true, solid: true, flags: [], copies: 1, boost: 0, via: 'kol', rank: r.rank, period: (d && d.period) || period,
       kol: { paid: r.paid, payouts: r.payouts, perPayout: r.perPayout, lastPaidAt: r.lastPaidAt, followers: r.followers,
         n: r.n, avgMcap: r.avgMcap, medMcap: r.medMcap, under100k: r.under100k, medPeak: r.medPeak, avgPeak: r.avgPeak,
         hit2: r.hit2, medNow: r.medNow, inProfit: r.inProfit, firstAt: r.firstAt, lastAt: r.lastAt,

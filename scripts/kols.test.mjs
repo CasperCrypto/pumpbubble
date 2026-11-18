@@ -197,6 +197,8 @@ console.log('\nKOLs who also bank trading');
   const b = kb.board('all', trading);
   is('the board carries the trading join', b.rows[0].trading && b.rows[0].trading.weekly.realized, 12_000);
   is('…and its summary', b.summary && b.summary.alsoTraders, 1);
+  is('a window with no board says it served all-time', kb.board('1w').period, 'all');
+  is('…and the window it has, it names', kb.board('all').period, 'all');
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

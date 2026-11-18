@@ -1752,7 +1752,11 @@ function merge(fresh){
   fresh.forEach(t=>{const o=old.get(t.id);
     if(o){t.x=o.x;t.y=o.y;t.vx=o.vx;t.vy=o.vy;t.r=o.r;t.ph=o.ph;
       if(!S.live)t.boost=o.boost}});
-  old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
+  /* Demo only, like the line above. Live, the server re-adds every paid
+     bubble itself; carrying them here kept a boost the server had ended — or
+     a token the console had hidden — on screen as gold until a reload, and
+     walked the last tab's gold bubbles onto the next tab. */
+  if(DEMO_OK&&!S.live)old.forEach(o=>{if(o.boost>0&&!fresh.some(f=>f.id===o.id))fresh.push(o)});
   S.tokens=fresh;
 }
 /* The live/demo pill is gone from the header — it was chrome that said

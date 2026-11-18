@@ -274,7 +274,10 @@ export class KolBook {
      those beside this book) — the other half of how a KOL earns. */
   board(period = 'all', trading = null) {
     const b = this.boards[period] || this.boards.all;
-    if (!b) return { rows: [], at: 0, total: 0 };
+    /* the period actually served: a window with no board falls back to
+       all-time, and a caller labelling money "this week" must know */
+    const served = this.boards[period] ? period : 'all';
+    if (!b) return { period: served, rows: [], at: 0, total: 0 };
     const rows = (b.rows || []).map(r => {
       const p = (r.wallet && this.people.get(r.wallet)) || {};
       const h = p.hist || null, f = p.profile || null;
@@ -294,7 +297,7 @@ export class KolBook {
         trading: trading ? tradingOf(trading, r) : null,
       };
     });
-    return { rows, at: b.at, total: b.total, summary: boardSummary(rows) };
+    return { period: served, rows, at: b.at, total: b.total, summary: boardSummary(rows) };
   }
 
   status(now = Date.now()) {
