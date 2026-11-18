@@ -357,7 +357,7 @@ export function sitemapXml(kols = [], now = Date.now()) {
   const lm = new Date(now).toISOString();
   const urls = [
     ['/', 'hourly', '1.0'], ...PAGES.map(p => [p.path, 'hourly', '0.9']), ['/market', 'hourly', '0.8'], ['/board', 'hourly', '0.6'],
-    ['/partners', 'weekly', '0.5'], ['/swap', 'weekly', '0.4'], ['/launch', 'weekly', '0.7'],
+    ['/partners', 'weekly', '0.5'], ['/swap', 'weekly', '0.4'], ['/launch', 'weekly', '0.7'], ['/wallet', 'weekly', '0.7'],
     ...kols.map(s => ['/kol/' + s, 'daily', '0.5']),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`

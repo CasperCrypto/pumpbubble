@@ -68,10 +68,13 @@ export const PROVIDERS = {
    "invited you" page, not on a coin — so it cannot sit behind a Buy button
    (someone tapping Buy wants that token). It goes where new traders are: a
    line on the card of a Solana token, and the bot's Start menu. Only a
-   pump.fun/join link is accepted, so the setting cannot point anywhere else. */
+   pump.fun/join or pump.fun/u link is accepted (pump.fun moved invites to
+   /u/<name>; the operator's is https://pump.fun/u/HermesCryptos since
+   2026-11-18), so the setting cannot point anywhere else. */
+export const PUMP_JOIN_RE = /^https:\/\/pump\.fun\/(join|u)\/[A-Za-z0-9_-]{2,40}$/;
 export function pumpJoin(env = {}) {
   const u = String(env.PUMP_JOIN || '').trim();
-  return /^https:\/\/pump\.fun\/join\/[A-Za-z0-9_-]{2,40}$/.test(u) ? u : '';
+  return PUMP_JOIN_RE.test(u) ? u : '';
 }
 
 /* Our own swap page (`public/swap.html`, `/swap?mint=`): Jupiter's widget,
@@ -109,6 +112,24 @@ export const SWAP_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
   "connect-src 'self' " + JUP_HOSTS.join(' ') + ' ' + RELAY_HOST,
+  "font-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
+/* /wallet reads a wallet's swaps from the visitor's own browser — public
+   Solana RPCs rate-limit per visitor there, where from the Worker every one
+   of them refuses Cloudflare — and its holdings and prices from Jupiter. So
+   its policy is the map's plus those hosts, and https: token art. It moves
+   no money: there is no wallet connection on it. */
+export const WALLET_RPCS = ['https://solana-rpc.publicnode.com', 'https://api.mainnet-beta.solana.com'];
+export const WALLET_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "connect-src 'self' " + JUP_HOSTS.join(' ') + ' ' + WALLET_RPCS.join(' '),
   "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",

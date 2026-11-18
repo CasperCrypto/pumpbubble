@@ -8,7 +8,7 @@ import { sponsoredDm } from './audience.mjs';
 import { buildSnapshot, verifyUrl, isMint, isCA, isEvmAddr, fetchCoin, fetchSolPrice, clean,
          signUrl, enrich, resolveAnyToken, dexStatus, _dexMemForTests, fastImage } from './core.mjs';
 import { embedConfig, safeAccent } from './embed.mjs';
-import { buyConfig, swapConfig } from './refs.mjs';
+import { pumpJoin, buyConfig, swapConfig } from './refs.mjs';
 import { pctLabel, mcapLabel, TF_LABEL, TF_SHORT, CARD_W } from './card.mjs';
 import { cardSvgFor, boardCardSvgFor, bubbleCardSvgFor, sharePage, page, logoDataUri } from './share.mjs';
 import { seedFor } from './bubblecard.mjs';
@@ -1832,6 +1832,24 @@ export async function handle(req, ctx) {
       const t = await resolveAnyToken(mint, ctx.env.IMG_SECRET);
       if (!t) return json({ ok: false, error: 'no token found with that contract address' }, 404);
       return json({ ok: true, token: t, from: t.chain || 'pump.fun' });
+    }
+
+    /* ------------------------------------------------- /api/wallet/who */
+    /* What we already know about a wallet, for the wallet page: a ranked
+       caller (their record, what they banked on pump.fun's PnL boards), a KOL
+       pump.fun pays (rewards, what their calls did for holders). Read from the
+       CallersDO's book — no upstream call. The swaps themselves are read by
+       the visitor's browser from a public RPC (public/wallet.html). */
+    if (path === '/api/wallet/who') {
+      const limited = rateLimit(req, 'who', 30, 60_000);
+      if (limited) return limited;
+      const w = (url.searchParams.get('w') || '').trim();
+      if (!isMint(w)) return json({ ok: false, error: 'that is not a Solana wallet address' }, 400);
+      let d = null;
+      try { d = ctx.callers ? await ctx.callers('who', { wallet: w }) : null; } catch { d = null; }
+      const caller = d && d.caller, kol = d && d.kol;
+      return json({ ok: true, wallet: w, caller: caller || null, kol: kol || null, join: pumpJoin(ctx.env) || undefined },
+        200, { 'cache-control': 'public, max-age=60' });
     }
 
     /* ------------------------------------------------------- /api/card */
