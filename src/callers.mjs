@@ -485,6 +485,16 @@ export class CallerBook {
     };
   }
 
+  /* One wallet as a caller — for the wallet page. */
+  who(wallet, now = Date.now()) {
+    const p = this.callers.get(wallet);
+    if (!p) return null;
+    const row = this.board('weekly', now).find(r => r.wallet === wallet) || null;
+    return { name: p.name, xh: p.xh || '', verified: !!p.verified, calls: p.calls || 0,
+      stats: p.stats || null, statsAt: p.statsAt || 0, board: p.board || null,
+      weeklyRank: row ? row.rank : 0, exits: row ? row.exits : null };
+  }
+
   status(now = Date.now()) {
     let withStats = 0;
     for (const p of this.callers.values()) if (p.stats) withStats++;

@@ -2112,6 +2112,8 @@ async function onPrivate(ctx, msg) {
   if (c.cmd === 'start' && c.arg) {
     const [what, ca] = [c.arg.split('_')[0], c.arg.slice(c.arg.indexOf('_') + 1)];
     if ((what === 'boost' || what === 'ad') && isCA(ca)) return shopFor(ctx, msg.chat.id, ca, what);
+    /* t.me/<bot>?start=track_<wallet> — "Follow in Telegram" on the wallet page */
+    if (what === 'track' && isMint(ca)) return trackWallet(ctx, msg.chat.id, uid, ca, '');
     if (what === 'boost' || what === 'ads' || what === 'ad') return askForToken(ctx, msg.chat.id, what);
   }
   if (c.cmd === 'boost' || c.cmd === 'ads' || c.cmd === 'ad') return askForToken(ctx, msg.chat.id, c.cmd);

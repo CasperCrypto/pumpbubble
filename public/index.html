@@ -382,6 +382,8 @@ h3 .ic{vertical-align:-.12em}
 /* a company's full legal name is long: one line, cut, on every screen */
 #smTable td.itrade{overflow:hidden;max-width:320px}
 #smTable td.itrade b,#smTable td.itrade small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#smTable .rbuy{display:inline-block;margin-top:3px;background:rgba(40,224,140,.14);color:var(--mint2,#5ff7b4);border-radius:999px;padding:4px 10px;font-weight:900;font-size:11.5px;text-decoration:none}
+#smTable .rbuy:hover{background:rgba(40,224,140,.26)}
 /* the summary and filters above a people table */
 #smTable .tbar{max-width:1100px;margin:2px auto 4px;display:flex;flex-direction:column;gap:7px}
 #smTable .tsum{font-size:12px;color:var(--dim);font-weight:700;line-height:1.55}
@@ -1011,6 +1013,7 @@ body.embed #brandbadge.on{display:flex}
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
   <a class="iconbtn sw" href="/swap" title="Swap any Solana token from your own wallet"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>Swap</a>
+  <a class="iconbtn" href="/wallet" title="Any Solana wallet's win rate, realized profit and holdings, read from its own swaps"><svg class="ic" aria-hidden="true"><use href="#i-wallet"/></svg>Wallet X-ray</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Market overview</a>
   <a class="iconbtn" href="/partners" title="Partner with us, or embed a live map on your site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Partners</a>
   <a class="iconbtn" href="/launch" title="Launch a pump.fun token with its page, a Telegram group and the buy bot"><svg class="ic" aria-hidden="true"><use href="#i-rocket"/></svg>Launch a token</a>
@@ -2010,7 +2013,7 @@ function renderCallsTable(box,list){
   const sp=(k,label)=>`<span class="${CL_SORT===k?'on':''}" data-csort="${k}">${label}${CL_SORT===k?' ↓':''}</span>`;
   box.innerHTML=bar+'<table><thead><tr>'+th('','#')+th('','Token')+th('caller','Called by','c-who')+th('','Called at','num c-dt')
     +th('peak','Peak','num c-dt')+th('now','Now','num c-dt')+th('new','When','num c-vol')+th('','Caller','c-h1')
-    +'<th class="num c-ph">'+sp('now','Now')+' · '+sp('peak','Peak')+'</th>'
+    +'<th class="num c-ph">'+sp('now','Now')+' · '+sp('peak','Peak')+'</th><th class="c-dt"></th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const c=t.call,by=c.by||{};
@@ -2024,7 +2027,9 @@ function renderCallsTable(box,list){
         +`<td class="num c-dt"><b class="${multCls(c.now)}">${mult(c.now)}</b></td>`
         +`<td class="num c-vol">${esc(since(c.at))}</td>`
         +`<td class="c-h1">${holdChip(c.status)}</td>`
-        +`<td class="num c-ph stk"><b class="${multCls(c.now)}">${mult(c.now)}</b><small><span style="color:var(--dim)">peak</span> ${mult(c.peak)}</small></td></tr>`;
+        /* Buy straight from the call: our swap, our fee (a link, so the row's own click does not fire) */
+        +`<td class="num c-ph stk"><b class="${multCls(c.now)}">${mult(c.now)}</b><small><span style="color:var(--dim)">peak</span> ${mult(c.peak)}</small>${t.mint?`<a class="rbuy" href="/swap?mint=${encodeURIComponent(t.mint)}">Buy</a>`:''}</td>`
+        +`<td class="num c-dt">${t.mint?`<a class="rbuy" href="/swap?mint=${encodeURIComponent(t.mint)}">Buy</a>`:''}</td></tr>`;
     }).join('')
     +'</tbody></table>';
 }
@@ -2113,11 +2118,15 @@ function renderKolTable(box,list){
   let sum=sm&&sm.paid?'<b>'+esc(fmtUsd(sm.paid))+'</b> paid to these '+sm.kols+' KOLs · the top 10 took <b>'+pc(sm.top10Share)+'</b>'
     +(sm.withRecord?' · for <b>'+pc(sm.holdersDownHalf)+'</b> of the '+sm.withRecord+' with a record, a follower who bought at the call and held is down more than half (median <b>'+mult(sm.medHoldNow)+'</b>)'
       +' · <span title="Spearman rank correlation across these KOLs: +1 means more pay always goes with more of it, −1 with less">pay vs 2× rate <b>'+rho(sm.payVsHit2)+'</b>, pay vs what holders kept <b>'+rho(sm.payVsHoldNow)+'</b></span>':''):'';
+  /* whose followers kept the most: hold-now first, then the share of calls above the call price */
+  const kept=allRows.filter(t=>t.kol.n>=10&&t.kol.medNow!=null).sort((a,b)=>b.kol.medNow-a.kol.medNow||(b.kol.inProfit||0)-(a.kol.inProfit||0)).slice(0,3);
+  if(kept.length)sum=(sum?sum+'<br>':'')+'Where followers kept the most: '+kept.map(t=>'<b>'+esc(t.xh?'@'+t.xh:t.sym)+'</b> <span class="'+multCls(t.kol.medNow)+'">'+mult(t.kol.medNow)+'</span>'+(t.kol.inProfit!=null?' ('+Math.round(t.kol.inProfit*100)+'% of calls in profit)':'')).join(' · ');
   if(stale)sum=(sum?sum+'<br>':'')+stale+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':'');
   const nUp=allRows.filter(KL_FILTERS.up).length,nReal=allRows.filter(KL_FILTERS.real).length,nTr=allRows.filter(KL_FILTERS.traders).length;
   const chips=tchip('klf','all',KL_FILTER,'All')
     +tchip('klf','up',KL_FILTER,'Holders up '+nUp,'KOLs whose calls are above the call price today, at the median — a follower who held kept money')
     +tchip('klf','real',KL_FILTER,'Calls ≥ $100K '+nReal,'KOLs whose average call is at $100K market cap or more')
+    +'<button class="'+(KL_SORT==='now'?'on':'')+'" data-ksort="now" title="Rank by what a follower who bought at the call and held has today, at the median">Best for followers</button>'
     +(nTr?tchip('klf','traders',KL_FILTER,'Also top traders '+nTr,'KOLs who are also on pump.fun’s PnL boards for what they banked trading'):'');
   const bar=tbar(sum,chips);
   if(!rows.length){box.innerHTML=bar+emptyNote('No KOL on this board fits that filter.');return}
@@ -3239,7 +3248,7 @@ function openCard(t){
   }
   /* the operator's pump.fun invite, on Solana tokens only */
   const jn=document.getElementById('cJoin');
-  jn.hidden=!(BUY.join && t && t.mint && /^https:\/\/pump\.fun\/join\//.test(BUY.join));
+  jn.hidden=!(BUY.join && t && t.mint && /^https:\/\/pump\.fun\/(join|u)\//.test(BUY.join));
   if(!jn.hidden)jn.href=BUY.join;
   const e=id=>document.getElementById(id);
   const im=e('cIm');
@@ -3462,12 +3471,15 @@ function openCard(t){
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  e('cWarn').innerHTML=t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
+  /* people: their own swaps, read from the chain, one tap away */
+  const xray=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')&&t.wallet
+    ?'<div class="warn" style="opacity:.95">'+ic('wallet')+'<a href="/wallet?w='+encodeURIComponent(t.wallet)+'" style="color:var(--ink);font-weight:800">X-ray this wallet</a> — win rate, realized profit and holdings from its own swaps</div>':'';
+  e('cWarn').innerHTML=xray+(t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
       ? '<div class="warn">ⓘ '+t.parts.map(p=>esc(p.name)+' '+esc(fmtUsd(p.vol))).join(' · ')+'</div>'
-      : pumpLine+warnLine(t);
+      : pumpLine+warnLine(t));
   card.classList.add('on');scrim.classList.add('on');
 }
 function closeAll(){

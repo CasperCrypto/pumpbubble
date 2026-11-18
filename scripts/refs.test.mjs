@@ -19,6 +19,8 @@ const JOIN = 'https://pump.fun/join/HermesCryptos';
 const MINT = '7V4vYUApSWg1CWBHSxaEWZ8irJAU4q8pPmpZS3mJpump';
 
 is('the invite link passes', pumpJoin({ PUMP_JOIN: JOIN }), JOIN);
+is('the /u/ invite link passes too (the operator\'s since 2026-11-18)', pumpJoin({ PUMP_JOIN: 'https://pump.fun/u/HermesCryptos' }), 'https://pump.fun/u/HermesCryptos');
+is('markup in a /u/ link is refused', pumpJoin({ PUMP_JOIN: 'https://pump.fun/u/x"><b>' }), '');
 is('another site is refused', pumpJoin({ PUMP_JOIN: 'https://evil.example/join/x' }), '');
 is('markup in the code is refused', pumpJoin({ PUMP_JOIN: 'https://pump.fun/join/x"><b>' }), '');
 is('a pump.fun page that is not an invite is refused', pumpJoin({ PUMP_JOIN: 'https://pump.fun/coin/' + MINT }), '');
