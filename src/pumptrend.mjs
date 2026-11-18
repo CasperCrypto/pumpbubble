@@ -37,6 +37,7 @@
 import { clean, fastImage, signUrl, isMint, isEvmAddr,
          ONEWAY_SELL_SHARE, ONEWAY_MIN_TXNS, MAX_COPIES } from './core.mjs';
 import { fetchActivity } from './activity.mjs';
+import { pumpFetch } from './pumpgate.mjs';
 
 export const GREAT = 'https://frontend-api-v3.pump.fun/coins/great-coins?topK=50';
 export const BOARD = 'https://advanced-indexer.pump.fun/boards/movers?tier=web&surface=WEB&platform=WEB&limit=150';
@@ -73,7 +74,7 @@ const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 const pick = v => (v == null || !Number.isFinite(+v)) ? null : +v;
 
 async function jget(url, ms = 12000) {
-  const r = await fetch(url, {
+  const r = await pumpFetch(url, {
     headers: { accept: 'application/json', 'user-agent': UA },
     signal: AbortSignal.timeout(ms),
   });

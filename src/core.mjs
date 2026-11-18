@@ -10,6 +10,10 @@
    ========================================================================== */
 
 import { fetchActivity } from './activity.mjs';
+import { pumpFetch, pumpPaused, pumpStatus } from './pumpgate.mjs';
+import { jupRows, jupByMint, jupSolPrice, jupStatus } from './jupfeed.mjs';
+import { PUMP_SEED } from './pumpseed.mjs';
+export { pumpStatus, jupStatus };
 
 export const PUMP = 'https://frontend-api-v3.pump.fun';
 export const DEXS = 'https://api.dexscreener.com';
@@ -25,7 +29,8 @@ async function jget(url, { ms = 9000, headers = {} } = {}) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), ms);
   try {
-    const r = await fetch(url, {
+    /* every pump.fun URL goes through the gate (src/pumpgate.mjs) */
+    const r = await pumpFetch(url, {
       signal: c.signal,
       headers: { accept: 'application/json', 'user-agent': UA, ...headers },
     });
@@ -167,6 +172,97 @@ export async function fetchPumpCoins({ pages = 6, perPage = 50, sort = 'market_c
   return [...seen.values()];
 }
 
+/* A Jupiter token row (src/jupfeed.mjs) → a map token, the same shape
+   normalizeCoin() makes. Unlike pump.fun's record it arrives priced: change,
+   volume and liquidity are Jupiter's own, so enrichment leaves it alone
+   (`priced`). Every string is attacker-supplied exactly as on pump.fun. */
+const httpsLink = u => (typeof u === 'string' && /^https:\/\/[^\s"'<>]{4,200}$/i.test(u)) ? u : '';
+const pctOf = v => (v == null || v === '' || !Number.isFinite(+v)) ? null : +v;
+export function normalizeJup(j) {
+  if (!j || !isMint(String(j.id || ''))) return null;
+  const st = w => (j['stats' + w] && typeof j['stats' + w] === 'object') ? j['stats' + w] : null;
+  const ch = w => { const s = st(w); return s ? pctOf(s.priceChange) : null; };
+  const volOf = s => s ? num(s.buyVolume) + num(s.sellVolume) : 0;
+  const d = st('24h');
+  const buys = num(d && d.numBuys), sells = num(d && d.numSells), n = buys + sells;
+  const a = (j.audit && typeof j.audit === 'object') ? j.audit : {};
+  const created = Date.parse((j.firstPool && j.firstPool.createdAt) || j.createdAt || '') || 0;
+  return {
+    id: j.id,
+    mint: j.id,
+    sym: clean(j.symbol, 12) || '?',
+    name: clean(j.name || j.symbol, 48) || 'unknown',
+    rawImg: fastImage(httpsLink(j.icon)),
+    img: '',
+    mcap: num(j.mcap) || num(j.fdv),
+    ath: 0,
+    vol: volOf(d),
+    volH1: volOf(st('1h')),
+    liq: num(j.liquidity),
+    price: num(j.usdPrice),
+    pc: { m5: ch('5m'), h1: ch('1h'), h6: ch('6h'), h24: ch('24h') },
+    txns: n ? { buys, sells, n, sellShare: sells / n, traders: num(d && d.numTraders) || null } : null,
+    grad: !!j.graduatedPool,
+    created,
+    lastTrade: 0,
+    /* what Jupiter measures that pump.fun's record never carried */
+    holders: num(j.holderCount) || null,
+    topHold: pctOf(a.topHoldersPercentage),
+    dev: pctOf(a.devBalancePercentage),
+    organic: ['low', 'medium', 'high'].includes(j.organicScoreLabel) ? j.organicScoreLabel : '',
+    organicVol: d ? num(d.buyOrganicVolume) + num(d.sellOrganicVolume) : null,
+    curveSol: 0,
+    nsfw: false,
+    banned: false,
+    twitter: httpsLink(j.twitter),
+    telegram: httpsLink(j.telegram),
+    website: httpsLink(j.website),
+    boost: 0,
+    priced: true,
+    via: 'jupiter',
+  };
+}
+
+/* The pump.fun feed with its second source. pump.fun first while it answers;
+   once its challenge is seen (src/pumpgate.mjs) the same coins come from
+   Jupiter — its trending lists plus the established names in pumpseed.mjs —
+   kept to pump.fun's own launches and to the stage asked for. `feedVia` says
+   which answered, and the page says so. Jupiter's rows are kept twenty seconds
+   per isolate: the feed rebuilds every ten and its lists move slower. */
+export const feedVia = { pumpfun: 'pump.fun', at: 0, error: '' };
+let jupMem = { at: 0, rows: null };
+const JUP_MEM_MS = 20_000;
+export async function fetchPumpFeed(opts = {}, { jup = jupRows, seed = PUMP_SEED } = {}) {
+  let err = '';
+  if (!pumpPaused()) {
+    try {
+      const t = await fetchPumpCoins(opts);
+      feedVia.pumpfun = 'pump.fun'; feedVia.at = Date.now(); feedVia.error = '';
+      return t;
+    } catch (e) {
+      /* the pages swallow their own errors, so name the challenge if it was one */
+      err = pumpStatus.blocked ? pumpStatus.lastError : String((e && e.message) || e).slice(0, 120);
+    }
+  } else err = pumpStatus.lastError || 'pump.fun paused';
+  const now = Date.now();
+  let rows = jupMem.rows && now - jupMem.at < JUP_MEM_MS ? jupMem.rows : null;
+  if (!rows) { rows = await jup({ mints: seed }); jupMem = { at: now, rows }; }
+  const want = opts.complete;
+  const out = [];
+  for (const r of rows) {
+    if (!r || r.launchpad !== 'pump.fun') continue;
+    if (want === true && !r.graduatedPool) continue;
+    if (want === false && r.graduatedPool) continue;
+    const t = normalizeJup(r);
+    if (t && t.mcap > 0) out.push(t);
+  }
+  if (!out.length) throw new Error('pump.fun refused and Jupiter returned no pump.fun coins');
+  out.sort((a, b) => b.mcap - a.mcap);
+  feedVia.pumpfun = 'jupiter'; feedVia.at = now; feedVia.error = err;
+  return out;
+}
+export function _resetFeedMem() { jupMem = { at: 0, rows: null }; }
+
 /* Look up one token by mint, whatever its state. The ranked feed only carries
    the top 300, so anything outside that — a small cap, a fresh launch, a
    community that came here specifically to boost their own coin — is invisible
@@ -199,8 +295,16 @@ export async function fetchCoin(mint, secret) {
   if (!isMint(mint)) return null;
   try {
     const c = await pumpCoin(mint);
-    if (!c) return null;
-    const t = normalizeCoin(c);
+    let t;
+    if (c) t = normalizeCoin(c);
+    else {
+      /* pump.fun refused (or never heard of it): Jupiter names and prices any
+         Solana mint it has indexed, bonding-curve coins included — which
+         DexScreener, the next fallback, does not. */
+      const j = (await jupByMint([mint]).catch(() => new Map())).get(mint);
+      t = j ? normalizeJup(j) : null;
+      if (!t) return null;
+    }
     /* one enrichment call so the quote can show real numbers */
     try { await enrich([t]); } catch { /* price change is optional here */ }
     /* Sign the art here too. Without this the token reaches the map with no
@@ -302,8 +406,11 @@ export function altGateways(url) {
 }
 
 export async function fetchSolPrice() {
-  try { return num((await jget(PUMP + '/sol-price', { ms: 5000 })).solPrice); }
-  catch { return 0; }
+  if (!pumpPaused()) {
+    try { const p = num((await jget(PUMP + '/sol-price', { ms: 5000 })).solPrice); if (p > 0) return p; }
+    catch { /* Jupiter below */ }
+  }
+  return jupSolPrice();
 }
 
 /* =================================================== DexScreener enrichment */
@@ -342,6 +449,7 @@ export function _actMemForTests() { return ACT_MEM; }
    for the map and useless for finding out why the map is grey. */
 export const dexStatus = { lastError: '', lastErrorAt: 0, lastOkAt: 0, memSize: 0 };
 const ACT_MEM = new Map();          // mint -> { at, a }  pump.fun market activity
+const JUPE_MEM = new Map();         // mint -> { at, t }  Jupiter's priced token
 
 export async function enrich(tokens, chain = 'solana') {
   /* Solana addresses are base58 and case-sensitive; EVM addresses are hex and
@@ -357,6 +465,11 @@ export async function enrich(tokens, chain = 'solana') {
 
   const now = Date.now();
   const memKey = k => chain + ':' + k;
+  /* A token that arrived priced (Jupiter's rows) already carries its own
+     change, volume and liquidity; asking DexScreener about it would only
+     swap one measurement for another and spend the request budget doing it. */
+  const priced = tokens.filter(t => t && t.priced).length;
+  tokens = tokens.filter(t => t && !t.priced);
   const mints = tokens.map(keyOf).filter(Boolean);
   const byMint = new Map();
   /* only what has not been answered in the last minute goes back out */
@@ -413,9 +526,38 @@ export async function enrich(tokens, chain = 'solana') {
      DexScreener's shared-IP limit does not. It has no liquidity, so those
      tokens are marked `liqUnknown` and judged by turnover instead (see
      scoreMemecoins). Solana only: it is pump.fun's API. */
-  const fromPump = new Map();
+  /* DexScreener refused, or has no pair: Jupiter's token search, which
+     covers bonding-curve coins too and carries liquidity — so unlike the
+     pump.fun activity below, a token priced here is judged by its pool. */
+  const fromJup = new Map();
   if (chain === 'solana') {
     const miss = mints.filter(k => !byMint.has(k));
+    const ask = [];
+    for (const k of miss) {
+      const m = JUPE_MEM.get(k);
+      if (m && now - m.at < DEX_FRESH_MS) { if (m.t) fromJup.set(k, m.t); }
+      else ask.push(k);
+    }
+    if (ask.length) {
+      let got = new Map();
+      try { got = await jupByMint(ask.slice(0, 200)); } catch { got = new Map(); }
+      for (const k of ask) {
+        const row = got.get(k);
+        const t = row ? normalizeJup(row) : null;
+        if (t) { JUPE_MEM.set(k, { at: now, t }); fromJup.set(k, t); }
+        else {
+          const m = JUPE_MEM.get(k);
+          if (m && m.t && now - m.at < DEX_KEEP_MS) fromJup.set(k, m.t);
+          else JUPE_MEM.set(k, { at: now, t: null });
+        }
+      }
+      if (JUPE_MEM.size > DEX_MEM_MAX) JUPE_MEM.clear();
+    }
+  }
+
+  const fromPump = new Map();
+  if (chain === 'solana' && !pumpPaused()) {
+    const miss = mints.filter(k => !byMint.has(k) && !fromJup.has(k));
     const ask = [];
     for (const k of miss) {
       const m = ACT_MEM.get(k);
@@ -439,8 +581,18 @@ export async function enrich(tokens, chain = 'solana') {
     }
   }
 
-  let hit = 0;
+  let hit = priced;
   for (const t of tokens) {
+    const jt = !byMint.has(keyOf(t)) ? fromJup.get(keyOf(t)) : null;
+    if (jt) {
+      hit++;
+      t.pc = { ...(t.pc || {}), ...jt.pc };
+      t.vol = jt.vol; t.volH1 = jt.volH1; t.liq = jt.liq; t.price = jt.price; t.txns = jt.txns;
+      t.dexMcap = jt.mcap;
+      for (const k of ['holders', 'topHold', 'dev', 'organic']) if (t[k] == null || t[k] === '') t[k] = jt[k];
+      if (!t.rawImg && jt.rawImg) t.rawImg = jt.rawImg;
+      continue;
+    }
     const a = fromPump.get(keyOf(t));
     if (a && !byMint.has(keyOf(t))) {
       const w = x => (a[x] && a[x].priceChangePercent != null && Number.isFinite(+a[x].priceChangePercent)) ? +a[x].priceChangePercent : null;
@@ -700,6 +852,17 @@ function scoreMemecoins(tokens, solPrice = 0) {
     /* pump.fun bans tokens itself. Ignoring that flag meant re-deciding, worse,
        something they had already decided. */
     if (t.banned) t.flags.push('banned');
+    /* Jupiter's audit, on the tokens that came from it. Measurements stated
+       as such, and neither counts against `solid`: a deployer holding a
+       slice, or a supply in few hands, is a fact a holder should see, not a
+       reason to take the bubble away. Calibrated on 259 pump.fun coins
+       (2026-11-18): deployer share p90 4.5%, top holders p90 50%.
+       Jupiter's count of the deployer's launches is not used: median 12, p90
+       4,590, one address at 186,426 — launch tooling deploys for its users,
+       so the number describes the tool (Fartcoin's deployer has 497), and
+       even past a thousand it would have marked 41 of 216 coins. */
+    if (t.dev != null && t.dev >= 10) t.flags.push('dev');
+    if (t.topHold != null && t.topHold >= 50) t.flags.push('tophold');
 
     /* Only bonding tokens get the floor. A graduated token with a small cap has
        a real pool behind it and belongs on the map; a bonding one at $51 has
@@ -777,10 +940,13 @@ export async function buildSnapshot({ source, hist, secret, store } = {}) {
      It was going out on 293 of 300 tokens to every visitor, and nothing on the
      page has ever looked at it. Stripped here, beside rawImg, for the same
      reason: a field the client does not read is payload it still pays for. */
-  for (const t of tokens) { delete t.rawImg; delete t.dexMcap; }
+  for (const t of tokens) { delete t.rawImg; delete t.dexMcap; delete t.priced; }
 
   return {
     ts: now, sol, count: tokens.length, enriched, withArt, sampleArt,
+    /* which upstream answered, for a source that has more than one: the
+       pump.fun feed reads Jupiter while pump.fun refuses servers */
+    upstream: typeof source.upstream === 'function' ? source.upstream() : undefined,
     solid: tokens.filter(t => t.solid).length,
     signed: !!secret,
     source: source.id, sourceLabel: source.label, boostable: !!source.boostable,

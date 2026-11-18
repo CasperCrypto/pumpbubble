@@ -12,8 +12,8 @@
 import { Guard, runGuard } from '../src/guard.mjs';
 import { guardExpire, onEvmBuys, sendDm, formatCallAlert, onTrade as solTrade, tracked as solTracked } from '../src/tgbot.mjs';
 import { Endpoints, rpcList as solRpcs, watchList as solWatchList, poll as solPoll, solPolling, EVERY as SOL_EVERY, IDLE_EVERY as SOL_IDLE, QUIET_MS as SOL_QUIET } from '../src/solwatch.mjs';
-import { CallerBook, pollOnce, defaultHttp as callersHttp, WINDOWS as CALL_WINDOWS } from '../src/callers.mjs';
-import { KolBook, pollKols, KOL_PERIODS } from '../src/kols.mjs';
+import { CallerBook, pollOnce, defaultHttp as callersHttp, WINDOWS as CALL_WINDOWS, tradingMap } from '../src/callers.mjs';
+import { KolBook, pollKols, KOL_PERIODS, paidWallets } from '../src/kols.mjs';
 import { Audience, TICK_MS } from '../src/audience.mjs';
 import { CHAINS, isChain, poll as evmPoll, ethUsd as evmEthUsd } from '../src/evmbuy.mjs';
 import { handle } from '../src/api.mjs';
@@ -763,11 +763,13 @@ export class CallersDO {
     let out;
     switch (b.op) {
       case 'board': out = { ok: true, window: win, rows: this.book.board(win, now), status: this.book.status(now) }; break;
-      case 'live': out = { ok: true, rows: this.book.live(now, Math.min(200, Math.max(1, +b.limit || 150))), status: this.book.status(now) }; break;
+      case 'live': out = { ok: true, rows: this.book.live(now, Math.min(200, Math.max(1, +b.limit || 150))), status: this.book.status(now),
+        /* whom pump.fun's ranked feed puts at the top, against the KOLs it pays */
+        promo: this.book.promotion(paidWallets(this.kols), now) }; break;
       case 'status': out = { ok: true, ...this.book.status(now), kols: this.kols.status(now) }; break;
       case 'kols': {
         const period = KOL_PERIODS[b.period] !== undefined ? b.period : 'all';
-        out = { ok: true, period, ...this.kols.board(period), status: this.kols.status(now) };
+        out = { ok: true, period, ...this.kols.board(period, tradingMap(this.book)), status: this.kols.status(now) };
         break;
       }
       default: out = { ok: true };

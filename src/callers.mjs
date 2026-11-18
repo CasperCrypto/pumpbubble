@@ -39,6 +39,7 @@
    ========================================================================== */
 
 import { clean, isMint } from './core.mjs';
+import { pumpFetch } from './pumpgate.mjs';
 
 const API = 'https://frontend-api-v3.pump.fun';
 export const FEED = API + '/home-feed';
@@ -68,6 +69,8 @@ export const KEEP_NEW_MIN_CALLS = 8;
    this often, or a call this many people have already looked at */
 export const LIVE_MIN_HIT = 0.25;
 export const LIVE_MIN_VIEWS = 1000;
+export const FEED_KEEP = 150;                // pump.fun's ranked feed, in its order
+export const PROMO_TOP = 20;                 // the slots promotion() reads as "the top" 
 
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 const fin = v => (v == null || v === '' || !Number.isFinite(+v)) ? null : +v;
@@ -162,6 +165,30 @@ export function holdStatus(c) {
   return 'holding';
 }
 
+/* Took profit on their own call while a follower who bought at the call
+   price is under water now. */
+export function isExit(c) {
+  const st = holdStatus(c);
+  if (st !== 'sold' && st !== 'trimmed') return false;
+  const m = nowMultiple(c);
+  return c.realizedUsd != null && c.realizedUsd > 0 && m != null && m < 1;
+}
+
+/* What pump.fun's PnL boards say each caller banked, by wallet — for the KOL
+   board, beside what pump.fun paid them (src/kols.mjs). */
+export function tradingMap(book) {
+  const m = new Map();
+  for (const p of book.callers.values()) if (p.board) m.set(p.wallet, p.board);
+  return m;
+}
+
+const med = xs => {
+  const a = xs.filter(x => x != null && Number.isFinite(x)).sort((p, q) => p - q);
+  if (!a.length) return null;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+
 /* The multiple a follower who bought at the call and held would have now. */
 export function nowMultiple(c) {
   if (c && c.mcapAtCall > 0 && c.mcapNow > 0) return c.mcapNow / c.mcapAtCall;
@@ -186,6 +213,7 @@ export class CallerBook {
       /* the schedule too: an object recycled between ticks must not refetch
          the PnL boards on every one of them */
       if (saved.due && typeof saved.due === 'object') b.due = { feed: +saved.due.feed || 0, board: +saved.due.board || 0, coins: +saved.due.coins || 0 };
+      if (Array.isArray(saved.feedTop)) { b.feedTop = saved.feedTop.slice(0, FEED_KEEP).map(String); b.feedAt = +saved.feedAt || 0; }
     }
     return b;
   }
@@ -201,6 +229,7 @@ export class CallerBook {
       callers: keep,
       alerted: [...this.alerted].slice(-1500),
       due: this.due || null,
+      feedTop: (this.feedTop || []).slice(0, FEED_KEEP), feedAt: this.feedAt || 0,
     };
   }
 
@@ -212,6 +241,9 @@ export class CallerBook {
   ingest(json, now = Date.now(), src = 'feed') {
     const rows = json && Array.isArray(json.coins) ? json.coins : [];
     const fresh = [];
+    /* pump.fun's ranked feed is its own choice of what to put in front of
+       people; its order is kept so promotion() can say whom it favours */
+    const order = [];
     for (const x of rows) {
       const who = shapeCaller(x && x.position);
       if (!who) continue;
@@ -221,6 +253,7 @@ export class CallerBook {
       });
       const c = shapeCall(x, now, src);
       if (!c) continue;
+      if (src === 'feed') order.push(c.id);
       const old = this.calls.get(c.id);
       if (old) {
         /* the call is the same; the market and the caller's position move */
@@ -243,6 +276,7 @@ export class CallerBook {
       this.calls.set(c.id, c);
       fresh.push(c.id);
     }
+    if (src === 'feed' && order.length) { this.feedTop = order.slice(0, FEED_KEEP); this.feedAt = now; }
     this.prune(now);
     return { added: fresh.length, fresh, seen: rows.length };
   }
@@ -346,6 +380,11 @@ export class CallerBook {
       const seen = (mine.get(p.wallet) || []).sort((a, b) => b.at - a.at);
       const judged = seen.filter(c => holdStatus(c));
       const sold = judged.filter(c => holdStatus(c) === 'sold').length;
+      /* Took profit on their own call while a follower who bought at the call
+         price is under water. A caller holds before calling, so they can bank
+         while the people who followed are down — measured from their own
+         position in pump.fun's feed, never inferred. */
+      const exits = judged.filter(isExit).length;
       const banked = Math.max(0, ...Object.values(p.board || {}).map(b => num(b.realized)));
       rows.push({
         wallet: p.wallet, name: p.name, xh: p.xh || '', avatar: p.avatar || '', verified: !!p.verified,
@@ -354,6 +393,8 @@ export class CallerBook {
         banked: banked || null,
         seenCalls: seen.length,
         soldOf: judged.length >= 3 ? { sold, of: judged.length } : null,
+        exits: judged.length >= 3 ? { n: exits, of: judged.length } : null,
+        statsAt: p.statsAt || 0,
         recent: seen.slice(0, 3).map(c => ({ sym: c.sym, mint: c.mint, at: c.at, now: nowMultiple(c), peak: c.peak })),
         lastAt: seen.length ? seen[0].at : 0,
       });
@@ -407,6 +448,41 @@ export class CallerBook {
       out.push({ call: c, caller: top.get(c.wallet) });
     }
     return out.sort((a, b) => a.call.at - b.call.at).slice(0, 10);
+  }
+
+  /* Whom pump.fun's own ranked feed puts in front of people.
+
+     pump.fun picks the ~150 calls of its home feed; the stream of every new
+     call is forty a minute. If the feed rewarded records, its top slots would
+     go to callers whose calls reach 2× and its calls would hold up better than
+     the rest. Measured per read, against the callers' own records:
+     - how many of the top slots go to KOLs pump.fun pays (`paid`: their wallets);
+     - how many to callers with a record of reaching 2× (LIVE_MIN_HIT), and how
+       many to callers with no record at all;
+     - the median 2× rate, and the median multiple now, of the top slots
+       against every other live call.
+     A measurement of the feed, not a claim about why it is ordered so. */
+  promotion(paid = new Set(), now = Date.now(), top = PROMO_TOP) {
+    const ids = (this.feedTop || []).filter(id => this.calls.has(id));
+    if (ids.length < 5) return null;
+    const calls = ids.map(id => this.calls.get(id));
+    const head = calls.slice(0, top);
+    const inFeed = new Set(ids);
+    const rest = [...this.calls.values()].filter(c => !inFeed.has(c.id) && now - c.at < LIVE_MS);
+    const hitOf = c => {
+      const p = this.callers.get(c.wallet), w = p && p.stats && p.stats.weekly;
+      return w && w.n >= MIN_CALLS.weekly ? w.hit2 : null;
+    };
+    return {
+      at: this.feedAt || 0, slots: ids.length, top: head.length,
+      paidTop: head.filter(c => paid.has(c.wallet)).length,
+      paidAll: calls.filter(c => paid.has(c.wallet)).length,
+      provenTop: head.filter(c => { const h = hitOf(c); return h != null && h >= LIVE_MIN_HIT; }).length,
+      unknownTop: head.filter(c => hitOf(c) == null).length,
+      hitTop: med(head.map(hitOf)), hitRest: med(rest.map(hitOf)),
+      nowTop: med(head.map(nowMultiple)), nowRest: med(rest.map(nowMultiple)),
+      restN: rest.length,
+    };
   }
 
   status(now = Date.now()) {
@@ -466,7 +542,7 @@ export async function pollOnce(book, now = Date.now(), http = defaultHttp()) {
 
 export function defaultHttp() {
   const call = async (url, init = {}) => {
-    const r = await fetch(url, {
+    const r = await pumpFetch(url, {
       ...init,
       headers: { accept: 'application/json', 'user-agent': UA, ...(init.headers || {}) },
       signal: AbortSignal.timeout(10000),

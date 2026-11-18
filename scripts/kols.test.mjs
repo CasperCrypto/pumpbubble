@@ -16,7 +16,7 @@
      - the board joins followers and records onto pump.fun's own order.
    ========================================================================== */
 
-import { KolBook, shapePayout, shapeProfile, shapeHistory, pollKols, withKols, median,
+import { KolBook, shapePayout, shapeProfile, shapeHistory, pollKols, withKols, median, boardSummary, spearman, tradingOf, paidWallets,
   PAYOUTS, listUrl, userUrl, KOL_PERIODS, KOL_PER_TICK, KOL_WARM, HIST_TTL, PAY_EVERY } from '../src/kols.mjs';
 
 let pass = 0, fail = 0;
@@ -159,6 +159,44 @@ console.log('\nthe dev wrapper');
   await fn('tick');
   is('a tick reaches the callers too', seen.includes('tick'), true);
   is('and fills the board', (await fn('kols', { period: 'all' })).rows.length, 1);
+}
+
+console.log('\nwhat the board adds up to');
+{
+  /* ten KOLs: pay rises as what holders kept falls */
+  const rows = Array.from({ length: 10 }, (_, i) => ({ wallet: sol(100 + i), paid: (10 - i) * 1000, n: 50,
+    medNow: 0.05 + i * 0.1, hit2: 0.7 - i * 0.03, histAt: NOW - i * 3600_000 }));
+  const s = boardSummary(rows);
+  is('paid is the sum', s.paid, 55000);
+  is('the top ten is everyone here', s.top10Share, 1);
+  is('every row has a record', s.withRecord, 10);
+  near('holders down more than half: medNow under 0.5', s.holdersDownHalf, 0.5);
+  near('holders down more than 80%: medNow under 0.2', s.holdersDown80, 0.2);
+  near('pay against what holders kept: perfectly opposed', s.payVsHoldNow, -1);
+  near('pay with the 2× rate: perfectly together', s.payVsHit2, 1);
+  is('the records span what was read', s.recordsTo - s.recordsFrom, 9 * 3600_000);
+  is('a short record is not a record', boardSummary([{ paid: 10, n: 3, medNow: 1 }]).withRecord, 0);
+  is('nothing to correlate with under five', spearman([1, 2], [2, 1]), null);
+  near('ties are averaged', spearman([1, 1, 2, 3, 4], [1, 1, 2, 3, 4]), 1);
+}
+
+console.log('\nKOLs who also bank trading');
+{
+  const W1 = sol(200), W2 = sol(201);
+  const trading = new Map([[W2, { weekly: { rank: 4, realized: 12_000, at: NOW }, daily: { rank: 0 } }]]);
+  const t = tradingOf(trading, { wallet: W1, wallets: [W1, W2] });
+  is('found under the row’s second wallet', t && t.weekly.rank, 4);
+  is('a zero rank is no rank', t && t.daily, undefined);
+  is('nobody on the boards is null', tradingOf(trading, { wallet: sol(202), wallets: [] }), null);
+  const e = { rank: 1, username: 'two', walletAddress: '0x' + 'a'.repeat(40), wallets: ['0x' + 'a'.repeat(40), W1, W2], totalPaidUsdc: 5, payoutCount: 1 };
+  const r = shapePayout(e);
+  is('a payout row keeps every Solana wallet', JSON.stringify(r.wallets), JSON.stringify([W1, W2]));
+  const kb = new KolBook();
+  kb.applyPayouts('all', { entries: [e] }, NOW);
+  is('every paid wallet is known', [...paidWallets(kb)].sort().join(), [W1, W2].sort().join());
+  const b = kb.board('all', trading);
+  is('the board carries the trading join', b.rows[0].trading && b.rows[0].trading.weekly.realized, 12_000);
+  is('…and its summary', b.summary && b.summary.alsoTraders, 1);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

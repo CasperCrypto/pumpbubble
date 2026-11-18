@@ -65,12 +65,16 @@ export function shapePayout(e) {
   if (!e || typeof e !== 'object') return null;
   const ws = [e.walletAddress, ...(Array.isArray(e.wallets) ? e.wallets : [])].map(String);
   const wallet = ws.find(w => isMint(w)) || '';
+  /* every Solana wallet the row lists, so a trader on the PnL board is
+     matched to their rewards whichever of their wallets they trade from */
+  const sol = [...new Set(ws.filter(w => isMint(w)))].slice(0, 6);
   const name = clean(e.username || '', 24);
   if (!name && !wallet) return null;
   return {
     rank: num(e.rank),
     userId: String(e.userId || '').slice(0, 64),
     wallet,
+    wallets: sol,
     name: name || wallet.slice(0, 4) + '…' + wallet.slice(-4),
     avatar: httpsOnly(e.profileImageUrl),
     verified: !!e.isVerified,
@@ -110,6 +114,89 @@ export function shapeHistory(j) {
     inProfit: nows.length ? nows.filter(x => x >= 1).length / nows.length : null,
     firstAt: ats.length ? Math.min(...ats) : 0, lastAt: ats.length ? Math.max(...ats) : 0,
   };
+}
+
+/* What a payout row's wallets banked on pump.fun's PnL boards, best rank per
+   window. `trading` is a Map wallet → { daily|weekly|monthly: { rank, realized, at } }. */
+export function tradingOf(trading, r) {
+  const out = {};
+  for (const w of new Set([r.wallet, ...(r.wallets || [])].filter(Boolean))) {
+    const b = trading.get(w);
+    if (!b) continue;
+    for (const [win, v] of Object.entries(b)) {
+      if (!v || !(v.rank > 0)) continue;
+      if (!out[win] || v.rank < out[win].rank) out[win] = { rank: v.rank, realized: num(v.realized), at: num(v.at) };
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/* Spearman's rank correlation, ties averaged. */
+export function spearman(xs, ys) {
+  const n = xs.length;
+  if (n < 5 || ys.length !== n) return null;
+  const rank = a => {
+    const idx = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+    const r = new Array(n);
+    for (let i = 0; i < n;) {
+      let j = i;
+      while (j + 1 < n && idx[j + 1][0] === idx[i][0]) j++;
+      for (let k = i; k <= j; k++) r[idx[k][1]] = (i + j) / 2;
+      i = j + 1;
+    }
+    return r;
+  };
+  const rx = rank(xs), ry = rank(ys);
+  const mx = (n - 1) / 2;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) { sxy += (rx[i] - mx) * (ry[i] - mx); sxx += (rx[i] - mx) ** 2; syy += (ry[i] - mx) ** 2; }
+  return sxx && syy ? sxy / Math.sqrt(sxx * syy) : null;
+}
+
+/* The board in five numbers — what the rewards pay for, measured.
+
+   On the board read 2026-11-13 (the last before pump.fun closed its API to
+   servers): the top 100 were paid $14.4M, the top 10 took 35% of it; for 93%
+   of the KOLs with a record, a follower who bought at the call and held was
+   down more than half at the median (64%: down more than 80%); and pay ranked
+   *with* the 2× hit rate (+0.49) and *against* what holders kept (−0.34). The
+   rewards follow the peak a perfect seller could have caught, not what a
+   follower ends up with. */
+export const MIN_RECORD = 10;
+export function boardSummary(rows) {
+  const paid = rows.map(r => num(r.paid)).filter(x => x > 0).sort((a, b) => b - a);
+  const total = paid.reduce((s, x) => s + x, 0);
+  const share = k => total ? paid.slice(0, k).reduce((s, x) => s + x, 0) / total : null;
+  const rec = rows.filter(r => r.n >= MIN_RECORD && Number.isFinite(r.medNow) && Number.isFinite(r.paid));
+  const recPaid = rec.reduce((s, r) => s + r.paid, 0);
+  const down = (r, x) => r.medNow < x;
+  const histAts = rows.map(r => num(r.histAt)).filter(x => x > 0);
+  return {
+    kols: rows.length,
+    paid: total,
+    top10Share: share(10),
+    withRecord: rec.length,
+    medHoldNow: median(rec.map(r => r.medNow)),
+    medHit2: median(rec.map(r => r.hit2).filter(x => x != null)),
+    holdersDownHalf: rec.length ? rec.filter(r => down(r, 0.5)).length / rec.length : null,
+    holdersDown80: rec.length ? rec.filter(r => down(r, 0.2)).length / rec.length : null,
+    /* of the money, how much went to KOLs whose holders kept under a fifth */
+    paidToDown80: recPaid ? rec.filter(r => down(r, 0.2)).reduce((s, r) => s + r.paid, 0) / recPaid : null,
+    payVsHit2: spearman(rec.map(r => r.paid), rec.map(r => r.hit2 == null ? 0 : r.hit2)),
+    payVsHoldNow: spearman(rec.map(r => r.paid), rec.map(r => r.medNow)),
+    alsoTraders: rows.filter(r => r.trading).length,
+    recordsFrom: histAts.length ? Math.min(...histAts) : 0,
+    recordsTo: histAts.length ? Math.max(...histAts) : 0,
+  };
+}
+
+/* Every wallet pump.fun has paid callout rewards to, on any of the boards. */
+export function paidWallets(kb) {
+  const out = new Set();
+  for (const b of Object.values((kb && kb.boards) || {})) {
+    for (const r of b.rows || []) for (const w of [r.wallet, ...(r.wallets || [])]) if (w) out.add(w);
+  }
+  return out;
 }
 
 export class KolBook {
@@ -182,8 +269,10 @@ export class KolBook {
   }
 
   /* The board as the page reads it: pump.fun's order (money received), with
-     each KOL's followers and record joined on. */
-  board(period = 'all') {
+     each KOL's followers and record joined on. `trading`, when given, maps a
+     wallet to what pump.fun's PnL boards say it banked (the CallersDO holds
+     those beside this book) — the other half of how a KOL earns. */
+  board(period = 'all', trading = null) {
     const b = this.boards[period] || this.boards.all;
     if (!b) return { rows: [], at: 0, total: 0 };
     const rows = (b.rows || []).map(r => {
@@ -198,10 +287,14 @@ export class KolBook {
         medPeak: h ? h.medPeak : null, avgPeak: h ? h.avgPeak : null, hit2: h ? h.hit2 : null,
         medNow: h ? h.medNow : null, inProfit: h ? h.inProfit : null,
         firstAt: h ? h.firstAt : 0, lastAt: h ? h.lastAt : 0,
+        /* when the record was read: pump.fun stopped answering, and a record
+           four weeks old must say so rather than pass for today's */
+        histAt: p.histAt || 0,
         perPayout: r.payouts ? r.paid / r.payouts : null,
+        trading: trading ? tradingOf(trading, r) : null,
       };
     });
-    return { rows, at: b.at, total: b.total };
+    return { rows, at: b.at, total: b.total, summary: boardSummary(rows) };
   }
 
   status(now = Date.now()) {
