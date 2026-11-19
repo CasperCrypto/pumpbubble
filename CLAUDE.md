@@ -1499,10 +1499,26 @@ to which one is busy; TVL would have said neither exists.
 
 | view | size | colour | 1W |
 |---|---|---|---|
-| Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted `change_7d` |
-| Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7d` |
-| Prediction | 24h volume wagered | `change_1d` | `change_7d` |
-| Casinos | hot-wallet balance (off-chain casinos) / bankroll TVL (on-chain) | own history / `change_1d` | own history / `change_7d` |
+| Chains | 24h DEX volume | volume-weighted `change_1d` of the venues on it | volume-weighted week over week; no 1M |
+| Launchpads | 24h fees | `change_1d`, or the day against the trailing weekly average | `change_7dover7d`; 1M `change_30dover30d` |
+| Prediction | 24h volume wagered | `change_1d` | `change_7dover7d`; 1M `change_30dover30d` |
+| Casinos | hot-wallet balance (off-chain casinos) / bankroll TVL (on-chain) | own history / `change_1d` | own history / `change_7d` (TVL, point to point) |
+
+**DefiLlama's `change_7d` on the fees and DEX overviews is not a week** (fixed 2026-11-19): it is
+today's single day against the single day a week ago, and `change_1m` the same thirty days back.
+Under a 1W pill that read as the week's move — pump.fun showed +32.8% for a week that was +9.0%,
+clanker +287% for +35%. `weekOverWeek()` / `monthOverMonth()` in flows.mjs take the period-over-
+period fields, or compute them from `total7d`/`total14dto7d` and `total30d`/`total60dto30d`. The
+`/protocols` list's `change_7d` (Casinos) is a TVL change and stays. Chains get no 1M: averaging
+each venue's month read Base at +14,917% (venues with no previous month), and there is no
+per-chain previous month to divide by.
+
+**A launchpad card says more than fees** (2026-11-19): what the launchpad *kept* (revenue — pump.fun
+kept $1.16M of $1.72M; one ~4 KB `summary/fees/<slug>?dataType=dailyRevenue` read for each of the
+top eight, because the revenue overview is another 4 MB; a failed read keeps the last figure),
+what was traded on it (the dexs overview by slug, where DefiLlama has a volume adapter — pump.fun's
+curve $128M a day), 30-day and all-time fees, and its chains. 1M works on Launchpads and Prediction.
+`scripts/flows.test.mjs`.
 
 **These bubbles print the money on their own faces.** Relative area says which is
 bigger; it does not say whether that is two billion dollars or two million, and

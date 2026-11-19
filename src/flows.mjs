@@ -46,6 +46,25 @@ export const FRESH_MS = 20 * 60 * 1000;
 const num = v => { const n = +v; return Number.isFinite(n) ? n : 0; };
 /* A change nobody reported is null, not zero. */
 const pick = v => (v == null || !Number.isFinite(+v)) ? null : +v;
+
+/* Week and month moves, period against period.
+
+   DefiLlama's `change_7d` is NOT a weekly change: it is today's single day
+   against the single day a week ago (pump.fun on 2026-11-19: $1.72M against
+   $1.29M, "+32.8%"), and `change_1m` the same against a day thirty days back.
+   Under a pill labelled 1W that read as the week's move, and one quiet day a
+   week ago made any launchpad look like it was surging — clanker showed
+   +287% for a week that was +35%. `change_7dover7d` is the last seven days
+   against the seven before, `change_30dover30d` the same for thirty; where
+   the field is missing the two totals it is made of say the same thing. */
+const over = (p, ch, cur, prev) => {
+  const c = pick(p && p[ch]);
+  if (c != null) return c;
+  const a = num(p && p[cur]), b = num(p && p[prev]);
+  return a > 0 && b > 0 ? ((a - b) / b) * 100 : null;
+};
+const weekOverWeek = p => over(p, 'change_7dover7d', 'total7d', 'total14dto7d');
+const monthOverMonth = p => over(p, 'change_30dover30d', 'total30d', 'total60dto30d');
 /* bsc -> BSC, off_chain -> Off Chain, robinhood -> Robinhood. */
 const SHOUT = new Set(['bsc', 'bnb', 'eos', 'icp', 'iotex', 'xdc', 'zksync']);
 const title = slug => String(slug || '').split(/[_\s-]+/)
@@ -69,7 +88,7 @@ async function jget(url, ms = 25000) {
    credit Solana and a testnet equally. The colour is each protocol's own 1d
    change, weighted by what it actually did on that chain, so a chain's number
    is the volume-weighted move of the venues on it. */
-function chainsFrom(dexs) {
+export function chainsFrom(dexs) {
   const vol = new Map();
   const wsum = new Map();
   const w7sum = new Map();
@@ -78,7 +97,7 @@ function chainsFrom(dexs) {
     const bd = p.breakdown24h;
     if (!bd || typeof bd !== 'object') continue;
     const ch = pick(p.change_1d);
-    const ch7 = pick(p.change_7d);
+    const ch7 = weekOverWeek(p);
     for (const [chain, byProto] of Object.entries(bd)) {
       let v = 0;
       for (const amt of Object.values(byProto || {})) v += num(amt);
@@ -105,6 +124,11 @@ function chainsFrom(dexs) {
       vol: v,
       change: w == null ? null : w / v,
       change7d: w7 == null ? null : w7 / v,
+      /* No 1M: a volume-weighted average of each venue's month-over-month
+         change read Base at +14,917% — a few venues new this month, with no
+         month before it, outweigh everything — and DefiLlama publishes no
+         per-chain previous month to divide by instead. */
+      change30d: null,
       /* No 7d *volume* for a chain: the overview breaks down by chain for 24h
          and 30d only, and slicing a protocol's global weekly total across the
          chains it happens to list would be a number we invented rather than one
@@ -141,7 +165,14 @@ const MIN_FEES = 1000;
    what fits inside a small bubble. */
 const dropSuffix = n => n.replace(/\s+launchpads?$/i, '').trim() || n;
 
-function padsFrom(fees) {
+export function padsFrom(fees, dexs) {
+  /* What was traded on each launchpad, where DefiLlama has a volume adapter
+     for the same slug (pump.fun's curve, Flap, Pons, LaunchLab…). Absent is
+     null: most launchpads publish fees only. */
+  const traded = new Map();
+  for (const p of (dexs && dexs.protocols) || []) {
+    if (p.slug && num(p.total24h) > 0) traded.set(p.slug, num(p.total24h));
+  }
   const out = [];
   for (const p of (fees && fees.protocols) || []) {
     if (!/launchpad/i.test(p.category || '')) continue;
@@ -162,13 +193,44 @@ function padsFrom(fees) {
       name: name + ' — 24h fees',
       vol: v,
       change: ch,
-      change7d: pick(p.change_7d),
+      change7d: weekOverWeek(p),
+      change30d: monthOverMonth(p),
       vol7d: num(p.total7d) || null,
+      fees30d: num(p.total30d) || null,
+      feesAll: num(p.totalAllTime) || null,
+      traded24h: traded.get(p.slug) || null,
+      /* filled from the revenue summaries for the top few, see padRevenue */
+      rev24h: null, rev30d: null,
+      chains: (p.chains || []).slice(0, 4).map(c => clean(String(c), 20)).filter(Boolean),
       logo: typeof p.logo === 'string' && /^https:\/\//.test(p.logo) ? p.logo : '',
       slug: p.slug || '',
     });
   }
   return out.sort((a, b) => b.vol - a.vol).slice(0, 60);
+}
+
+/* What the launchpad itself kept. "Fees" is what traders paid; revenue is
+   the part the launchpad keeps after creators, LPs and referrers — pump.fun
+   kept $1.16M of $1.72M on 2026-11-19, Flap $109K of $474K. The revenue
+   overview is another 4 MB, so only the top few are asked, one small
+   per-protocol summary each (~4 KB); the rest show a dash. */
+const REV_TOP = 8;
+const revUrl = slug => 'https://api.llama.fi/summary/fees/' + encodeURIComponent(slug)
+  + '?dataType=dailyRevenue&excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
+
+async function padRevenue(pads, prev) {
+  const old = new Map(((prev && prev.pads) || []).map(r => [r.id, r]));
+  const top = pads.slice(0, REV_TOP).filter(r => r.slug);
+  const got = await Promise.allSettled(top.map(r => jget(revUrl(r.slug), 8000)));
+  top.forEach((r, i) => {
+    const j = got[i].status === 'fulfilled' ? got[i].value : null;
+    const d1 = j && pick(j.total24h), d30 = j && pick(j.total30d);
+    if (d1 != null || d30 != null) { r.rev24h = d1; r.rev30d = d30; return; }
+    /* a failed read keeps the last measured figure rather than a dash */
+    const o = old.get(r.id);
+    if (o) { r.rev24h = o.rev24h == null ? null : o.rev24h; r.rev30d = o.rev30d == null ? null : o.rev30d; }
+  });
+  return pads;
 }
 
 /* Prediction markets, by what was wagered in 24h.
@@ -208,7 +270,7 @@ const BRANDS = [
   { name: 'Polymarket', test: /^Polymarket(\s|$)/i, slug: 'polymarket' },
 ];
 
-function predictionFrom(dexs, fees) {
+export function predictionFrom(dexs, fees) {
   const CAT = /prediction market/i;
   const take = takeBySlug(fees, CAT);
   const rows = [];
@@ -227,7 +289,8 @@ function predictionFrom(dexs, fees) {
       vol: v,
       vol7d: num(p.total7d) || null,
       change: pick(p.change_1d),
-      change7d: pick(p.change_7d),
+      change7d: weekOverWeek(p),
+      change30d: monthOverMonth(p),
       fees24h: t ? t.d1 : null,
       fees7d: t ? t.d7 : null,
       chains: (p.chains || []).slice(0, 4).map(c => clean(String(c), 20)).filter(Boolean),
@@ -255,6 +318,7 @@ function predictionFrom(dexs, fees) {
       vol7d: sum('vol7d'),
       change: w('change'),
       change7d: w('change7d'),
+      change30d: w('change30d'),
       fees24h: sum('fees24h'),
       fees7d: sum('fees7d'),
       chains: [...new Set(parts.flatMap(r => r.chains))].slice(0, 4),
@@ -351,7 +415,7 @@ export async function refreshFlows(store, force = false) {
   const P = protos.status === 'fulfilled' ? protos.value : null;
 
   const chains = D ? chainsFrom(D) : [];
-  const pads = F ? padsFrom(F) : [];
+  const pads = F ? await padRevenue(padsFrom(F, D), have) : [];
   /* Prediction needs the dexs side; casinos need the protocol list. The fees
      side only decorates either. */
   const prediction = D ? predictionFrom(D, F) : [];
@@ -401,6 +465,13 @@ function shape(rows, kind) {
     kind,
     slug: r.slug || '',
     vol7d: r.vol7d || null,
+    /* launchpads: a month of fees, all time, what the launchpad kept, and
+       what was traded on it — each null where DefiLlama has no figure */
+    fees30d: r.fees30d == null ? null : r.fees30d,
+    feesAll: r.feesAll == null ? null : r.feesAll,
+    rev24h: r.rev24h == null ? null : r.rev24h,
+    rev30d: r.rev30d == null ? null : r.rev30d,
+    traded24h: r.traded24h == null ? null : r.traded24h,
     /* Betting venues only: the house take and what kind of venue it is. Null
        where the fees overview has no adapter for the slug. */
     fees24h: r.fees24h == null ? null : r.fees24h,
@@ -419,7 +490,8 @@ function shape(rows, kind) {
       m5: null, h1: null, h6: null,
       h24: pick(r.change),
       d7: pick(r.change7d),
-      d30: null, y1: null,
+      d30: pick(r.change30d),
+      y1: null,
     },
     copies: 1, flags: [], solid: true,
   }));

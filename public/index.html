@@ -1515,7 +1515,9 @@ function fixTf(){
     return;
   }
   if(!FLOW_MODES.has(S.mode))return;
-  if(S.tf==='h24'||S.tf==='d7')return;
+  /* 1M only where a venue's month is measured against its previous month:
+     DefiLlama publishes that per venue, never per chain */
+  if(S.tf==='h24'||S.tf==='d7'||(S.tf==='d30'&&(S.mode==='pads'||S.mode==='prediction')))return;
   S.tf='h24';
   document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
 }
@@ -1654,7 +1656,8 @@ async function fetchLive(){
     ins:t.ins&&typeof t.ins==='object'?t.ins:null,
     /* a Collector Crypt pack machine (src/cards.mjs), escaped wherever it is written */
     mach:t.mach&&typeof t.mach==='object'?t.mach:null,
-    fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h), chains:Array.isArray(t.chains)?t.chains:[],
+    fees24h:NN(t.fees24h), wagered24h:NN(t.wagered24h),
+    fees30d:NN(t.fees30d), feesAll:NN(t.feesAll), rev24h:NN(t.rev24h), rev30d:NN(t.rev30d), traded24h:NN(t.traded24h), chains:Array.isArray(t.chains)?t.chains:[],
     via:t.via||'', wallets:+t.wallets||0, walletsRead:+t.walletsRead||0, site:t.site||'',
     parts:Array.isArray(t.parts)?t.parts.filter(p=>p&&p.name).slice(0,6):[],
     /* Every window, null-preserving. The short four used ||0, which was left
@@ -3407,7 +3410,7 @@ function openCard(t){
     lab('cMc',pad?'24h fees':'24h DEX volume');
     lab('cVol',pad?'7d fees':'7d volume');
     lab('cA','24h change');
-    lab('cB','7d change');
+    lab('cB',pad||t.kind==='pm'?'Week / month':'Week change');
     /* A chain has no 7d volume to show — DefiLlama breaks the weekly total
        down by protocol, not by chain, and splitting one across the chains it
        lists would be arithmetic we invented. What it does have, for free, is
@@ -3426,7 +3429,7 @@ function openCard(t){
         :'<span style="color:var(--dim)">—</span>';
     }
     e('cA').innerHTML=pct(t.pc.h24);
-    e('cB').innerHTML=pct(t.pc.d7);
+    e('cB').innerHTML=pad||t.kind==='pm'?`${pct(t.pc.d7)} ${sep} ${pct(t.pc.d30)}`:pct(t.pc.d7);
   }else{
     lab('cMc','Market cap');
     lab('cVol','24h volume');
@@ -3485,7 +3488,19 @@ function openCard(t){
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'
     : '';
-  e('cWarn').innerHTML=(t.mach?machineLine(t):t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
+  /* A launchpad: what it kept of those fees, what was traded on it, and its
+     month — each only where DefiLlama publishes it. The week and month are
+     period against period, not one day against one day. */
+  const padLine=t.kind==='pad'
+    ? '<div class="warn" style="opacity:.9">'+ic('chart')+[
+        t.rev24h!=null&&t.mcap>0?'kept <b>'+esc(fmtUsd(t.rev24h))+'</b> of it ('+Math.round(t.rev24h/t.mcap*100)+'%) after creator and other shares':'',
+        t.traded24h!=null?'<b>'+esc(fmtUsd(t.traded24h))+'</b> traded on it 24h':'',
+        t.fees30d!=null?'30d fees '+esc(fmtUsd(t.fees30d))+(t.rev30d!=null?' (kept '+esc(fmtUsd(t.rev30d))+')':''):'',
+        t.feesAll!=null?'all time '+esc(fmtUsd(t.feesAll)):'',
+        t.chains.length?t.chains.map(esc).join(', '):''].filter(Boolean).join(' · ')
+      +' · week and month are each against the one before</div>'
+    : '';
+  e('cWarn').innerHTML=(t.mach?machineLine(t):t.kind==='pad'?padLine:t.kind==='trader'?traderLine:t.kind==='caller'?callerLine(t):t.kind==='kol'?kolLine(t):t.kind==='call'?callLine(t):t.via==='smart'?smartLine+warnLine(t):t.via==='hot'
     ? '<div class="warn">ⓘ hot wallets only — what is visible on-chain; cold storage and chains without a known address are not counted, so this is a floor</div>'
     : (t.parts&&t.parts.length>1)
       /* a brand summed from several listings says what went into it */
