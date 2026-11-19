@@ -28,6 +28,7 @@ import { logoDataUri } from '../src/share.mjs';
 import { objectStore, StoreDO } from '../src/dostore.mjs';
 import { meterClass } from '../src/dometer.mjs';
 import { readAkashSites, SITES_TTL } from '../src/computemap.mjs';
+import { PowerKeeper } from '../src/powerlive.mjs';
 import { LaunchBook, launchOp } from '../src/launch.mjs';
 import { ISSUERS as INS_ISSUERS, SEC_UA, CONGRESS, OC, congressRows, congressKey, dedupe as insDedupe, chartUrl, closesOn,
   officialsFrom, officialTrades, fromCabinet,
@@ -1038,22 +1039,30 @@ function launchClient(env) {
    in memory and storage; no alarm, so it costs nothing while nobody looks.
    A failed read serves the last good copy with the error attached. */
 export class ComputeDO {
-  constructor(state, env) { this.state = state; this.env = env; this.mem = null; this.inflight = null; this.fail = null; }
+  constructor(state, env) { this.state = state; this.env = env; this.mem = null; this.inflight = null; this.fail = null; this.power = new PowerKeeper(state.storage); }
   async fetch() {
     const now = Date.now();
+    /* power prices refresh themselves (src/powerlive.mjs): the stored read is
+       answered at once and whatever is due runs after the response */
+    const power = await this.power.current(now).catch(() => null);
+    if (this.power.pending && this.state.waitUntil) this.state.waitUntil(this.power.pending);
+    const res = await this.sites(now);
+    return Response.json({ ...res, power });
+  }
+  async sites(now) {
     if (!this.mem) { try { this.mem = (await this.state.storage.get('sites')) || null; } catch { /* none yet */ } }
     /* a copy from before the market data existed is re-read, not served */
-    if (this.mem && now - this.mem.at < SITES_TTL && this.mem.market) return Response.json(this.mem);
+    if (this.mem && now - this.mem.at < SITES_TTL && this.mem.market) return this.mem;
     /* a failed read waits two minutes before the next try, or every page
        view would start another 25-second read of a refusing upstream */
-    if (this.fail && now - this.fail.at < 120_000) return Response.json({ ...(this.mem || { at: 0, sites: [] }), error: this.fail.error });
+    if (this.fail && now - this.fail.at < 120_000) return { ...(this.mem || { at: 0, sites: [] }), error: this.fail.error };
     if (!this.inflight) {
       this.inflight = readAkashSites(fetch, now)
         .then(async v => { this.mem = v; this.fail = null; try { await this.state.storage.put('sites', v); } catch { /* next read */ } return v; })
         .catch(e => { this.fail = { at: Date.now(), error: String((e && e.message) || e).slice(0, 160) }; return { ...(this.mem || { at: 0, sites: [] }), error: this.fail.error }; })
         .finally(() => { this.inflight = null; });
     }
-    return Response.json(await this.inflight);
+    return this.inflight;
   }
 }
 

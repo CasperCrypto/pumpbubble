@@ -36,6 +36,19 @@ import { POWER } from './powerprices.mjs';
 import { WHOLESALE } from './wholesale.mjs';
 import { TARIFFS } from './tariffs.mjs';
 import { GRID } from './gridmix.mjs';
+import { usable, dayAheadByCountry } from './powerlive.mjs';
+
+/* The prices in use: the ComputeDO's latest read (src/powerlive.mjs) when it
+   is at least as complete as the baked file, else the baked file. Set by
+   mapPayload from what the object returned; module state, per isolate. */
+let LIVE = null;
+export function setLivePower(p) {
+  if (!p) { LIVE = null; return; }
+  /* the day-ahead conversion needs only the read's dollar rate, even when the
+     read itself was too incomplete to replace the baked prices */
+  LIVE = { ind: usable(p.ind, POWER) ? p.ind : null, da: p.da || null, fx: (p.ind && p.ind.usdPerEur) || null };
+}
+const PW = () => (LIVE && LIVE.ind) || POWER;
 import { METROS, PROJECTS, US_STATES } from './datacenters.mjs';
 
 export const PROVIDERS_URL = 'https://console-api.akash.network/v1/providers';
@@ -71,23 +84,39 @@ const semLabel = p => { const m = /^(\d{4})-S([12])$/.exec(p || ''); return m ? 
    price in the US, the country's statistical industrial price, a published
    tariff (src/tariffs.mjs), the wholesale price, or nothing. */
 export function powerAt(cc, st) {
-  if (cc === 'US' && st && POWER.states[st] != null) return { usd: POWER.states[st], kind: 'industrial', where: STATE_NAME[st] || st };
-  const c = POWER.countries[cc];
+  const P = PW();
+  if (cc === 'US' && st && P.states[st] != null) return { usd: P.states[st], kind: 'industrial', where: STATE_NAME[st] || st };
+  const c = P.countries[cc];
   if (c) return { usd: c.usd, kind: 'industrial', where: cc };
   const t = TARIFFS.countries[cc];
   if (t) return { usd: t.usd, kind: 'tariff', where: cc };
+  const d = dayAhead()[cc];
+  if (d) return { usd: d.usd, kind: 'wholesale', where: cc };
   const w = WHOLESALE[cc];
   return w ? { usd: w.usd, kind: 'wholesale', where: cc } : null;
 }
 
 /* Every country something is known about, one object each — what the map
    colours and what a country's card says. */
+/* Europe's day-ahead, per country, at the live read's dollar rate */
+function dayAhead() {
+  const fx = LIVE && LIVE.fx;
+  return LIVE && LIVE.da && fx ? dayAheadByCountry(LIVE.da, fx) : {};
+}
+const dayLabel = d => { const [y, m, dd] = String(d).split('-'); return +dd + ' ' + MONTHS[+m - 1] + ' ' + y; };
+
 export function countryData() {
   const out = {};
   const at = cc => (out[cc] = out[cc] || {});
-  for (const [cc, c] of Object.entries(POWER.countries)) Object.assign(at(cc), { ind: c.usd, indP: c.src === 'eia' ? c.period : semLabel(c.period) });
+  for (const [cc, c] of Object.entries(PW().countries)) Object.assign(at(cc), { ind: c.usd, indP: c.src === 'eia' ? c.period : semLabel(c.period) });
   for (const [cc, t] of Object.entries(TARIFFS.countries)) Object.assign(at(cc), { tar: t.usd, tarP: monthLabel(t.ym), tarWhat: t.what, tarSrc: t.src });
   for (const [cc, w] of Object.entries(WHOLESALE)) Object.assign(at(cc), { whl: w.usd, whlP: monthLabel(w.from) + ' – ' + monthLabel(w.to), whlM: w.market });
+  /* a week of day-ahead prices replaces a year-old wholesale average, and
+     rides on every European country's card as its daily number */
+  for (const [cc, d] of Object.entries(dayAhead())) {
+    Object.assign(at(cc), { whl: d.usd, whlLive: 1, whlP: '7 days to ' + dayLabel(d.to), whlM: 'day-ahead' + (d.of > 1 ? ', ' + d.zones + ' zones' : ''),
+      ...(d.of > 1 && d.hi > d.lo ? { whlLo: d.lo, whlHi: d.hi } : {}) });
+  }
   for (const [cc, g] of Object.entries(GRID)) Object.assign(at(cc), { ...(g.co2 != null ? { co2: g.co2 } : {}), ...(g.lowc != null ? { lowc: g.lowc } : {}), gy: g.year });
   return out;
 }
@@ -202,14 +231,19 @@ export function cheapGpus(feed, sites) {
 }
 
 export function mapPayload({ sites = null, feed = null, error = '', now = Date.now() } = {}) {
+  setLivePower(sites && sites.power);
   const S = (sites && sites.sites) || [];
+  const P = PW();
   return {
     at: now, sitesAt: (sites && sites.at) || null, error: error || '',
     sites: S, metros: METROS, projects: PROJECTS,
-    countries: countryData(), states: POWER.states, stateNames: STATE_NAME, regions: TARIFFS.regions,
+    countries: countryData(), states: P.states, stateNames: STATE_NAME, regions: TARIFFS.regions,
     market: (sites && sites.market) || null, miners: MINERS, akashFee: AKASH_FEE, watts: WATTS,
     gpus: cheapGpus(feed, S),
     h100: kwhPerHour('h100'), pue: PUE,
-    asOf: { industrial: POWER.asOf, us: POWER.usPeriod },
+    asOf: { industrial: P.asOf, us: P.usPeriod, live: P !== POWER, euUpdated: P.euUpdated || '' },
+    /* what the refresh last said, for /api/compute/map readers and the console */
+    power: sites && sites.power ? { indAt: (sites.power.ind && sites.power.ind.readAt) || null, indError: sites.power.indError || '',
+      zones: Object.keys((sites.power.da && sites.power.da.zones) || {}).length, daError: (sites.power.da && sites.power.da.error) || '' } : null,
   };
 }

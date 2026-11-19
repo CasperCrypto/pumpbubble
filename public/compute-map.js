@@ -334,6 +334,13 @@
         + '<div class="cm-kv"><span>One H100 at full power</span><b>' + $h(D.h100 * pw.usd) + ' / hour</b>'
         + '<span>A 100 MW campus, a year</span><b>$' + Math.round(pw.usd * 100000 * 8760 / 1e6) + 'M</b></div>';
     } else out += '<div class="cm-big" style="font-size:16px;color:#8a93a6">No open power price</div>';
+    /* Europe's day-ahead rides on the card as the daily number beside the
+       industrial average; on its own it is the striped wholesale price */
+    if (pw && pw.kind !== 'wholesale' && c.whl != null && c.whlLive) {
+      out += '<div class="cm-kv"><span>Wholesale day-ahead</span><b>' + $kwh(c.whl) + '</b><span>Average</span><b>' + esc(c.whlP || '') + '</b>'
+        + (c.whlLo != null ? '<span>Across ' + esc((c.whlM || '').replace(/^day-ahead, /, '')) + '</span><b>' + $kwh(c.whlLo) + ' – ' + $kwh(c.whlHi) + '</b>' : '') + '</div>';
+    }
+    if (pw && pw.kind === 'wholesale' && c.whlLo != null) out += '<div class="cm-kv"><span>Across ' + esc((c.whlM || '').replace(/^day-ahead, /, '')) + '</span><b>' + $kwh(c.whlLo) + ' – ' + $kwh(c.whlHi) + '</b></div>';
     if (pw && pw.kind === 'wholesale') out += '<p class="cm-d" style="margin:8px 0 0;font-size:11.5px">Wholesale is what power trades for before networks, taxes and retail — what a data center pays is higher.</p>';
     if (c.co2 != null || c.lowc != null) {
       out += '<h4>Grid</h4><div class="cm-kv">' + (c.co2 != null ? '<span>Carbon intensity</span><b>' + c.co2 + ' g CO₂/kWh</b>' : '') + (c.lowc != null ? '<span>Low-carbon power</span><b>' + c.lowc + '%</b>' : '') + '<span>Year</span><b>' + esc(c.gy || '') + '</b></div>';
@@ -412,7 +419,7 @@
     }
     html += '<h4>AI megaprojects</h4><div class="cm-rows">';
     D.projects.slice().sort(function (a, b) { return (b.gw || 0) - (a.gw || 0); }).forEach(function (p) { html += row('p' + D.projects.indexOf(p), '<span class="cm-dot" style="background:#f5c542"></span>', esc(p.name), fmtGw(p.gw), esc(p.city.split(',')[0])); });
-    html += '</div><p class="cm-src">Sources: Akash Network (live) · Eurostat · U.S. EIA · ECB · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · AWS, Google Cloud and Azure region lists · company announcements · Natural Earth.</p>';
+    html += '</div><p class="cm-src">Sources: Akash Network (live) · Eurostat · U.S. EIA · ECB · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · AWS, Google Cloud and Azure region lists · company announcements · Natural Earth.</p>';
     panel.innerHTML = html;
     draw();
   }
@@ -451,7 +458,7 @@
     html += '</div><p class="cm-note">' + (mode === 'gpu'
       ? 'At Akash’s typical posted price, rented out as often as the network’s GPUs of that model. Before the GPU itself, hosting, bandwidth and taxes.'
       : 'At the last day’s blocks (subsidy and fees), today’s price and difficulty — all of which move. Before the machine, hosting, pool fees (usually 1–4%) and taxes.') + '</p>';
-    html += '<p class="cm-src">Sources: Akash Network (prices, utilization) · mempool.space (Bitcoin) · Eurostat · U.S. EIA · ECB · published tariffs (linked on each country) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · Natural Earth.</p>';
+    html += '<p class="cm-src">Sources: Akash Network (prices, utilization) · mempool.space (Bitcoin) · Eurostat · U.S. EIA · ECB · published tariffs (linked on each country) · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · Natural Earth.</p>';
     panel.innerHTML = html;
     draw();
   }

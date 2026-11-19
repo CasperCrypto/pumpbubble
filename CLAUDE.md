@@ -1305,6 +1305,22 @@ while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data 
   load). Each row carries what it is and its source, shown on the card. Japan, Taiwan, Saudi Arabia,
   Malaysia, Kazakhstan and Iceland were looked for and left out — no current figure could be
   confirmed.
+- **Power prices refresh themselves** (2026-11-19, `src/powerlive.mjs`, the `PowerKeeper` in the
+  ComputeDO). Until then every price was a file baked on 2026-10-19 that nobody re-ran — EIA had
+  already published August while the map said July. Industrial prices (Eurostat, EIA, ECB — the
+  same parsers `scripts/power-prices.mjs` now imports) are re-read twice a day, a failure retried
+  after an hour, and replace the baked file only when as complete (`usable`). **Europe's day-ahead
+  wholesale** comes from Energy-Charts (CC BY 4.0, in the sources line): 36 zones, five per step
+  1.5 s apart, a step at most every 20 minutes, each zone every 20 hours — the API answers 429 to a
+  burst of ~25. The figure is the zone's last seven days, not one day (Spain €34/MWh beside
+  Germany €225 on the same day). It is the striped price where a country has no industrial figure
+  (Switzerland's 2023–24 average became this week's; Montenegro is new), and a second line —
+  "Wholesale day-ahead", with the zones' range for Norway, Sweden, Italy, Denmark — on every other
+  European card (`whlLive`). `mapPayload` → `power` says when each last read and what failed.
+  `scripts/powerlive.test.mjs`.
+- **A posted GPU price below its model's floor is not a price** (`min` in `GPUS`). Akash posted the
+  B300 at $0.23/h on 2026-11-19 (one listing, nothing free) and the strip printed it. Floors are
+  about a fifth of what each card rents for anywhere.
 - Static data is generated, never hand-edited: `scripts/world-map.mjs`, `scripts/power-prices.mjs`,
   `scripts/wholesale-prices.mjs <unzipped Zenodo folder>`, `scripts/grid-mix.mjs` (each `--write`).
   Re-run power prices when Eurostat publishes a semester. `scripts/computemap.test.mjs` pins it.
