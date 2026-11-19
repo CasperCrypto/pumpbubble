@@ -4650,13 +4650,20 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
             base:'base',graduated:'pumpfun',bonding:'bonding',all:'pumpfun',
             insiders:'insiders',politicians:'insiders',congress:'insiders',whitehouse:'insiders',trump:'insiders',ceos:'insiders',
             compute:'compute',gpu:'compute',gpus:'compute',map:'compute',gpumap:'compute',datacenters:'compute',power:'compute',
+            minerals:'compute','rare-earths':'compute',rareearths:'compute','critical-minerals':'compute',
             cards:'cards',pokemon:'cards',gacha:'cards',packs:'packs',pulls:'pulls',hits:'hits'};
   if(OK[src])S.mode=OK[src];
   /* ?grp=memory opens Compute on one group */
   const gq=(q.get('grp')||'').toLowerCase();
   if(['chips','memory','hardware','clouds','tokens'].includes(gq)){S.mode='compute';S.cpGrp=gq}
   /* ?source=compute&view=map (and ?source=map) opens Compute on its map */
-  if(S.mode==='compute'&&((q.get('view')||'').toLowerCase()==='map'||['map','gpumap','datacenters','power'].includes(src)))S.cpView='map';
+  /* ?source=minerals (or rare-earths) opens the map on its Minerals layer:
+     the layer reads ?layer=minerals itself (public/compute-map.js) */
+  const MINERAL_SRC=['minerals','rare-earths','rareearths','critical-minerals'];
+  if(MINERAL_SRC.includes(src)){
+    try{const u=new URL(location.href);u.searchParams.set('layer','minerals');if(src!=='minerals'&&!u.searchParams.get('mineral'))u.searchParams.set('mineral','ree');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch(e){}
+  }
+  if(S.mode==='compute'&&((q.get('view')||'').toLowerCase()==='map'||['map','gpumap','datacenters','power'].concat(MINERAL_SRC).includes(src)))S.cpView='map';
   /* a link to one group of insiders opens the tab already filtered to it */
   const IW={politicians:'congress',congress:'congress',whitehouse:'whitehouse',trump:'whitehouse',ceos:'ceo'};
   if(IW[src])S.insWho=IW[src];

@@ -43,6 +43,10 @@
     '.cm-earn .cm-big{margin-top:0}.cm-up{color:#3df09b}.cm-dn{color:#ff7a6b}',
     '.cm-note{font-size:11.5px;color:#8a93a6;margin:8px 0 0}',
     '.cm-legend .bar.m{background:linear-gradient(90deg,#d9573f,#c9b23a 38%,#1f9d6a)}',
+    '.cm-legend .bar.x{background:linear-gradient(90deg,#3c3070,#b05cd6 55%,#ffc450)}',
+    '.cm-seg{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:9px;overflow:hidden}.cm-seg button{font:700 12px/1 inherit;color:#8a93a6;background:#121826;border:0;padding:7px 10px;cursor:pointer}.cm-seg button.on{color:#fff;background:#2a3348}',
+    '.cm-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.07);margin-top:3px;overflow:hidden}.cm-bar i{display:block;height:100%;background:linear-gradient(90deg,#b05cd6,#ffc450)}',
+    '.cm-gap{margin-top:8px;padding:9px 11px;border-radius:12px;background:rgba(176,92,214,.08);border:1px solid rgba(176,92,214,.25);font-size:12.5px}',
     '.cm-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:10px 0 2px}.cm-stats div{padding:8px;border-radius:10px;background:rgba(255,255,255,.04)}.cm-stats b{display:block;font-size:16px;font-weight:900}.cm-stats span{font-size:10.5px;color:#8a93a6}',
     '.cm-rows{display:flex;flex-direction:column}.cm-row{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:8px;cursor:pointer}.cm-row:hover{background:rgba(255,255,255,.05)}',
     '.cm-row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cm-row .v{font-weight:800;font-variant-numeric:tabular-nums}.cm-row .s{color:#8a93a6;font-size:11.5px;font-variant-numeric:tabular-nums}',
@@ -91,6 +95,8 @@
   /* what the countries are coloured by: the price of power, or what a GPU
      rented on Akash or a Bitcoin miner would earn there after its power */
   var mode = 'power', gpuPick = 'h100', minerPick = 's21', myPrice = null;
+  /* the Minerals layer: USGS's production and reserves by country */
+  var MIN = null, minPick = 'ree', minBasis = 'prod', minLoading = null;
   var AK = { h100: ['h100'], h200: ['h200'], a100: ['a100'], b200: ['b200'], b300: ['b300'], rtx4090: ['rtx4090'], rtx5090: ['rtx5090'], pro6000: ['pro6000se', 'pro6000we'] };
 
   function base(lon, lat) { var p = ee(lon, lat); return [B.ox + p[0] * B.s, B.oy - p[1] * B.s]; }
@@ -194,6 +200,160 @@
   var money = function (v) { var a = Math.abs(v), t = a >= 1000 ? Math.round(a).toLocaleString('en-US') : a.toFixed(2); return (v < 0 ? '−$' : '$') + t; };
   function earnLabel(e) { return mode === 'gpu' ? money(e.month) + '/mo' : money(e.profit) + '/day'; }
 
+  /* ------------------------------------------------------------ minerals */
+  /* Share of world supply by country, from USGS Mineral Commodity Summaries
+     2026: mined in 2025, or reserves. Null is "USGS has no figure", 0 is
+     "USGS says none" — drawn differently, never mixed. */
+  function loadMinerals() {
+    if (MIN) return Promise.resolve(MIN);
+    if (!minLoading) minLoading = fetch('/api/compute/minerals').then(function (r) { return r.json(); }).then(function (j) { MIN = j; return j; })
+      .catch(function (e) { minLoading = null; throw e; });
+    return minLoading;
+  }
+  function minOf(id) { return MIN ? MIN.list.filter(function (x) { return x.id === id; })[0] || null : null; }
+  function minShare(m, cc, basis) {
+    if (!m) return null;
+    var res = basis === 'res', by = res ? m.res : m.prod;
+    if (!by || by[cc] == null) return null;
+    var tot = res ? m.resWorld : (m.base || m.world);
+    return tot ? { t: by[cc], s: by[cc] / tot, gt: res && (m.resGt || []).indexOf(cc) >= 0 } : null;
+  }
+  function minRank(m, cc, basis) {
+    var by = basis === 'res' ? m.res : m.prod, keys = Object.keys(by || {}).filter(function (k) { return by[k] > 0; }).sort(function (a, b) { return by[b] - by[a]; });
+    var i = keys.indexOf(cc);
+    return i < 0 ? 0 : i + 1;
+  }
+  /* violet to gold on a log scale: 0.1% of the world is the faintest, 60% the brightest */
+  function minRgb(s) {
+    var t = s <= 0 ? 0 : Math.max(0, Math.min(1, (Math.log10(s * 100) + 1) / (Math.log10(60) + 1)));
+    var lo = [60, 48, 112], mid = [176, 92, 214], hi = [255, 196, 80];
+    var a = t < 0.55 ? lo : mid, b = t < 0.55 ? mid : hi, u = t < 0.55 ? t / 0.55 : (t - 0.55) / 0.45;
+    return [0, 1, 2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * u); });
+  }
+  var pct = function (s) { return s == null ? '—' : s >= 0.995 ? '99%+' : s >= 0.1 ? Math.round(s * 100) + '%' : s >= 0.01 ? (s * 100).toFixed(1) + '%' : s > 0 ? '<1%' : '0%'; };
+  var tons = function (t) { return t == null ? '—' : t >= 1e6 ? (t / 1e6).toFixed(t >= 1e7 ? 0 : 1) + 'M t' : t >= 1e3 ? Math.round(t / 1e3).toLocaleString('en-US') + 'K t' : (t >= 10 ? Math.round(t) : t) + ' t'; };
+  /* which export controls name a mineral — USGS's text is free-form */
+  var CTL_RE = { ree: /rare.earth/i, li: /lithium/i, co: /cobalt/i, ni: /nickel/i, gr: /graphite/i, mn: /manganese/i, cu: /copper/i, ga: /gallium/i,
+    si: /silicon/i, sn: /\btin\b/i, in: /indium/i, w: /tungsten/i, sb: /antimony/i, ti: /titanium/i, mg: /magnesium/i, au: /\bgold\b/i, ag: /silver/i, pt: /platinum|PGM/i };
+  function controlsFor(id) {
+    var out = [], re = CTL_RE[id];
+    if (!MIN || !re) return out;
+    Object.keys(MIN.controls || {}).forEach(function (cc) { MIN.controls[cc].forEach(function (c) { if (re.test(c.what)) out.push({ cc: cc, c: c }); }); });
+    return out;
+  }
+  function minSelect() {
+    var groups = [], html = '<select data-in="mineral" aria-label="Mineral">';
+    MIN.list.forEach(function (m) { if (groups.indexOf(m.group) < 0) groups.push(m.group); });
+    groups.forEach(function (gname) {
+      html += '<optgroup label="' + esc(gname) + '">' + MIN.list.filter(function (m) { return m.group === gname; }).map(function (m) {
+        return '<option value="' + esc(m.id) + '"' + (m.id === minPick ? ' selected' : '') + '>' + esc(m.name) + '</option>';
+      }).join('') + '</optgroup>';
+    });
+    return html + '</select>';
+  }
+  function topOf(m) {
+    var by = m.prod || {}, k = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; })[0];
+    return k ? { cc: k, s: by[k] / (m.base || m.world) } : null;
+  }
+  function homeMinerals() {
+    selected = null; focusGpu = null;
+    var html = '<span class="cm-grab"></span>';
+    if (!MIN) {
+      panel.innerHTML = html + '<h3>Critical minerals</h3><p class="cm-note">Loading USGS\u2019s figures…</p>';
+      loadMinerals().then(function () { if (mode === 'minerals') { homeMinerals(); } }).catch(function () {
+        if (mode === 'minerals') panel.innerHTML = html + '<h3>Critical minerals</h3><p class="cm-note">The minerals data could not load — try again in a minute.</p>';
+      });
+      return draw();
+    }
+    var m = minOf(minPick) || MIN.list[0]; minPick = m.id;
+    var res = minBasis === 'res' && m.res, basis = res ? 'res' : 'prod', by = res ? m.res : m.prod, tot = res ? m.resWorld : (m.base || m.world);
+    var top = topOf(m), chg = m.world && m.worldPrev ? (m.world - m.worldPrev) / m.worldPrev : null;
+    html += '<h3>Who controls the minerals of AI</h3><div class="cm-form">' + minSelect()
+      + '<span class="cm-seg"><button data-k="bprod" class="' + (res ? '' : 'on') + '">' + (m.stage === 'produced' ? 'Produced' : 'Mined') + ' 2025</button>' + (m.res ? '<button data-k="bres" class="' + (res ? 'on' : '') + '">Reserves</button>' : '') + '</span></div>'
+      + '<p class="cm-note" style="margin-top:4px">' + esc(m.use) + '</p>'
+      + '<div class="cm-stats"><div><b>' + tons(m.world) + '</b><span>' + esc(m.stage || 'mined') + ' 2025' + (chg != null ? ' · <span class="' + (chg >= 0 ? 'cm-up' : 'cm-dn') + '">' + (chg >= 0 ? '+' : '') + Math.round(chg * 100) + '%</span>' : '') + '</span></div>'
+      + '<div><b>' + (top ? pct(top.s) : '—') + '</b><span>' + (top ? esc(NAME[top.cc] || top.cc) : 'top producer') + '</span></div>'
+      + '<div><b>' + (m.us ? (m.us.bound || '') + m.us.pct + '%' : '—') + '</b><span>US imports</span></div></div>';
+    var keys = Object.keys(by || {}).filter(function (k) { return by[k] > 0; }).sort(function (a, b) { return by[b] - by[a]; });
+    html += '<h4>' + (res ? 'Biggest reserves' : 'Top producers 2025') + '</h4><div class="cm-rows">';
+    keys.slice(0, 10).forEach(function (cc, i) {
+      var sh = by[cc] / tot, gt = res && (m.resGt || []).indexOf(cc) >= 0;
+      html += '<div class="cm-row" data-k="c' + esc(cc) + '"><span class="r">' + (i + 1) + '</span><span class="n">' + esc(NAME[cc] || cc)
+        + '<span class="cm-bar"><i style="width:' + Math.max(2, Math.min(100, sh * 100)).toFixed(1) + '%"></i></span></span><span class="v">' + (gt ? '>' : '') + pct(sh) + '</span><span class="s">' + (gt ? '>' : '') + tons(by[cc]) + '</span></div>';
+    });
+    html += '</div>';
+    /* where the future supply sits against where it is mined today */
+    if (m.res && m.resWorld) {
+      var gaps = Object.keys(m.res).map(function (cc) {
+        var rs = m.res[cc] / m.resWorld, ps = (m.prod[cc] || 0) / (m.base || m.world);
+        return { cc: cc, rs: rs, ps: ps, d: rs - ps };
+      }).filter(function (x) { return x.rs >= 0.05 && x.d > 0.04; }).sort(function (a, b) { return b.d - a.d; }).slice(0, 2);
+      if (gaps.length) html += '<div class="cm-gap"><b>In the ground, not yet mined:</b> ' + gaps.map(function (x) {
+        return '<a href="#" data-k="c' + esc(x.cc) + '" style="color:#e2c6ff">' + esc(NAME[x.cc] || x.cc) + '</a> holds ' + pct(x.rs) + ' of reserves but mines ' + pct(x.ps);
+      }).join('; ') + '.</div>';
+    }
+    if (m.us && m.us.from) html += '<p class="cm-note">The US imports ' + (m.us.bound === '>' ? 'more than ' : '') + m.us.pct + '% of the ' + esc(m.name.toLowerCase()) + ' it uses, mostly from ' + esc(m.us.from) + ' (2021–24).</p>';
+    var ctl = controlsFor(m.id);
+    if (ctl.length) {
+      html += '<h4>Export controls in force</h4><div class="cm-rows">';
+      ctl.forEach(function (x) {
+        html += '<div class="cm-row" data-k="c' + esc(x.cc) + '" style="align-items:flex-start"><span class="cm-dot" style="background:#ff7a6b;margin-top:6px"></span><span class="n" style="white-space:normal"><b>' + esc(NAME[x.cc] || x.cc) + '</b> · ' + esc(x.c.type) + '<br><span class="s">' + esc(x.c.what.slice(0, 180)) + '</span></span></div>';
+      });
+      html += '</div>';
+    }
+    var sites = (MIN.sites || []).filter(function (x) { return x.m.indexOf(m.id) >= 0; });
+    if (sites.length) {
+      html += '<h4>On the map</h4><div class="cm-rows">';
+      sites.forEach(function (x) { html += row('x' + MIN.sites.indexOf(x), '<span class="cm-dot" style="background:' + siteColor(x.kind) + '"></span>', esc(x.name), esc(siteKind(x.kind)), esc(NAME[x.cc] || x.cc)); });
+      html += '</div>';
+    }
+    html += '<h4>Most concentrated supply · 2025</h4><div class="cm-rows">';
+    MIN.list.map(function (x) { return { m: x, t: topOf(x) }; }).filter(function (x) { return x.t; }).sort(function (a, b) { return b.t.s - a.t.s; }).forEach(function (x) {
+      html += row('m' + x.m.id, '<span class="cm-dot" style="background:' + rgba(minRgb(x.t.s), 1) + '"></span>', esc(x.m.name), pct(x.t.s), esc(NAME[x.t.cc] || x.t.cc));
+    });
+    html += '</div><p class="cm-note">Shares are of world mine (or refinery) output in 2025, USGS\u2019s estimate; reserves are what is economic to extract today. Germanium is left out: USGS withholds it by country.</p>'
+      + '<p class="cm-src">Sources: ' + esc(MIN.edition) + ' (U.S. Geological Survey, doi:' + esc(MIN.doi) + ', public domain) · company filings for the marked sites · Natural Earth.</p>';
+    panel.innerHTML = html;
+    draw();
+  }
+  function siteKind(k) { return k === 'magnets' ? 'magnet plant' : k === 'plant' ? 'processing' : 'mine'; }
+  function siteColor(k) { return k === 'magnets' ? '#ff9de2' : k === 'plant' ? '#7fd4ff' : '#ffc450'; }
+  /* a country's place in each mineral, for its card */
+  function mineralsBlock(cc) {
+    if (!MIN) return '';
+    var rows = MIN.list.map(function (m) {
+      var p = minShare(m, cc, 'prod'), r = minShare(m, cc, 'res');
+      return { m: m, p: p, r: r, k: Math.max(p ? p.s : 0, r ? r.s : 0) };
+    }).filter(function (x) { return x.k > 0; }).sort(function (a, b) { return b.k - a.k; });
+    var out = '';
+    if (rows.length) {
+      out += '<h4>Share of world supply</h4><div class="cm-rows">';
+      rows.forEach(function (x) {
+        var rk = x.p && x.p.t > 0 ? minRank(x.m, cc, 'prod') : 0;
+        out += '<div class="cm-row" data-k="m' + esc(x.m.id) + '"><span class="cm-dot" style="background:' + rgba(minRgb(x.k), 1) + '"></span><span class="n">' + esc(x.m.name)
+          + (rk && rk <= 3 ? ' <span class="s">#' + rk + ' producer</span>' : '') + '</span><span class="v">' + (x.p && x.p.t > 0 ? pct(x.p.s) : '—') + '</span><span class="s">'
+          + (x.r && x.r.t > 0 ? (x.r.gt ? '>' : '') + pct(x.r.s) + ' res.' : '') + '</span></div>';
+      });
+      out += '</div><p class="cm-note">Share of world output in 2025 (mined, or refined for gallium, indium, silicon, titanium and magnesium), and of world reserves.</p>';
+    } else out += '<p class="cm-note">USGS lists no production or reserves of these minerals here.</p>';
+    if (cc === 'US') {
+      var imp = MIN.list.filter(function (m) { return m.us && m.us.pct > 0; }).sort(function (a, b) { return b.us.pct - a.us.pct; });
+      if (imp.length) {
+        out += '<h4>Imported, share of US use</h4><div class="cm-rows">';
+        imp.forEach(function (m) { out += row('m' + m.id, '', esc(m.name), (m.us.bound || '') + m.us.pct + '%', esc((m.us.from || '').split(',').slice(0, 2).join(','))); });
+        out += '</div>';
+      }
+    }
+    var ctl = (MIN.controls || {})[cc] || [];
+    if (ctl.length) {
+      out += '<h4>Export controls in force</h4>';
+      ctl.forEach(function (c) {
+        out += '<p class="cm-note" style="color:#c9d1de"><b>' + esc(c.type) + ':</b> ' + esc(c.what) + (/^https:\/\//.test(c.src || '') ? ' <a href="' + esc(c.src) + '" target="_blank" rel="noopener nofollow" style="color:#9aa4b6">source ↗</a>' : '') + '</p>';
+      });
+    }
+    return out;
+  }
+
   /* ------------------------------------------------------------ building */
   function build() {
     shapes = [];
@@ -234,10 +394,17 @@
     g.setTransform(dpr * V.z, 0, 0, dpr * V.z, dpr * V.px, dpr * V.py);
     if (stripe && stripe.setTransform) stripe.setTransform(new DOMMatrix().scale(1 / V.z));
     for (var i = 0; i < shapes.length; i++) {
-      var s = shapes[i], pw = powerOf(s.c.a2), sel = selected && selected.cc === s.c.a2, e = pw && mode !== 'power' ? earnAt(pw.usd) : null;
+      var s = shapes[i], sel = selected && selected.cc === s.c.a2;
+      if (mode === 'minerals') {
+        var ms = MIN ? minShare(minOf(minPick), s.c.a2, minBasis === 'res' && (minOf(minPick) || {}).res ? 'res' : 'prod') : null;
+        g.fillStyle = !ms ? '#111722' : ms.t <= 0 ? '#191e2b' : rgba(minRgb(ms.s), sel ? 0.92 : 0.72);
+        g.fill(s.p);
+      } else {
+      var pw = powerOf(s.c.a2), e = pw && mode !== 'power' ? earnAt(pw.usd) : null;
       g.fillStyle = !pw || (mode !== 'power' && !e) ? '#111722' : rgba(mode === 'power' ? heatRgb(pw.usd) : marginRgb(e.margin), sel ? 0.85 : 0.6);
       g.fill(s.p);
       if (pw && pw.kind === 'wholesale' && stripe) { g.fillStyle = stripe; g.fill(s.p); }
+      }
       g.lineWidth = (selected && selected.cc === s.c.a2 ? 1.6 : 0.6) / V.z;
       g.strokeStyle = selected && selected.cc === s.c.a2 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.08)';
       g.stroke(s.p);
@@ -248,27 +415,47 @@
       g.font = '700 11px ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif';
       g.textAlign = 'center'; g.textBaseline = 'middle';
       for (var j = 0; j < shapes.length; j++) {
-        var sh = shapes[j], pl = sh.label, pw2 = powerOf(sh.c.a2);
-        if (!pl || !pw2 || pl[2] * V.z < 26) continue;
+        var sh = shapes[j], pl = sh.label, txt;
+        if (!pl || pl[2] * V.z < 26) continue;
         var q = scr(pl);
         if (q[0] < -40 || q[0] > W + 40 || q[1] < -20 || q[1] > H + 20) continue;
-        var e2 = mode === 'power' ? null : earnAt(pw2.usd);
-        if (mode !== 'power' && !e2) continue;
-        var txt = mode === 'power' ? '$' + pw2.usd.toFixed(3) : earnLabel(e2);
+        if (mode === 'minerals') {
+          var mm = minOf(minPick), ms2 = minShare(mm, sh.c.a2, minBasis === 'res' && mm && mm.res ? 'res' : 'prod');
+          if (!ms2 || ms2.t <= 0) continue;
+          txt = (ms2.gt ? '>' : '') + pct(ms2.s);
+        } else {
+          var pw2 = powerOf(sh.c.a2);
+          if (!pw2) continue;
+          var e2 = mode === 'power' ? null : earnAt(pw2.usd);
+          if (mode !== 'power' && !e2) continue;
+          txt = mode === 'power' ? '$' + pw2.usd.toFixed(3) : earnLabel(e2);
+        }
         g.lineWidth = 3; g.strokeStyle = 'rgba(5,7,12,0.85)'; g.strokeText(txt, q[0], q[1]);
         g.fillStyle = '#fff'; g.fillText(txt, q[0], q[1]);
       }
     }
     dots = [];
     var grow = 1 + Math.log2(V.z) * 0.18, k = Math.max(0.55, Math.min(1, W / 1000)) * grow, d, p;
-    if (on.metros) for (d = 0; d < D.metros.length; d++) {
+    if (mode === 'minerals') {
+      for (d = 0; MIN && d < MIN.sites.length; d++) {
+        var x = MIN.sites[d], lit = x.m.indexOf(minPick) >= 0; p = scr(base(x.lon, x.lat));
+        var rx = (lit ? 6 : 4) * k;
+        g.save(); g.translate(p[0], p[1]); g.rotate(Math.PI / 4);
+        if (lit) { g.shadowColor = siteColor(x.kind); g.shadowBlur = 10 * k; }
+        g.fillStyle = lit ? siteColor(x.kind) : 'rgba(255,255,255,0.22)'; g.fillRect(-rx / 1.4, -rx / 1.4, rx * 1.41, rx * 1.41);
+        g.lineWidth = 1.2; g.strokeStyle = 'rgba(5,7,12,0.9)'; g.strokeRect(-rx / 1.4, -rx / 1.4, rx * 1.41, rx * 1.41);
+        g.restore();
+        dots.push({ x: p[0], y: p[1], r: rx, kind: 'msite', d: x });
+      }
+    }
+    if (on.metros && mode !== 'minerals') for (d = 0; d < D.metros.length; d++) {
       var m = D.metros[d]; p = scr(base(m.lon, m.lat));
       var rm = (2.2 + Math.min(4, m.regions.length) * 0.6) * k;
       g.beginPath(); g.arc(p[0], p[1], rm, 0, 7); g.fillStyle = 'rgba(159,183,255,0.9)'; g.fill();
       g.lineWidth = 1; g.strokeStyle = 'rgba(5,7,12,0.9)'; g.stroke();
       dots.push({ x: p[0], y: p[1], r: rm, kind: 'metro', d: m });
     }
-    if (on.sites) for (d = 0; d < D.sites.length; d++) {
+    if (on.sites && mode !== 'minerals') for (d = 0; d < D.sites.length; d++) {
       var s2 = D.sites[d]; p = scr(base(s2.lon, s2.lat));
       var hit = !focusGpu || s2.models.some(function (x) { return focusGpu.akash.indexOf(x) >= 0; });
       var rs = (s2.gpus > 0 ? 3 + Math.sqrt(s2.gpus) * 1.25 : 2) * k;
@@ -279,7 +466,7 @@
       g.restore();
       dots.push({ x: p[0], y: p[1], r: rs, kind: 'site', d: s2 });
     }
-    if (on.projects) for (d = 0; d < D.projects.length; d++) {
+    if (on.projects && mode !== 'minerals') for (d = 0; d < D.projects.length; d++) {
       var j2 = D.projects[d]; p = scr(base(j2.lon, j2.lat));
       var rp = (j2.gw ? 5 + Math.sqrt(j2.gw) * 4.5 : 6) * k;
       g.beginPath(); g.arc(p[0], p[1], rp, 0, 7); g.fillStyle = 'rgba(245,197,66,0.15)'; g.fill();
@@ -321,6 +508,12 @@
     if (h.kind === 'site') return '<b>' + esc(d.host || 'Akash provider') + '</b><br><span class="cm-d">' + esc([d.region, d.country].filter(Boolean).join(', ')) + '</span><br>' + d.gpus + ' GPUs' + (d.gpus ? ' · ' + d.free + ' free' : '') + (d.models.length ? ' · ' + esc(d.models.join(', ')) : '') + '<br>Power ' + powerLine(powerOf(d.cc, d.st));
     if (h.kind === 'metro') return '<b>' + esc(d.city) + '</b><br><span class="cm-d">' + d.regions.length + ' cloud region' + (d.regions.length > 1 ? 's' : '') + '</span><br>Power ' + powerLine(powerOf(d.cc, d.st));
     if (h.kind === 'project') return '<b>' + esc(d.name) + '</b> <span class="cm-d">' + esc(d.who) + '</span><br>' + esc(d.city) + ' · ' + fmtGw(d.gw) + '<br>Power ' + powerLine(powerOf(d.cc, d.st));
+    if (h.kind === 'msite') return '<b>' + esc(d.name) + '</b> <span class="cm-d">' + esc(siteKind(d.kind)) + '</span><br>' + esc(d.who) + '<br><span class="cm-d">' + esc(d.what) + '</span>';
+    if (mode === 'minerals' && MIN) {
+      var mm = minOf(minPick), ps = minShare(mm, d.a2, 'prod'), rs = mm && mm.res ? minShare(mm, d.a2, 'res') : null;
+      return '<b>' + esc(NAME[d.a2] || d.n) + '</b><br>' + esc(mm.name) + ': ' + (ps ? (ps.t > 0 ? '<b>' + pct(ps.s) + '</b> of world ' + esc(mm.stage === 'produced' ? 'output' : 'mined') + ' · ' + tons(ps.t) : 'none ' + esc(mm.stage || 'mined')) : '<span class="cm-d">no USGS figure</span>')
+        + (rs && rs.t > 0 ? '<br>' + (rs.gt ? '>' : '') + pct(rs.s) + ' of reserves' : '');
+    }
     return '<b>' + esc(NAME[d.a2] || d.n) + '</b><br>Power ' + powerLine(powerOf(d.a2));
   }
 
@@ -330,6 +523,7 @@
     if (pw) {
       out += '<div class="cm-big">' + $kwh(pw.usd) + ' <small>per kWh</small></div>'
         + '<span class="cm-kind' + (pw.kind === 'wholesale' ? ' w' : pw.kind === 'tariff' ? ' t' : '') + '">' + (pw.kind === 'wholesale' ? 'Wholesale · ' + esc(pw.period || '') : pw.kind === 'tariff' ? 'Published tariff · ' + esc(pw.period || '') : 'Industrial · ' + esc(pw.period || (cc === 'US' ? D.asOf.us : ''))) + '</span>'
+        + (pw.kind === 'industrial' && c.indWhat && !st ? '<p class="cm-note">' + esc(c.indWhat) + (/^https:\/\//.test(c.indSrc || '') ? ' <a href="' + esc(c.indSrc) + '" target="_blank" rel="noopener nofollow" style="color:#9aa4b6">source ↗</a>' : '') + '</p>' : '')
         + (pw.kind === 'tariff' && pw.what ? '<p class="cm-note">' + esc(pw.what) + (/^https:\/\//.test(pw.src || '') ? ' <a href="' + esc(pw.src) + '" target="_blank" rel="noopener nofollow" style="color:#9aa4b6">source ↗</a>' : '') + '</p>' : '')
         + '<div class="cm-kv"><span>One H100 at full power</span><b>' + $h(D.h100 * pw.usd) + ' / hour</b>'
         + '<span>A 100 MW campus, a year</span><b>$' + Math.round(pw.usd * 100000 * 8760 / 1e6) + 'M</b></div>';
@@ -398,6 +592,7 @@
     return list.sort(function (a, b) { return a.usd - b.usd; });
   }
   function home() {
+    if (mode === 'minerals') return homeMinerals();
     if (mode !== 'power') return homeEarn();
     selected = null; focusGpu = null;
     var gpus = D.sites.reduce(function (n, s) { return n + s.gpus; }, 0), free = D.sites.reduce(function (n, s) { return n + s.free; }, 0);
@@ -419,7 +614,7 @@
     }
     html += '<h4>AI megaprojects</h4><div class="cm-rows">';
     D.projects.slice().sort(function (a, b) { return (b.gw || 0) - (a.gw || 0); }).forEach(function (p) { html += row('p' + D.projects.indexOf(p), '<span class="cm-dot" style="background:#f5c542"></span>', esc(p.name), fmtGw(p.gw), esc(p.city.split(',')[0])); });
-    html += '</div><p class="cm-src">Sources: Akash Network (live) · Eurostat · U.S. EIA · ECB · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · AWS, Google Cloud and Azure region lists · company announcements · Natural Earth.</p>';
+    html += '</div><p class="cm-src">Sources: Akash Network (live) · Eurostat · U.S. EIA · UK DESNZ (Open Government Licence) · ECB · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · AWS, Google Cloud and Azure region lists · company announcements · Natural Earth.</p>';
     panel.innerHTML = html;
     draw();
   }
@@ -458,7 +653,7 @@
     html += '</div><p class="cm-note">' + (mode === 'gpu'
       ? 'At Akash’s typical posted price, rented out as often as the network’s GPUs of that model. Before the GPU itself, hosting, bandwidth and taxes.'
       : 'At the last day’s blocks (subsidy and fees), today’s price and difficulty — all of which move. Before the machine, hosting, pool fees (usually 1–4%) and taxes.') + '</p>';
-    html += '<p class="cm-src">Sources: Akash Network (prices, utilization) · mempool.space (Bitcoin) · Eurostat · U.S. EIA · ECB · published tariffs (linked on each country) · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · Natural Earth.</p>';
+    html += '<p class="cm-src">Sources: Akash Network (prices, utilization) · mempool.space (Bitcoin) · Eurostat · U.S. EIA · UK DESNZ (Open Government Licence) · ECB · published tariffs (linked on each country) · Energy-Charts / Bundesnetzagentur | SMARD.de (day-ahead, CC BY 4.0) · Global Day-Ahead Electricity Price Dataset (Zenodo, CC BY 4.0) · Ember via Our World in Data (CC BY 4.0) · Natural Earth.</p>';
     panel.innerHTML = html;
     draw();
   }
@@ -468,6 +663,7 @@
     if (!k) return;
     if (k === 'gpu' && e.type === 'change') { gpuPick = t.value; homeEarn(); return; }
     if (k === 'miner' && e.type === 'change') { minerPick = t.value; homeEarn(); return; }
+    if (k === 'mineral' && e.type === 'change') { minPick = t.value; homeMinerals(); return; }
     if (k === 'price') {
       var v = parseFloat(String(t.value).replace(',', '.'));
       myPrice = Number.isFinite(v) && v >= 0 && v < 2 ? Math.round(v * 10000) / 10000 : null;
@@ -479,27 +675,41 @@
     mode = m;
     root.querySelectorAll('[data-m]').forEach(function (b) { b.classList.toggle('on', b.dataset.m === mode); });
     var lg = root.querySelector('.cm-legend');
-    if (lg) lg.innerHTML = mode === 'power'
+    root.querySelector('[data-g="l"]').style.display = mode === 'minerals' ? 'none' : '';
+    if (lg) lg.innerHTML = mode === 'minerals'
+      ? '<span>Share of world supply</span><span>&lt;0.1%<span class="bar x"></span>60%+</span><span><span class="sw" style="background:#191e2b;border:1px solid #2a3140"></span>none</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no figure</span><span><span class="sw" style="background:#ffc450;transform:rotate(45deg)"></span>mine</span><span><span class="sw" style="background:#7fd4ff;transform:rotate(45deg)"></span>processing</span><span><span class="sw" style="background:#ff9de2;transform:rotate(45deg)"></span>magnets</span>'
+      : mode === 'power'
       ? '<span>Power, US$ per kWh</span><span>$0.05<span class="bar"></span>$0.20+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>wholesale only</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span>'
       : '<span>' + (mode === 'gpu' ? 'GPU on Akash' : 'Bitcoin miner') + ', margin after power</span><span>loss<span class="bar m"></span>80%+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>at a wholesale price</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span>';
     home();
   }
   function showCountry(cc, st) {
     selected = { cc: cc };
-    var html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All places</button><h3>' + esc(placeName(cc, st)) + '</h3>' + countryBlock(cc, st);
+    var html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All ' + (mode === 'minerals' ? 'minerals' : 'places') + '</button><h3>' + esc(placeName(cc, st)) + '</h3>'
+      + (mode === 'minerals' ? mineralsBlock(cc) + '<h4>Power</h4>' : '') + countryBlock(cc, st);
     if (cc === 'US') {
       var ss = Object.keys(D.states).map(function (s) { return { st: s, usd: D.states[s] }; }).sort(function (a, b) { return a.usd - b.usd; });
       html += '<h4>Cheapest states</h4><div class="cm-rows">';
       ss.slice(0, 8).forEach(function (s, i) { html += row('cUS-' + s.st, '<span class="r">' + (i + 1) + '</span>', esc(D.stateNames[s.st] || s.st), $kwh(s.usd), $h(D.h100 * s.usd) + '/h'); });
       html += '</div>';
     }
-    html += regionsBlock(cc) + computeHere(cc);
+    if (mode !== 'minerals') html += regionsBlock(cc) + computeHere(cc);
     panel.innerHTML = html; panel.classList.remove('min');
     draw();
   }
   function showDot(h) {
-    var d = h.d, html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All places</button>';
+    var d = h.d, html = '<span class="cm-grab"></span><button class="cm-back" data-k="home">← All ' + (mode === 'minerals' ? 'minerals' : 'places') + '</button>';
     selected = { cc: d.cc, x: 1, lon: d.lon, lat: d.lat };
+    if (h.kind === 'msite') {
+      html += '<h3>' + esc(d.name) + '</h3><div class="cm-d">' + esc(siteKind(d.kind)) + ' · ' + esc(NAME[d.cc] || d.cc) + '</div>'
+        + '<p style="margin:8px 0 0;font-size:12.5px">' + esc(d.what) + '</p><div class="cm-kv"><span>Operator</span><b>' + esc(d.who) + '</b><span>For</span><b>'
+        + d.m.map(function (id) { var mm = minOf(id); return esc(mm ? mm.name : id); }).join(', ') + '</b></div>'
+        + (/^https:\/\//.test(d.src || '') ? '<p style="margin:6px 0 0;font-size:12px"><a href="' + esc(d.src) + '" target="_blank" rel="noopener nofollow" style="color:#3df09b">Source ↗</a></p>' : '')
+        + '<p class="cm-d" style="font-size:11.5px;margin:8px 0 0">Position to the town or the pit, a few kilometres.</p>'
+        + '<h4>' + esc(NAME[d.cc] || d.cc) + '</h4>' + mineralsBlock(d.cc);
+      panel.innerHTML = html; panel.classList.remove('min');
+      return draw();
+    }
     if (h.kind === 'site') {
       html += '<h3>' + esc(d.host || 'Akash provider') + '</h3><div class="cm-d">' + esc([d.region, d.country].filter(Boolean).join(', ')) + ' · Akash provider</div>'
         + '<div class="cm-kv"><span>GPUs</span><b>' + d.gpus + ' · ' + d.free + ' free</b>' + (d.models.length ? '<span>Models</span><b>' + esc(d.models.join(', ')) + '</b>' : '')
@@ -539,6 +749,14 @@
     if (t.classList.contains('cm-grab')) { panel.classList.toggle('min'); return; }
     var k = t.getAttribute('data-k');
     if (k === 'home') return home();
+    if (k === 'bprod' || k === 'bres') { minBasis = k.slice(1); return homeMinerals(); }
+    if (k[0] === 'm' && MIN && minOf(k.slice(1))) { minPick = k.slice(1); if (mode !== 'minerals') return setMode('minerals'); return homeMinerals(); }
+    if (k[0] === 'x' && MIN) {
+      var ms3 = MIN.sites[+k.slice(1)];
+      if (!ms3) return;
+      showDot({ kind: 'msite', d: ms3 });
+      return flyTo(centreOn(base(ms3.lon, ms3.lat), Math.max(V.z, 4)));
+    }
     if (k[0] === 'c') {
       var m = /^cUS-([A-Z]{2})$/.exec(k);
       if (m) return showCountry('US', m[1]);
@@ -644,7 +862,7 @@
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     root = document.createElement('div'); root.className = 'cmw';
     root.innerHTML = '<canvas aria-label="World map of GPU providers, cloud regions and AI data centers, coloured by the price of power"></canvas>'
-      + '<div class="cm-top"><div class="grp" data-g="m"><button data-m="power" class="on">Power price</button><button data-m="gpu">GPU profit</button><button data-m="mine">Mining profit</button></div><div class="grp" data-g="l"><button data-l="sites" class="on"><i style="background:#3df09b"></i>GPU providers</button><button data-l="metros" class="on"><i style="background:#9fb7ff"></i>Cloud regions</button><button data-l="projects" class="on"><i style="background:#f5c542"></i>AI megaprojects</button></div>'
+      + '<div class="cm-top"><div class="grp" data-g="m"><button data-m="power" class="on">Power price</button><button data-m="gpu">GPU profit</button><button data-m="mine">Mining profit</button><button data-m="minerals">Minerals</button></div><div class="grp" data-g="l"><button data-l="sites" class="on"><i style="background:#3df09b"></i>GPU providers</button><button data-l="metros" class="on"><i style="background:#9fb7ff"></i>Cloud regions</button><button data-l="projects" class="on"><i style="background:#f5c542"></i>AI megaprojects</button></div>'
       + '<div class="grp" data-g="v"><button data-v="world">World</button><button data-v="na">N. America</button><button data-v="eu">Europe</button><button data-v="asia">Asia</button></div></div>'
       + '<div class="cm-zoom"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button><button data-z="home" aria-label="Whole world" style="font-size:13px">⤢</button></div>'
       + '<div class="cm-legend"><span>Power, US$ per kWh</span><span>$0.05<span class="bar"></span>$0.20+</span><span><span class="sw" style="background:repeating-linear-gradient(135deg,#9a8f3f 0 3px,#3a3a2a 3px 6px)"></span>wholesale only</span><span><span class="sw" style="background:#111722;border:1px solid #2a3140"></span>no open data</span></div>'
@@ -690,6 +908,14 @@
       load().then(function () {
         var ld = root.querySelector('.cm-load'); if (ld) ld.remove();
         size();
+        /* ?layer=minerals&mineral=ga opens the Minerals layer on that mineral */
+        var qs = new URLSearchParams(location.search);
+        if (qs.get('layer') === 'minerals' && mode !== 'minerals') {
+          var want = String(qs.get('mineral') || '').toLowerCase();
+          if (/^[a-z]{1,4}$/.test(want)) minPick = want;
+          loadMinerals().then(function () { if (!minOf(minPick)) minPick = 'ree'; setMode('minerals'); }).catch(function () {});
+          return;
+        }
         if (!selected && !focusGpu) home();
       }).catch(function () {
         var ld = root.querySelector('.cm-load'); if (ld) ld.textContent = 'The map could not load — try again in a minute.';

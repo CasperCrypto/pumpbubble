@@ -33,6 +33,7 @@
 
 import { GPUS } from './compute.mjs';
 import { POWER } from './powerprices.mjs';
+import { UK_POWER } from './ukpower.mjs';
 import { WHOLESALE } from './wholesale.mjs';
 import { TARIFFS } from './tariffs.mjs';
 import { GRID } from './gridmix.mjs';
@@ -48,7 +49,11 @@ export function setLivePower(p) {
      read itself was too incomplete to replace the baked prices */
   LIVE = { ind: usable(p.ind, POWER) ? p.ind : null, da: p.da || null, fx: (p.ind && p.ind.usdPerEur) || null };
 }
-const PW = () => (LIVE && LIVE.ind) || POWER;
+/* The UK is not in Eurostat's table any more; DESNZ publishes the same band
+   (src/ukpower.mjs, scripts/uk-power.mjs), so it joins the industrial prices
+   unless a source in the read itself already carries it. */
+const withUk = P => P.countries.GB ? P : { ...P, countries: { ...P.countries, GB: { usd: UK_POWER.usd, period: UK_POWER.period, src: 'desnz' } } };
+const PW = () => withUk((LIVE && LIVE.ind) || POWER);
 import { METROS, PROJECTS, US_STATES } from './datacenters.mjs';
 
 export const PROVIDERS_URL = 'https://console-api.akash.network/v1/providers';
@@ -108,7 +113,8 @@ const dayLabel = d => { const [y, m, dd] = String(d).split('-'); return +dd + ' 
 export function countryData() {
   const out = {};
   const at = cc => (out[cc] = out[cc] || {});
-  for (const [cc, c] of Object.entries(PW().countries)) Object.assign(at(cc), { ind: c.usd, indP: c.src === 'eia' ? c.period : semLabel(c.period) });
+  for (const [cc, c] of Object.entries(PW().countries)) Object.assign(at(cc), { ind: c.usd, indP: c.src === 'eia' ? c.period : c.src === 'desnz' ? c.period.replace(/^(\d{4})-Q(\d)$/, 'Q$2 $1') : semLabel(c.period),
+    ...(c.src === 'desnz' ? { indWhat: UK_POWER.what, indSrc: UK_POWER.src } : {}) });
   for (const [cc, t] of Object.entries(TARIFFS.countries)) Object.assign(at(cc), { tar: t.usd, tarP: monthLabel(t.ym), tarWhat: t.what, tarSrc: t.src });
   for (const [cc, w] of Object.entries(WHOLESALE)) Object.assign(at(cc), { whl: w.usd, whlP: monthLabel(w.from) + ' – ' + monthLabel(w.to), whlM: w.market });
   /* a week of day-ahead prices replaces a year-old wholesale average, and
@@ -241,7 +247,7 @@ export function mapPayload({ sites = null, feed = null, error = '', now = Date.n
     market: (sites && sites.market) || null, miners: MINERS, akashFee: AKASH_FEE, watts: WATTS,
     gpus: cheapGpus(feed, S),
     h100: kwhPerHour('h100'), pue: PUE,
-    asOf: { industrial: P.asOf, us: P.usPeriod, live: P !== POWER, euUpdated: P.euUpdated || '' },
+    asOf: { industrial: P.asOf, us: P.usPeriod, live: !!(LIVE && LIVE.ind), euUpdated: P.euUpdated || '', uk: UK_POWER.period },
     /* what the refresh last said, for /api/compute/map readers and the console */
     power: sites && sites.power ? { indAt: (sites.power.ind && sites.power.ind.readAt) || null, indError: sites.power.indError || '',
       zones: Object.keys((sites.power.da && sites.power.da.zones) || {}).length, daError: (sites.power.da && sites.power.da.error) || '' } : null,
