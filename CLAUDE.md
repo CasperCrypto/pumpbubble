@@ -1317,6 +1317,9 @@ while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data 
   (Switzerland's 2023–24 average became this week's; Montenegro is new), and a second line —
   "Wholesale day-ahead", with the zones' range for Norway, Sweden, Italy, Denmark — on every other
   European card (`whlLive`). `mapPayload` → `power` says when each last read and what failed.
+  From Cloudflare's egress Energy-Charts allowed **3 zones before a 429** (its limit is per IP and the
+  IP is shared), so a full pass takes a few hours; the cron nudges the object (`/power`, which never
+  reads Akash's list) so steps run when nobody has the map open.
   `scripts/powerlive.test.mjs`.
 - **A posted GPU price below its model's floor is not a price** (`min` in `GPUS`). Akash posted the
   B300 at $0.23/h on 2026-11-19 (one listing, nothing free) and the strip printed it. Floors are
