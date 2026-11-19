@@ -43,6 +43,11 @@ console.log('\nAkash — weighted average, and "from" only while a GPU is free')
   ];
   is('H100 SXM5', akashQuote(models, g('h100')), { p: 'akash', typical: 2.72, from: 2.04, avail: 23, total: 68 });
   is('A100 SXM4 80 GB only, not the PCIe card', akashQuote(models, g('a100')).typical, 1.67);
+  /* 2026-11-19: Akash posted the B300 at $0.23/h, nothing free — a placeholder, not a price */
+  const b300 = [{ vendor: 'nvidia', model: 'b300', ram: '288Gi', interface: 'SXM6', availability: { total: 16, available: 0 }, price: { min: 0.23, weightedAverage: 0.23 } }];
+  is('a B300 bid under its floor is not a price', akashQuote(b300, g('b300')), null);
+  is('the same bid at a believable price is', akashQuote([{ ...b300[0], price: { min: 4.1, weightedAverage: 4.5 } }], g('b300')).typical, 4.5);
+  is('a cheap consumer card is still fine', akashQuote([{ model: 'rtx4090', availability: { total: 4, available: 2 }, price: { min: 0.3, weightedAverage: 0.36 } }], g('rtx4090')).typical, 0.36);
   const pro = akashQuote([
     { model: 'pro6000se', ram: '96Gi', interface: 'PCIe', availability: { total: 25, available: 10 }, price: { min: 1.49, weightedAverage: 2.02 } },
     { model: 'pro6000we', ram: '96Gi', interface: 'PCIe', availability: { total: 1, available: 0 }, price: { min: 1.44, weightedAverage: 1.44 } },

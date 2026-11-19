@@ -46,12 +46,19 @@ export const HIST_KEY = 'gpu:hist';
 /* The board, in the order a buyer thinks of them: the benchmark first (H100
    is what CME's first contract settles on), then up and down the range.
    Akash's model names, read off its live answer. */
+/* `min` is the lowest hourly price taken as a market price for that card,
+   about a fifth of what it rents for anywhere. On 2026-11-19 Akash posted the
+   B300 at $0.23 an hour — one listing, 16 GPUs, none free — a twelfth of its
+   H100 for a newer chip, which is a placeholder bid, not a price; the strip
+   printed it as the B300's price. Below the floor a bid is left out, the way
+   zero and absurd ones already were, and the card shows no price rather than
+   that one. */
 export const GPUS = [
-  { id: 'h100', label: 'H100', akash: [['h100', 'SXM5']] },
-  { id: 'b200', label: 'B200', akash: [['b200']] },
-  { id: 'b300', label: 'B300', akash: [['b300']] },
-  { id: 'h200', label: 'H200', akash: [['h200']] },
-  { id: 'a100', label: 'A100', akash: [['a100', 'SXM4', '80Gi']] },
+  { id: 'h100', label: 'H100', akash: [['h100', 'SXM5']], min: 0.5 },
+  { id: 'b200', label: 'B200', akash: [['b200']], min: 0.8 },
+  { id: 'b300', label: 'B300', akash: [['b300']], min: 0.8 },
+  { id: 'h200', label: 'H200', akash: [['h200']], min: 0.6 },
+  { id: 'a100', label: 'A100', akash: [['a100', 'SXM4', '80Gi']], min: 0.25 },
   { id: 'pro6000', label: 'RTX PRO 6000', akash: [['pro6000se'], ['pro6000we']] },
   { id: 'rtx5090', label: 'RTX 5090', akash: [['rtx5090']] },
   { id: 'rtx4090', label: 'RTX 4090', akash: [['rtx4090']] },
@@ -59,7 +66,7 @@ export const GPUS = [
 
 /* A price per GPU-hour that could be real: zero and absurd are dropped
    rather than averaged in. */
-const sane = p => Number.isFinite(p) && p >= 0.05 && p <= 60;
+const sane = (p, min = 0.05) => Number.isFinite(p) && p >= Math.max(0.05, min || 0) && p <= 60;
 const cents = p => (p == null || !Number.isFinite(p) ? null : Math.round(p * 100) / 100);
 const tenth = p => (p == null || !Number.isFinite(p) ? null : Math.round(p * 10) / 10);
 
@@ -90,13 +97,13 @@ export function akashQuote(models, gpu) {
   let num = 0, den = 0;
   for (const m of rows) {
     const w = +(m.price && m.price.weightedAverage);
-    if (!sane(w)) continue;
+    if (!sane(w, gpu.min)) continue;
     const n = Math.max(+(m.availability && m.availability.total) || 0, 0) || 1;
     num += w * n; den += n;
   }
   /* the cheapest bid counts as "from" only on a listing with a GPU free now */
   const low = rows.filter(m => (+(m.availability && m.availability.available) || 0) > 0)
-    .map(m => +(m.price && m.price.min)).filter(sane);
+    .map(m => +(m.price && m.price.min)).filter(p => sane(p, gpu.min));
   if (!den && !low.length) return null;
   return { p: 'akash', typical: den ? num / den : null, from: low.length ? Math.min(...low) : null, avail, total };
 }
@@ -106,8 +113,8 @@ export function akashQuote(models, gpu) {
    counts toward "from". */
 export function boardRow(gpu, quotes) {
   const q = (quotes || []).filter(Boolean);
-  const typ = q.map(x => x.typical).filter(sane);
-  const low = [...typ, ...q.map(x => x.from).filter(sane)];
+  const typ = q.map(x => x.typical).filter(p => sane(p));
+  const low = [...typ, ...q.map(x => x.from).filter(p => sane(p))];
   return {
     id: gpu.id, label: gpu.label,
     price: cents(median(typ)),

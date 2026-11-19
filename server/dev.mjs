@@ -19,6 +19,7 @@ import { memoryArena } from '../src/taps.mjs';
 import { memoryGuard } from '../src/guard.mjs';
 import { memoryCallers, defaultHttp as callersHttp } from '../src/callers.mjs';
 import { withKols } from '../src/kols.mjs';
+import { PowerKeeper } from '../src/powerlive.mjs';
 import { readAkashSites } from '../src/computemap.mjs';
 import { LaunchBook, launchOp } from '../src/launch.mjs';
 
@@ -76,7 +77,15 @@ const ctx = {
     return async (op, b = {}) => launchOp(B, { ...b, op });
   })(),
   /* Akash's providers for /compute-map — production reads them in the ComputeDO */
-  computeSites: (() => { let m = null; return async () => (m && Date.now() - m.at < 30 * 60_000) ? m : (m = await readAkashSites()); })(),
+  computeSites: (() => {
+    let m = null;
+    const mem = new Map(), keeper = new PowerKeeper({ get: async k => mem.get(k), put: async (k, v) => { mem.set(k, v); } });
+    return async () => {
+      const power = await keeper.current().catch(() => null);
+      if (!(m && Date.now() - m.at < 30 * 60_000)) m = await readAkashSites();
+      return { ...m, power };
+    };
+  })(),
   /* Lets the shared API render /market in dev the same way the worker does. */
   async readAsset(rel) {
     try { return await readFile(normalize(join(ROOT, rel)), 'utf8'); }
