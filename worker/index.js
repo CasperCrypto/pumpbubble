@@ -1040,12 +1040,17 @@ function launchClient(env) {
    A failed read serves the last good copy with the error attached. */
 export class ComputeDO {
   constructor(state, env) { this.state = state; this.env = env; this.mem = null; this.inflight = null; this.fail = null; this.power = new PowerKeeper(state.storage); }
-  async fetch() {
+  async fetch(request) {
     const now = Date.now();
     /* power prices refresh themselves (src/powerlive.mjs): the stored read is
        answered at once and whatever is due runs after the response */
     const power = await this.power.current(now).catch(() => null);
     if (this.power.pending && this.state.waitUntil) this.state.waitUntil(this.power.pending);
+    /* the cron's nudge: the refresh only, never the 3.8 MB provider list */
+    if (request && new URL(request.url).pathname === '/power') {
+      return Response.json({ ok: true, indAt: (power && power.ind && power.ind.readAt) || null,
+        zones: Object.keys((power && power.da && power.da.zones) || {}).length });
+    }
     const res = await this.sites(now);
     return Response.json({ ...res, power });
   }
@@ -1221,6 +1226,10 @@ export default {
         await handle(new Request('https://pumpbubble.fun/api/base/sweep'), ctx);
         /* Chain and launchpad flows, rebuilt every twenty minutes. */
         await handle(new Request('https://pumpbubble.fun/api/flows/refresh'), ctx);
+        /* Power prices on the Compute map refresh in the ComputeDO whenever
+           anyone opens the map; this nudge keeps them moving when nobody does
+           (one small request; the object reads only what is due). */
+        if (env.COMPUTE) await env.COMPUTE.get(env.COMPUTE.idFromName('compute')).fetch('https://compute/power').catch(() => {});
         /* One slice of casino hot wallets per tick. */
         await handle(new Request('https://pumpbubble.fun/api/casinos/sweep'), ctx);
         /* Telegram buybot: registers its webhook once TG_BOT_TOKEN exists. A
