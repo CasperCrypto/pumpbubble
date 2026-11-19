@@ -1321,6 +1321,31 @@ while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data 
   IP is shared), so a full pass takes a few hours; the cron nudges the object (`/power`, which never
   reads Akash's list) so steps run when nobody has the map open.
   `scripts/powerlive.test.mjs`.
+- **The UK is industrial again** (2026-11-19, `src/ukpower.mjs`, `scripts/uk-power.mjs`): Eurostat no
+  longer covers it, DESNZ publishes the same band (Very Large, 70–150 GWh/yr) quarterly. Including
+  the Climate Change Levy, because Eurostat's figure keeps non-recoverable levies. $0.305/kWh for
+  Q2 2026 — the dearest big market on the map. The workbook's address changes each release, so it is
+  downloaded by hand and passed in; the script reads the .xlsx with `node:zlib`, no dependency.
+  `withUk()` adds it to whichever industrial set is in use, live or baked, unless the set has GB.
+- **Minerals** (2026-11-19, asked as "a map of rare earths… value around rare earth, AI, scarcity,
+  for analysis and investors"): the map's fourth colour mode. 18 minerals in five groups (magnets &
+  robots, batteries, chips & AI data centers, defense, stores of value), each country coloured by
+  its share of world output in 2025 or of reserves (violet → gold, log scale; "none" and "no figure"
+  drawn differently). The panel: output and its change, the top producer, US import reliance, top
+  ten, **"in the ground, not yet mined"** (Brazil 25% of rare-earth reserves, under 1% of output),
+  the export controls that name the mineral, the marked sites, and every mineral ranked by how
+  concentrated it is (gallium 99% China, silicon metal 87%, magnesium 86%, tungsten 79%). A
+  country's card lists its share of each, and the US card what it imports. Data:
+  `scripts/minerals.mjs` → `src/minerals.mjs` (USGS MCS 2026, public domain), served by
+  `/api/compute/minerals` (cached a day, fetched only when the mode opens). Sites:
+  `src/mineralsites.mjs`, sixteen, each with operator and source. `?source=minerals`,
+  `rare-earths` (and `&mineral=ga`) open the layer. Traps found building it: USGS writes one file
+  in Windows-1252 and another in UTF-8 with a BOM (`decodeUsgs` tries strict UTF-8 first — reading
+  both as 1252 matched no export control at all); and a rounded world total can be smaller than its
+  own rows (gallium 900 t vs 909 t), so shares divide by the larger (`base`) — China read 100%.
+  "—" is zero, NA/W/words unknown, ">N" a floor. Germanium is absent: USGS withholds it by
+  country. No mineral prices: the free ones do not exist (SMM, Argus, Fastmarkets are sold).
+  `scripts/minerals.test.mjs`.
 - **A posted GPU price below its model's floor is not a price** (`min` in `GPUS`). Akash posted the
   B300 at $0.23/h on 2026-11-19 (one listing, nothing free) and the strip printed it. Floors are
   about a fifth of what each card rents for anywhere.
