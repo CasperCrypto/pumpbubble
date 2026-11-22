@@ -77,11 +77,28 @@ const TRADES_FULL = 5000;
    hour of life is its whole history would otherwise dominate outright. */
 const RECENCY_CAP = 6;
 
+/* "Show only trending tokens" (2026-11-22). Every gate above can be passed
+   by a token nobody is trading: on the live tab, 70 of 95 computed rows
+   turned over under a tenth of their cap a day — O at 0.8%, KHYPE and RAIN at
+   0.1%, HYPE at 1.3% — and drew as a grey tail under pump.fun's list that read
+   as "everything", not "trending". So a computed row must also have changed
+   hands for at least a tenth of its cap in a day and reach a minimum heat (a
+   0.4× turnover with a 25% move is 0.5), and the computed half is capped. */
+export const MIN_TURNOVER = 0.10;
+export const MIN_HEAT = 0.25;
+export const COMPUTED_MAX = 30;
+
 export const TREND_SOURCES = ['pumpfun', 'base', 'robinhood', 'majors'];
 
-/* How many bubbles catch fire. Kept small: if everything is on fire, nothing
-   is, and each flame costs real frame budget. */
-export const HOT_COUNT = 12;
+/* How many tokens the tab shows, and every one of them burns (2026-11-22,
+   asked as "remove other tokens from trending, only flame trending tokens").
+   It used to set twelve on fire and draw thirty more plain red and green
+   bubbles under them, which read as "the map again" rather than "what is
+   trending". Thirty is pump.fun's own list nearly whole; the computed rows
+   only fill in when that list is short or down. Measured on the phone and
+   desktop: thirty flame outlines stay inside the frame budget. */
+export const TREND_MAX = 30;
+export const HOT_COUNT = TREND_MAX;
 
 /* 0 means "not trending", so the caller never has to special-case a reason. */
 export function heat(t) {
@@ -108,6 +125,7 @@ export function heat(t) {
   if ((t.flags || []).some(f => BAD_FLAGS.includes(f))) return 0;
 
   const turnover = vol / mcap;
+  if (turnover < MIN_TURNOVER) return 0;
 
   /* Both of these are neutral when the feed does not carry them — majors and
      stocks report neither, and scoring them as zero would delete the categories
@@ -121,7 +139,8 @@ export function heat(t) {
     ? Math.min(h1 / perHour, RECENCY_CAP)
     : 1;
 
-  return turnover * (1 + Math.min(move, MOVE_CAP) / 100) * trades * recency;
+  const h = turnover * (1 + Math.min(move, MOVE_CAP) / 100) * trades * recency;
+  return h >= MIN_HEAT ? h : 0;
 }
 
 /* pump.fun's board first, in pump.fun's order; our computed ranking after.
@@ -138,7 +157,7 @@ export function heat(t) {
 
    `hot` is the top of the merged list, so when the board is up the flames
    are pump.fun's top twelve; when it is down they are ours, as before. */
-export function mergeMovers(movers, computed, limit = 160) {
+export function mergeMovers(movers, computed, limit = TREND_MAX) {
   const seen = new Set();
   /* One bubble per ticker: the first in this order keeps it. pump.fun's own
      list carried two MISOs and two LAMBOs (2026-10-06), and the wider market
@@ -169,7 +188,7 @@ export function mergeMovers(movers, computed, limit = 160) {
     out.push(t);
   }
   const cut = out.slice(0, limit);
-  for (let i = 0; i < cut.length; i++) cut[i].hot = i < HOT_COUNT;
+  for (const t of cut) t.hot = true;
   return cut;
 }
 
@@ -178,7 +197,7 @@ export function mergeMovers(movers, computed, limit = 160) {
    `feeds` is [{ id, tokens }]. Each token keeps a `from` so the card can say
    which chain it came from — on a cross-chain tab that is the first thing
    somebody wants to know. */
-export function buildTrending(feeds, limit = 120) {
+export function buildTrending(feeds, limit = COMPUTED_MAX) {
   const seen = new Set();
   const rows = [];
 

@@ -451,6 +451,18 @@ export const SOURCES = {
     chain: 'mixed', ttl: 300_000, enrich: false, boostable: false, quality: 'major', history: false,
     fetch: () => tradersFor('monthly'),
   },
+  /* Signals: measured events across pump.fun, Base, crypto, stocks and
+     Smart money — volume surges, breakouts, sharp drops, buy or sell
+     pressure, top-trader holdings. Composed in snapshot() from the other
+     feeds' warm copies; see src/signals.mjs. Per isolate, not shared: it
+     costs no upstream call of its own, so a KV copy would only spend writes. */
+  signals: {
+    id: 'signals', label: 'Signals', group: 'Trending',
+    chain: 'mixed', ttl: 60_000, enrich: false,
+    boostable: true, quality: 'major', history: false,
+    fetch: () => [],
+  },
+
   trending: {
     id: 'trending', label: 'Trending', group: 'Trending',
     chain: 'mixed', ttl: 60_000, shared: true, enrich: false,
@@ -623,8 +635,17 @@ async function computeAssets() {
 
 export const DEFAULT_SOURCE = 'pumpfun';
 
+/* Names people type into ?source= that are not ids. Without these the API
+   answered `/api/tokens?source=launchpads` with the pump.fun feed under its
+   own name — a 200 with the wrong data, which is worse than a 404. */
+const ALIASES = {
+  launchpads: 'pads', launchpad: 'pads', crypto: 'majors', market: 'majors',
+  stock: 'stocks', gpu: 'compute', gpus: 'compute', bets: 'prediction', predictions: 'prediction',
+  casino: 'casinos', gamble: 'casinos', gambling: 'casinos', graduated: 'pumpfun', pump: 'pumpfun',
+  smartmoney: 'smart', radar: 'signals', alerts: 'signals', tap: 'taps', tapwars: 'taps', arena: 'taps', rh: 'robinhood',
+};
 export function sourceOf(id) {
-  return SOURCES[id] || SOURCES[DEFAULT_SOURCE];
+  return SOURCES[id] || SOURCES[ALIASES[String(id || '').toLowerCase()]] || SOURCES[DEFAULT_SOURCE];
 }
 
 /* What the front end needs to draw the picker, without shipping the fetchers. */

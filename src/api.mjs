@@ -33,6 +33,8 @@ import { discover } from './rhchain.mjs';
 import { refreshUniverse, sweep as baseSweep, seed as baseSeed, loadCache as baseCache } from './basechain.mjs';
 import { refreshFlows } from './flows.mjs';
 import { buildTrending, mergeMovers, TREND_SOURCES } from './trending.mjs';
+import { buildSignals, signalStats, briefFacts, SIG_SOURCES } from './signals.mjs';
+import { getBrief, briefOn } from './aibrief.mjs';
 import { pumpTrending } from './pumptrend.mjs';
 import { GOLD_USD as TAP_GOLD_USD, AD_SLOTS as TAP_AD_SLOTS } from './taps.mjs';
 import { adminEnabled, adminPath, authed, adminPage,
@@ -54,6 +56,7 @@ import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata,
          slugFrom, subOf, siteUrl } from './launch.mjs';
 import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
 import { pumpCoin, pumpStatus, jupStatus, feedVia } from './core.mjs';
+import { activityStatus } from './activity.mjs';
 import { setJupKey } from './jupfeed.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
 import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
@@ -87,6 +90,23 @@ function visibleSet(tokens, byMint) {
 }
 
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), {
+  status,
+  headers: {
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'cache-control': 'no-store',
+    ...extra,
+  },
+});
+
+/* The map's feed, re-fetched every 15 s by every open tab, carried floats at
+   full double precision — `23.293830063317497` for a 24h change, `ageH`,
+   `mcLiq`, audit shares — about a fifth of the payload as noise. Seven
+   significant digits keeps every figure exactly as drawn (and a $0.00000110
+   price intact); integers, ids and timestamps pass untouched. Rounding a
+   measured number is not inventing one. */
+export const roundFloat = (k, v) => (typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v)) ? +v.toPrecision(7) : v;
+const jsonCompact = (body, status = 200, extra = {}) => new Response(JSON.stringify(body, roundFloat), {
   status,
   headers: {
     'content-type': 'application/json; charset=utf-8',
@@ -669,12 +689,50 @@ async function cardsSnapshot(ctx) {
       pulls: await signRows(meta.pulls), hits: await signRows(meta.hits) },
   };
 }
+/* Signals (src/signals.mjs): every measured event on the other feeds'
+   copies. Copies first, as on Trending; pump.fun and Smart money, which keep
+   no shared copy, are built against a deadline if this isolate has none, and
+   lend their last copy when the deadline passes. */
+let lastSignals = null;
+async function signalFeeds(ctx) {
+  return (await Promise.all(SIG_SOURCES.map(async id => {
+    let m = await trendCopy(ctx, id);
+    if (!m) m = await within(snapshot(ctx, sourceOf(id)).catch(() => null), TREND_FEED_MS, cacheFor(id).data);
+    return m && Array.isArray(m.tokens) ? { id, tokens: m.tokens, ts: m.ts || 0 } : null;
+  }))).filter(Boolean);
+}
+/* BTC, ETH and SOL's moves from the crypto feed, as context for the brief */
+function marketContext(feeds) {
+  const maj = feeds.find(f => f.id === 'majors');
+  if (!maj) return null;
+  const out = {};
+  for (const sym of ['BTC', 'ETH', 'SOL']) {
+    const t = maj.tokens.find(x => String(x.sym).toUpperCase() === sym);
+    if (t && t.pc) out[sym] = { h1: t.pc.h1 ?? null, h24: t.pc.h24 ?? null };
+  }
+  return Object.keys(out).length ? out : null;
+}
+async function signalsSnapshot(ctx) {
+  const feeds = await signalFeeds(ctx);
+  const tokens = buildSignals(feeds);
+  const stats = signalStats(tokens);
+  lastSignals = { tokens, market: marketContext(feeds), at: Date.now() };
+  return {
+    ts: Date.now(), sol: 0, count: tokens.length, enriched: tokens.length,
+    withArt: tokens.filter(t => t.img).length, sampleArt: '', solid: tokens.length, signed: true,
+    source: 'signals', sourceLabel: 'Signals', boostable: true,
+    signals: { ...stats, feeds: feeds.map(f => ({ id: f.id, n: f.tokens.length, ageS: Math.round((Date.now() - f.ts) / 1000) })),
+      ai: briefOn(ctx.env) },
+    tokens,
+  };
+}
+
 /* feeds whose empty answer is a state (nothing yet), not an outage */
-const EMPTY_OK = new Set(['taps', 'fresh', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
+const EMPTY_OK = new Set(['taps', 'fresh', 'signals', 'calls', 'callers-daily', 'callers-weekly', 'callers-monthly', 'insiders',
   'kols-all', 'kols-1m', 'kols-1w', 'kols-1d', 'cards']);
 /* feeds drawn as tables of people or calls, where a re-added paid bubble
    would be a stray row rather than a gold bubble */
-const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id.startsWith('callers-') || id.startsWith('traders-') || id.startsWith('kols-');
+const TABLE_FEED = id => id === 'calls' || id === 'insiders' || id === 'signals' || id.startsWith('callers-') || id.startsWith('traders-') || id.startsWith('kols-');
 
 async function snapshot(ctx, source, force = false) {
   const src = typeof source === 'string' ? sourceOf(source) : (source || sourceOf(DEFAULT_SOURCE));
@@ -767,6 +825,8 @@ async function snapshot(ctx, source, force = false) {
               tokens,
             };
           })()
+        : src.id === 'signals'
+        ? await signalsSnapshot(ctx)
         : src.id === 'taps'
         ? await tapsSnapshot(ctx)
         : src.id === 'calls'
@@ -1345,6 +1405,22 @@ export async function handle(req, ctx) {
     }
 
     /* ------------------------------------------------------- /api/tokens */
+    /* The AI brief over Signals (src/aibrief.mjs). Off without
+       ANTHROPIC_API_KEY. One brief per fifteen minutes whatever the traffic;
+       the facts are the Signals table's own rows. */
+    if (path === '/api/signals/brief') {
+      const limited = rateLimit(req, 'brief', 30, 60_000);
+      if (limited) return limited;
+      const b = await getBrief({
+        env: ctx.env, store: ctx.store,
+        facts: async () => {
+          if (!lastSignals || Date.now() - lastSignals.at > 5 * 60_000) await snapshot(ctx, sourceOf('signals'));
+          return lastSignals ? briefFacts(lastSignals.tokens, { market: lastSignals.market }) : null;
+        },
+      });
+      return json({ ok: !!b.text, ...b }, 200, { 'cache-control': b.text ? 'public, max-age=120' : 'no-store' });
+    }
+
     if (path === '/api/tokens') {
       const limited = rateLimit(req, 'tokens', 180, 60_000);
       if (limited) return limited;
@@ -1550,7 +1626,7 @@ export async function handle(req, ctx) {
         if (t) t.tapGold = b.tap;
       }
 
-      return json({
+      return jsonCompact({
         ok: true,
         ts: snap.ts,
         age: Date.now() - snap.ts,
@@ -1573,6 +1649,8 @@ export async function handle(req, ctx) {
         solid: snap.solid,
         /* Trending only: whether pump.fun's board answered, and how fast. */
         movers: snap.movers || undefined,
+        /* Signals only: counts by type, which feeds it read, whether the AI brief is on */
+        signals: snap.signals || undefined,
         callers: snap.callers || undefined,
         kols: snap.kols || undefined,
         insiders: snap.insiders || undefined,
@@ -3341,6 +3419,7 @@ export async function handle(req, ctx) {
            and the Jupiter feed that stands in for it */
         pump: { ...pumpStatus, via: feedVia.pumpfun, viaError: feedVia.error },
         jupiter: jupStatus,
+        activity: activityStatus,
       });
     }
 
