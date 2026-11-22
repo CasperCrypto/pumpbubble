@@ -830,7 +830,8 @@ export function scoreQuality(tokens, solPrice = 0, kind = 'memecoin') {
   if (kind === 'major') {
     for (const t of tokens) {
       t.copies = 1;
-      t.ageH = 0;
+      /* unknown age is null, never "0 hours old" (2026-11-22: every major read "1m old" on its card) */
+      t.ageH = t.created ? (Date.now() - t.created) / 36e5 : null;
       t.mcLiq = null;
       t.flags = [];
       t.solid = t.mcap > 0;

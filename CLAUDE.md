@@ -1919,6 +1919,29 @@ Jupiter's failure, the wallet's refusal, sell with percentage presets, silent re
 phone's no-wallet sheet. **The first real trade has not been made** — a live swap needs a real
 wallet and real SOL, which is the operator's to do (0.01 SOL is enough).
 
+## The token card (2026-11-22)
+
+Asked as "fix cards everywhere, and improve them". Audited by opening the card on the first token
+of every tab, phone and desktop, and reading its text for `NaN`, `$0`, `+0.00%` and dashes. Found:
+
+- **Invented numbers**: the Crypto feed hard-coded `m5: 0` (CoinPaprika has no 5-minute window), so
+  every coin's card printed "+0.00%"; its 1h/6h/24h used `num()` (missing → 0), now `pick()`; and
+  `scoreQuality('major')` set `ageH = 0`, so BTC read "1m old" — null now, and the page maps
+  `ageH` null-preserving too.
+- **Wrong boxes per asset class**: stocks got "5m / 1h — / —" and never their measured 1M / 1Y;
+  majors never their 7d. The default boxes now follow the id: `stock:` → 24h · 1M / 1Y,
+  `cg:` → 1h / 24h · 7d / 30d, everything else 5m / 1h · 6h / 24h. Stocks open on 24H (`fixTf`).
+- **Headlines that said nothing**: a trader, caller, KOL or call showed "— 1 hour" or "+0.00%".
+  Their headline is their figure now (banked, hit-2× rate, paid, multiple against the call). A
+  token's headline is the selected window, else the shortest measured one under its own label.
+- **The Trending line vanished** once rows were priced through Jupiter (`via: 'pump+jup'`).
+
+Added (`cardExtras()`): the contract with a Copy button and its chain; a stats strip of what was
+measured and nothing else — liquidity, holders, age, else price — and a buys/sells bar from counted
+trades (≥20); on Signals, the thresholds the token crossed; a close button; the card scrolls on a
+short phone (88dvh). **One primary action**: Buy when it shows, else the first link — three
+identical green buttons gave the eye nothing to choose. Desktop panel 380px so no box wraps.
+
 ## Where the Chart button goes
 
 `chartUrl(t)` routes by the **token**, never by the tab being viewed. Keying off `S.mode` was wrong
