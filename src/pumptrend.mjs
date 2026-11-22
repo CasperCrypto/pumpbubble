@@ -222,9 +222,23 @@ export async function pumpTrending({ secret, known = new Map() } = {}) {
     if (!t || seen.has(t.id)) continue;
     seen.add(t.id);
 
+    /* Jupiter stood in for pump.fun's activity (src/activity.mjs): its pool,
+       holders and audit are measurements too, so a row it priced is not left
+       without them. The movers board, where it answered, still wins. */
+    const j = act.get(a) && act.get(a).jup;
+    if (j) {
+      if (j.liq > 0) { t.liq = j.liq; t.mcLiq = t.mcap / j.liq; }
+      if (t.holders == null && j.holders != null) t.holders = j.holders;
+      if (t.dev == null && j.dev != null) { t.dev = j.dev; if (j.dev >= DEV_WARN) t.flags.push('dev'); }
+      if (j.topHold != null) t.topHold = j.topHold;
+      if (j.price > 0) t.price = j.price;
+      if (j.organic) t.organic = j.organic;
+      t.via = 'pump+jup';
+    }
+
     const k = known.get(t.addr || t.mint);
     if (k) {
-      if (k.liq > 0) { t.liq = k.liq; t.mcLiq = t.mcap / k.liq; }
+      if (k.liq > 0 && !(t.liq > 0)) { t.liq = k.liq; t.mcLiq = t.mcap / k.liq; }
       if (k.img) t.img = k.img;
       if (k.twitter) t.twitter = k.twitter;
     }

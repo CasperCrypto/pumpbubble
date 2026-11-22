@@ -137,7 +137,9 @@ export function shapeHolding(h, coin, act) {
   if (!(evm ? isEvmAddr(addr) : isMint(addr))) return null;
   const a24 = act && act['24h'], a1 = act && act['1h'], a5 = act && act['5m'], a6 = act && act['6h'];
   const vol = num(a24 && a24.volumeUSD);
-  const mcap = num(coin && coin.usd_market_cap);
+  const j = (act && act.jup) || null;
+  /* pump.fun's coin record first; Jupiter's cap when only Jupiter answered */
+  const mcap = num(coin && coin.usd_market_cap) || num(j && j.mcap);
   if (vol < MIN_VOL || mcap < MIN_MCAP) return null;
   if (mcap / vol > MAX_CAP_TO_VOL) return null;
   if (coin && coin.is_banned) return null;
@@ -154,7 +156,8 @@ export function shapeHolding(h, coin, act) {
     img: '',
     mcap, vol,
     volH1: num(a1 && a1.volumeUSD),
-    liq: 0, price: 0,
+    liq: num(j && j.liq), price: num(j && j.price),
+    holders: j && j.holders != null ? j.holders : null,
     created: num(coin && coin.created_timestamp),
     grad: !coin || coin.complete !== false,
     pc: { m5: pick(a5 && a5.priceChangePercent), h1: pick(a1 && a1.priceChangePercent),

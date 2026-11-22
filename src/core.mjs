@@ -614,7 +614,7 @@ export async function enrich(tokens, chain = 'solana') {
     }
     if (ask.length) {
       let got = new Map();
-      try { got = await fetchActivity(ask); } catch { got = new Map(); }
+      try { got = await fetchActivity(ask, { fallback: false }); } catch { got = new Map(); }
       for (const k of ask) {
         const a = got.get(k);
         if (a) { ACT_MEM.set(k, { at: now, a }); fromPump.set(k, a); }

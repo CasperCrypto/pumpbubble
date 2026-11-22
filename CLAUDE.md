@@ -286,6 +286,15 @@ million requests a month) is, and it also lifts the CPU and KV-write limits desc
   100 bubbles × 64 verts × ≤7 neighbours is the current budget. `step()` measures ~0.4ms;
   `draw()` is the expensive half and is the first place to look if frames drop.
 - Test both viewports before calling something done: 1440×900 and 390×844.
+- **The phone's controls live in a dock over the map** (2026-11-22, `phoneDock()` in index.html).
+  The tab row stays one swipeable row, but everything after it — timeframe, Mcap/Gain/Vol,
+  Filters, Swap, Market overview, Partners, Launch, Free buy bot, the "N unbacked hidden" count —
+  sat ~1,500px to the right where no phone user found it. Below 820px `#tf` and the View button
+  (`#openSheet`) move into `#dock` (bottom-left of the stage), `#sz` and the links into the View
+  sheet, and Share top 10 becomes a round button; above 820px they move back. Nodes are moved,
+  never copied, so one set of listeners serves both. No second toolbar row (that was reverted for
+  the room it took from the map). The selected tab scrolls into view (`showActiveTab`) and the row
+  fades at its right edge, so a phone can tell it scrolls. The dock steps aside for the Tap wars bar.
 - **The desktop toolbar wraps; the phone's does not.** At ≥820px `#chips` and `#subbar` wrap (tabs
   on the first row, timeframe / size / Filters / links / "N unbacked hidden" under them) — on one
   sideways row the fifteen tabs pushed every control past the right edge of a 1440 screen, with
@@ -335,6 +344,12 @@ were paid for.
 **Volume is absent, not zero, for bonding-curve tokens.** DexScreener only indexes graduated mints,
 so a briskly trading curve reports $0. `last_trade_timestamp` from pump.fun stands in. If you ever
 tighten the volume rule, re-check bonding mode first — an earlier version hid 285 of 300.
+
+**The feed's floats are rounded to 7 significant digits** (`roundFloat`, `/api/tokens` only):
+the map re-fetches it every 15 s and full-precision doubles were about a fifth of the payload.
+Integers, ids and timestamps pass untouched. `?source=` also accepts names people type
+(`launchpads`, `crypto`, `radar`…; `ALIASES` in sources.mjs) — `launchpads` used to answer with the
+pump.fun feed under a 200.
 
 ## Sources
 
@@ -486,6 +501,17 @@ access control: it is respected, never worked around** — no browser impersonat
 - The Solana buy watcher had **never** polled in production (`polls: 0`): Alchemy answered 429
   and every keyless RPC refuses Cloudflare. Not fixed in code — it needs a keyed RPC with headroom.
 
+### pump.fun retired market-activity (2026-11-22)
+
+`swap-api.pump.fun/v1/coins/market-activity/batch` answers **404 "Cannot POST"** while the rest of
+pump.fun answers again. Nothing errored: Trending drew pump.fun's whole list grey with "—" on every
+window (`movers.priced: 0`) and Smart money went **empty**, because a holding with no volume is
+dropped. `fetchActivity()` (src/activity.mjs) now asks Jupiter's token search for every Solana mint
+pump.fun did not answer and shapes its stats into the same per-window record (`jupActivity`), with
+`jup` carrying liquidity, holders and audit; Trending rows then read `via: 'pump+jup'`. Distinct
+buyers/sellers stay null — Jupiter has none. core.mjs calls it with `{ fallback: false }` because it
+asks Jupiter itself first. `/api/health` → `activity` counts what each answered.
+
 ### Fresh (2026-11-18)
 
 The **Fresh** tab (`fresh` source, `fetchFresh()` / `freshPasses()` in core.mjs): pump.fun coins
@@ -548,6 +574,32 @@ Four layers now, each answering one part:
 `/api/health` carries `dex: { lastError, lastErrorAt, lastOkAt, memSize }` so the next refusal
 names itself instead of looking like a grey map.
 
+## Signals and the AI brief (2026-11-22)
+
+`src/signals.mjs`, `src/aibrief.mjs`, source `signals`, the Signals tab (radar icon, after
+Trending) — a table, like the other "who/what" views. Asked for as "a feature around AI, crypto,
+stocks, data, so traders can trade and get information better".
+
+- **A signal is a measured number past a threshold, and the row says which.** Volume surge (last
+  hour ≥3× the day's average hour), breakout / sharp drop (1h for memecoins, Base and majors; 24h for
+  stocks and as a majors fallback), buy or sell pressure (≥62% buys / ≥60% sells over ≥400 trades),
+  top traders holding (≥5 of pump.fun's best by realized profit). Thresholds are per asset class
+  (`RULES`), as the X poster's are. An unmeasured window raises nothing; flagged (`copycat`, `thin`,
+  `oneway`, `banned`), unbacked and stable tokens raise nothing; a major's move past 300% or a
+  stock's past 150% is treated as a relisting or feed glitch, not a market (Trending's rule).
+- **Composed, not fetched**, from the warm copies of pump.fun, Base, Crypto, Stocks and Smart money
+  (pump.fun and Smart money built against a deadline if this isolate has none). Not `shared`: it
+  costs no upstream call, so a KV copy would only spend writes. One row per token; a coin on two
+  feeds carries both feeds' signals.
+- **The AI brief** is 3–5 sentences by Claude (`claude-opus-5-5`, effort low, `fallbacks:
+  "default"`, API version `2026-10-21`; `AI_MODEL` overrides) over `briefFacts()` — tickers, the
+  signals in words, caps and moves, nothing else. **Off until the `ANTHROPIC_API_KEY` secret is
+  set**: no key, no brief box at all, because a templated paragraph labelled AI would be an invented
+  claim. One brief per 15 minutes whatever the traffic (memory + KV `ai:brief`, concurrent askers
+  share the request, a failure waits two minutes). Raw `fetch`, no SDK — the no-dependency rule.
+  The page labels it "written by AI from the signals below · time · not advice".
+  `GET /api/signals/brief`; `scripts/signals.test.mjs` pins the request shape with a fake HTTP.
+
 ## Trending
 
 `src/trending.mjs`. **"Trending" had to be defined before it could be a tab**, or it becomes
@@ -562,6 +614,12 @@ So it is computed from two numbers the map already measures:
   what stops the tab being the largest caps again.
 - **movement** — the 24h change. Turnover alone puts stablecoins and wrappers on top: RLUSD turns
   over 1.0× a day and never moves, and WETH on Robinhood Chain turns over 5× while tracking ETH.
+
+**Only trending tokens** (2026-11-22): every gate below can be passed by a token nobody trades —
+70 of 95 computed rows turned over under a tenth of their cap a day (O 0.8%, KHYPE 0.1%) and
+drew as a grey tail that read as "everything". A computed row now also needs `MIN_TURNOVER`
+(0.10× its cap traded in 24h) and `MIN_HEAT` (0.25), and the computed half is capped at
+`COMPUTED_MAX` (30). The tab went from 130 bubbles to ~45.
 
 Multiplied, so both must be true. Gates: backed, ≥$100k cap, ≥$50k volume, 3%–1000% move, ≥$25k
 liquidity **where liquidity is measured**, and none of the `copycat`/`thin`/`new` flags.
