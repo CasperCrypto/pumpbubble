@@ -619,7 +619,13 @@ So it is computed from two numbers the map already measures:
 70 of 95 computed rows turned over under a tenth of their cap a day (O 0.8%, KHYPE 0.1%) and
 drew as a grey tail that read as "everything". A computed row now also needs `MIN_TURNOVER`
 (0.10× its cap traded in 24h) and `MIN_HEAT` (0.25), and the computed half is capped at
-`COMPUTED_MAX` (30). The tab went from 130 bubbles to ~45.
+`COMPUTED_MAX` (30). The tab went from 130 bubbles to ~45. **Then to flames only** (same day,
+"remove other tokens from trending, only flame trending tokens"): the tab is `TREND_MAX` (30)
+tokens and every one burns (`hot` on the whole merged list, and the page draws only `t.hot` rows
+there; a paid bubble is still re-added as gold). Thirty is pump.fun's list nearly whole, so computed
+rows fill in only when that list is short or down. Measured in the same headless sandbox: 60 fps on a
+phone; on a desktop 32 fps against 28 for the old twelve flames and 19 for the pump.fun tab, so the
+flames cost nothing the map did not already spend.
 
 Multiplied, so both must be true. Gates: backed, ≥$100k cap, ≥$50k volume, 3%–1000% move, ≥$25k
 liquidity **where liquidity is measured**, and none of the `copycat`/`thin`/`new` flags.

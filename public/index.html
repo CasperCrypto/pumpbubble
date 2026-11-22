@@ -1896,6 +1896,10 @@ function rebuild(){
      and the card read. */
   const hasTf=t=>t.pc[S.tf]!=null&&Number.isFinite(t.pc[S.tf]);
   if(S.mv!=='all')L=L.filter(t=>hasTf(t)&&(S.mv==='up'?t.pc[S.tf]>=0:t.pc[S.tf]<0));
+  /* Trending is only what burns: the server marks the whole list hot, and a
+     row that is not (a paid bubble re-added from another feed) is put back
+     below as gold, never drawn here as a plain bubble. */
+  if(S.mode==='trending')L=L.filter(t=>t.hot);
   /* On the trending tab the ranking is the heat, not the market cap.
 
      Ranking by cap there put WBNB and ARB on screen and cut the tokens the tab

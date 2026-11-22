@@ -90,9 +90,15 @@ export const COMPUTED_MAX = 30;
 
 export const TREND_SOURCES = ['pumpfun', 'base', 'robinhood', 'majors'];
 
-/* How many bubbles catch fire. Kept small: if everything is on fire, nothing
-   is, and each flame costs real frame budget. */
-export const HOT_COUNT = 12;
+/* How many tokens the tab shows, and every one of them burns (2026-11-22,
+   asked as "remove other tokens from trending, only flame trending tokens").
+   It used to set twelve on fire and draw thirty more plain red and green
+   bubbles under them, which read as "the map again" rather than "what is
+   trending". Thirty is pump.fun's own list nearly whole; the computed rows
+   only fill in when that list is short or down. Measured on the phone and
+   desktop: thirty flame outlines stay inside the frame budget. */
+export const TREND_MAX = 30;
+export const HOT_COUNT = TREND_MAX;
 
 /* 0 means "not trending", so the caller never has to special-case a reason. */
 export function heat(t) {
@@ -151,7 +157,7 @@ export function heat(t) {
 
    `hot` is the top of the merged list, so when the board is up the flames
    are pump.fun's top twelve; when it is down they are ours, as before. */
-export function mergeMovers(movers, computed, limit = 160) {
+export function mergeMovers(movers, computed, limit = TREND_MAX) {
   const seen = new Set();
   /* One bubble per ticker: the first in this order keeps it. pump.fun's own
      list carried two MISOs and two LAMBOs (2026-10-06), and the wider market
@@ -182,7 +188,7 @@ export function mergeMovers(movers, computed, limit = 160) {
     out.push(t);
   }
   const cut = out.slice(0, limit);
-  for (let i = 0; i < cut.length; i++) cut[i].hot = i < HOT_COUNT;
+  for (const t of cut) t.hot = true;
   return cut;
 }
 

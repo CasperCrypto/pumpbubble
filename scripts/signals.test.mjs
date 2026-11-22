@@ -18,7 +18,7 @@
 import { signalsFor, buildSignals, signalStats, briefFacts, STABLE, PRESSURE_MIN_TXNS } from '../src/signals.mjs';
 import { getBrief, writeBrief, briefOn, _resetBrief, BRIEF_TTL } from '../src/aibrief.mjs';
 import { jupActivity, fetchActivity } from '../src/activity.mjs';
-import { heat, buildTrending, MIN_TURNOVER, COMPUTED_MAX } from '../src/trending.mjs';
+import { heat, buildTrending, mergeMovers, MIN_TURNOVER, COMPUTED_MAX, TREND_MAX } from '../src/trending.mjs';
 import { sourceOf } from '../src/sources.mjs';
 
 let pass = 0, fail = 0;
@@ -150,6 +150,9 @@ console.log('\ntrending');
   is('O at 0.8% turnover is not', heat({ ...base, mcap: 75e6, vol: 6e5, pc: { h24: -3.6 } }), 0);
   const many = Array.from({ length: 80 }, (_, i) => ({ ...base, id: 'id' + i, vol: 5e5 + i * 1000 }));
   is('the computed half is capped', buildTrending([{ id: 'pumpfun', tokens: many }]).length, COMPUTED_MAX);
+  const tab = mergeMovers([], buildTrending([{ id: 'pumpfun', tokens: many }]));
+  is('the tab is capped at TREND_MAX', tab.length, TREND_MAX);
+  is('and every token on it is a flame', tab.every(t => t.hot), true);
 }
 
 console.log('\nsource aliases');

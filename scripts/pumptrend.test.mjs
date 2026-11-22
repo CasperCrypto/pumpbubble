@@ -123,7 +123,7 @@ console.log('\nmerge — pump.fun order first, ours after');
   is('board heat is 1e6/rank', out[0].heat + ',' + out[2].heat, (1e6) + ',' + (1e6 / 3));
   is('a token on both lists is the board row', out[1].via, 'pump');
   is('board heat stays above computed heat', out[2].heat > out[3].heat, true);
-  is('hot is the head of the merged list', out.filter(t => t.hot).length, Math.min(HOT_COUNT, out.length));
+  is('every row on the tab burns', out.filter(t => t.hot).length, Math.min(HOT_COUNT, out.length));
   is('empty board leaves the computed list', mergeMovers([], ours, 10).map(t => t.id).join(','), 'm2,c1,c2');
 }
 
