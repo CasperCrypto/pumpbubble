@@ -355,7 +355,11 @@ export function withKols(callers, http) {
     const now = Date.now();
     if (op === 'kols') {
       const period = KOL_PERIODS[b.period] !== undefined ? b.period : 'all';
-      return { ok: true, period, ...kb.board(period), status: kb.status(now) };
+      /* the trading boards the callers' book read, as production passes them */
+      let trading = null, tradeCuts = null;
+      try { const m = await callers('tradingMap'); trading = m instanceof Map ? m : null; } catch { trading = null; }
+      try { tradeCuts = await callers('tradeCuts'); } catch { tradeCuts = null; }
+      return { ok: true, period, ...kb.board(period, trading), tradeCuts, status: kb.status(now) };
     }
     if (op === 'tick') { try { await pollKols(kb, now, http); } catch { /* the next tick */ } }
     return callers(op, b);

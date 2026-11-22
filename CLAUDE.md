@@ -844,6 +844,25 @@ monthly → 1m — matched on every Solana wallet the payout row lists) **beside
 into it**. The table shows a Callout rewards column, a line saying how many of the hundred are paid
 KOLs and what they were paid against what they banked, and "Traders only" / "Paid KOLs" filters.
 
+**Callouts against trading, same window** (2026-11-22, asked as "who earns more from callouts or
+trades — if someone made more from payouts than trading he is a paid KOL rather than a trader").
+pump.fun publishes no all-time trading board, so the comparison is always the same window on both
+sides: daily ↔ 1d payouts, weekly ↔ 1w, monthly ↔ 1m. The Top traders table has a **Callouts vs
+trading** column (split bar, "more from callouts" / "more from trading"), a **More from callouts**
+filter, the card says it in words with the all-time rewards and `buySpendSol` ("spent N SOL buying"),
+and a summary line names the KOLs this board cannot show. Only what is proven (`earnSplit()`,
+`withRewards(…, meta)`):
+- On both boards: both figures, and which is bigger.
+- Not in the window's top 100 payouts (board full): "callouts under $X", where X is the #100 payout;
+  "more from trading" only when banked ≥ X.
+- Not on the trading board: the board is ranked by banked profit, so a full board's #100 is a bound —
+  `kolsOnly` lists KOLs paid more than that bound in the window and on no row of the board, matched
+  on every wallet their payout row lists. On 2026-11-22 (30 days): 56, led by PoorGoat $437K,
+  HarryPaulDavies $404K, chairman $309K, all with trading profit under $35.6K.
+- Never "not a trader" or "$0": a bound is printed as a bound. Allocations and tokens received
+  without a buy cannot be told apart from earlier buys on pump.fun's board (its per-token PnL
+  endpoint 404s), so the page shows "spent on buys" beside "banked" and draws no conclusion.
+
 **While pump.fun refuses servers, Top traders shows its last read** (`lastTraders()` in api.mjs,
 `tradersBoard()` in callers.mjs, the CallersDO's `traders` op): the Calls watcher kept every
 PnL-board row it read (rank and realized, with the read's time), so the table serves the newest
@@ -1037,6 +1056,39 @@ trader (`kind: 'caller'`, Profile opens pump.fun). Table feeds skip the paid-bub
 same paced fan-out queue the wallet tracker uses, with Buy (our swap), Chart and a way out. An alert
 is considered once per call and only while under 15 minutes old — a restart does not replay the
 past hour.
+
+### The Calls tab's controls (2026-11-22)
+
+Asked as "I don't understand many tabs or filters there, like top 85 traders or most calls in
+profit — check and fix all filters". What was wrong and what it is now:
+
+- **"Also top traders 85" was false.** The book never forgets a PnL-board placement, so a KOL who was
+  #61 on one daily board a month ago counted as a top trader: reads up to 42 days old, and the KOL
+  card printed "#97 today" from one 21 days old. `freshBoard()` / `boardReads()` (callers.mjs) keep a
+  placement only from the latest read of that board (ten minutes' slack); `tradingMap()` and the
+  callers' Trading profit column go through it. That column is now the **same window** as the view
+  — it was the largest figure across daily, weekly and monthly. The dev server's KOL board gets the
+  map too (`callers('tradingMap')`), as the Worker's CallersDO always passed it.
+- **Filters and sorts were one row**: "Most earned" and "Most calls in profit" re-sorted the table
+  while sitting among filters. Now `tbarRows()` gives a **Show** row (filters, each with its count,
+  disabled at zero — `tchipN()`) and a **Sort** row, one plain line saying what the current choice
+  means (tooltips never reach a phone), and **"What the columns mean"** as a `<details>`.
+- **Names**: Top callers → **Best callers** (hit-2× rate), KOLs → **Paid KOLs** (what pump.fun paid);
+  "Banked" → **Trading profit**; "Banked, holders down" → **Took profit, holders down**; "Holders up" →
+  **Holders in profit**; "Calls ≥ $100K" → **Bigger coins ($100K+)** (it is the *average* call);
+  "Also top traders" → **Also a top trader now**; callers gain a **Not paid** filter.
+- **Callouts vs trading on Paid KOLs too** (same day: "I see all-time earnings and no all-time trading
+  PnL — we need to see if they earn more from callouts or trades"). For 30D / 7D / 24H the table has
+  the same comparison as Top traders (`kolEarn()`): the period's payout against that period's trading
+  board — both figures when the KOL is on its latest read, else "trading under $X" from the board's
+  #100 (`boardCuts()`, sent as `kols.tradeCuts`; only from a full read of 100). Filters **More from
+  callouts / More from trading**, a summary count, the card says it. **All time too**: pump.fun has an
+  all-time PnL board (`period=all` — its validator lists daily, weekly, monthly, all; first missed
+  here), so `traders-all` exists, the Calls watcher reads it with the others, the Traders tab's last
+  pill reads **All** (it rides `y1`), and Paid KOLs' All time compares all-time rewards with all-time
+  trading. Checked against pump.fun on 2026-11-22: 100 rows sorted by realized, #100 at $206,450;
+  PoorGoat ($827.7K rewards), chairman ($740.8K) and HarryPaulDavies ($621.1K) are not on it, so each
+  banked under $206K trading all time; cupsey #30 with $411K banked against $771.5K in rewards.
 
 ## Pages to be found (SEO and AI assistants)
 
@@ -1918,6 +1970,29 @@ balance, quote, sign (624-byte v0 transaction, right account, `solana:mainnet`),
 Jupiter's failure, the wallet's refusal, sell with percentage presets, silent reconnect, and the
 phone's no-wallet sheet. **The first real trade has not been made** — a live swap needs a real
 wallet and real SOL, which is the operator's to do (0.01 SOL is enough).
+
+## The token card (2026-11-22)
+
+Asked as "fix cards everywhere, and improve them". Audited by opening the card on the first token
+of every tab, phone and desktop, and reading its text for `NaN`, `$0`, `+0.00%` and dashes. Found:
+
+- **Invented numbers**: the Crypto feed hard-coded `m5: 0` (CoinPaprika has no 5-minute window), so
+  every coin's card printed "+0.00%"; its 1h/6h/24h used `num()` (missing → 0), now `pick()`; and
+  `scoreQuality('major')` set `ageH = 0`, so BTC read "1m old" — null now, and the page maps
+  `ageH` null-preserving too.
+- **Wrong boxes per asset class**: stocks got "5m / 1h — / —" and never their measured 1M / 1Y;
+  majors never their 7d. The default boxes now follow the id: `stock:` → 24h · 1M / 1Y,
+  `cg:` → 1h / 24h · 7d / 30d, everything else 5m / 1h · 6h / 24h. Stocks open on 24H (`fixTf`).
+- **Headlines that said nothing**: a trader, caller, KOL or call showed "— 1 hour" or "+0.00%".
+  Their headline is their figure now (banked, hit-2× rate, paid, multiple against the call). A
+  token's headline is the selected window, else the shortest measured one under its own label.
+- **The Trending line vanished** once rows were priced through Jupiter (`via: 'pump+jup'`).
+
+Added (`cardExtras()`): the contract with a Copy button and its chain; a stats strip of what was
+measured and nothing else — liquidity, holders, age, else price — and a buys/sells bar from counted
+trades (≥20); on Signals, the thresholds the token crossed; a close button; the card scrolls on a
+short phone (88dvh). **One primary action**: Buy when it shows, else the first link — three
+identical green buttons gave the eye nothing to choose. Desktop panel 380px so no box wraps.
 
 ## Where the Chart button goes
 

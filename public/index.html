@@ -342,6 +342,17 @@ h3 .ic{vertical-align:-.12em}
 #smTable td:first-child{border-left:1px solid var(--line);border-radius:12px 0 0 12px;color:var(--dim);font-weight:800;width:28px}
 #smTable td:last-child{border-right:1px solid var(--line);border-radius:0 12px 12px 0}
 #smTable tr.row{cursor:pointer}
+/* callouts against trading, one trader */
+#smTable .c-earn{min-width:150px}
+#smTable .esplit{height:6px;border-radius:99px;background:var(--mint);overflow:hidden;margin:2px 0 4px;max-width:150px}
+#smTable .esplit i{display:block;height:100%;background:var(--gold)}
+#smTable .ewho{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:99px;margin-top:2px;white-space:nowrap}
+#smTable .ewho.co{color:#2b1c00;background:var(--gold)}
+#smTable .ewho.tr{color:#04210f;background:var(--mint)}
+#smTable small .ewho{margin-left:4px;vertical-align:1px}
+/* the name line's tag is for phones, where the column is hidden */
+#smTable small .ewho.c-ph{display:none}
+@media (max-width:700px){#smTable small .ewho.c-ph{display:table;margin:3px 0 0}}
 /* Signals */
 #smTable .brief{max-width:1100px;margin:4px auto 8px;padding:12px 14px;border-radius:14px;
   background:linear-gradient(180deg,rgba(124,92,255,.14),rgba(124,92,255,.05));border:1px solid rgba(150,120,255,.32)}
@@ -408,6 +419,18 @@ h3 .ic{vertical-align:-.12em}
 #smTable .tsum .old{color:#e8b04a}
 #smTable .tseg{align-self:flex-start;flex-wrap:wrap;border-radius:16px}
 #smTable .tseg button{min-height:30px;font-size:11.5px}
+#smTable .tseg button[disabled]{opacity:.35;cursor:default}
+#smTable .tseg .tn{opacity:.7;font-weight:700;margin-left:2px}
+#smTable .tctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#smTable .tctl .tseg{flex:1 1 auto;min-width:0;max-width:100%}
+#smTable .tctl .tlab{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);min-width:34px}
+#smTable .tdesc{font-size:12px;line-height:1.5;color:var(--ink);opacity:.85;padding:7px 10px;border-radius:10px;background:var(--glass);border:1px solid var(--line)}
+#smTable .tlegend{font-size:12px;color:var(--dim)}
+#smTable .tlegend summary{cursor:pointer;font-weight:800;color:var(--ink);opacity:.8;padding:2px 0}
+#smTable .tlegend dl{margin:6px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 12px}
+#smTable .tlegend dt{font-weight:800;color:var(--ink)}
+#smTable .tlegend dd{margin:0;line-height:1.45}
+@media (max-width:700px){#smTable .tlegend dl{grid-template-columns:1fr}#smTable .tlegend dd{margin-bottom:6px}}
 #smTable .smEmpty{max-width:520px;margin:56px auto;text-align:center;color:var(--dim);font-weight:700;font-size:13px;line-height:1.6}
 @media (max-width:700px){#smTable .i-ph{display:inline}#smTable .i-dt{display:none}}
 /* phone-only cells: the two numbers that matter, stacked in one column */
@@ -597,12 +620,48 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   box-shadow:0 -20px 60px rgba(0,0,0,.7);
 }
 #card.on{transform:translateY(0)}
+/* A long card (a KOL's record, a Fresh token's checks) on a short phone ran
+   past the top of the screen with no way to reach its first lines. */
+#card{max-height:88vh;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain}
+#cClose{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;
+  border:1px solid var(--line);background:var(--glass);color:var(--dim);cursor:pointer;
+  display:grid;place-items:center;padding:0;z-index:2}
+#cClose:hover{color:var(--ink);background:var(--glass2)}
+#cClose .ic{width:16px;height:16px}
+#card .tk{padding-right:44px;margin-bottom:10px}
+#card .tk .im{width:44px;height:44px}
+#card .tk .nm{font-size:17px}
+#card .tk .sb{font-size:11px;max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#card .caddr{display:flex;align-items:center;gap:8px;margin:-2px 0 2px;font-size:11.5px;color:var(--dim);font-weight:700}
+#card .caddr code{font:inherit;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);
+  background:var(--glass);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+#card .caddr button{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--glass);color:var(--ink);font:inherit;font-weight:800;cursor:pointer}
+#card .caddr button.ok{color:var(--mint);border-color:rgba(40,224,140,.5)}
+#card .caddr .chain{margin-left:auto;text-transform:capitalize}
+#card .cstats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:-4px 0 12px}
+#card .cstats[hidden]{display:none}
+#card .cstats .st{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:6px 9px;min-width:0}
+#card .cstats .st u{display:block;text-decoration:none;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:800}
+#card .cstats .st b{font-size:13px;font-weight:900;font-variant-numeric:tabular-nums}
+#card .cstats .bs{grid-column:1/-1}
+#card .cstats .bar{display:flex;height:6px;border-radius:99px;overflow:hidden;margin-top:5px;background:rgba(255,255,255,.06)}
+#card .cstats .bar i{display:block;background:var(--mint)}
+#card .cstats .bar i+i{background:var(--rose)}
+#card .cstats .bs small{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--dim);margin-top:4px}
+#card #cSig:empty{display:none}
+#card #cSig{display:grid;gap:5px;margin:-4px 0 10px}
+#card #cSig .sg{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;font-weight:800;line-height:1.35;
+  padding:7px 9px;border-radius:10px;background:rgba(124,92,255,.08);border:1px solid rgba(150,120,255,.22)}
+#card #cSig .sg.up .ic{color:var(--mint)}#card #cSig .sg.dn .ic{color:var(--rose)}
+/* one primary action: Buy when there is one, else the first link */
+#card .acts button.pf.sec{background:var(--glass2);color:var(--ink);border:1px solid var(--line);box-shadow:none}
 #card .grab{width:38px;height:4px;border-radius:99px;background:rgba(255,255,255,.18);margin:0 auto 12px}
 #card .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 14px}
 #card .box{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
 #card .box u{display:block;text-decoration:none;font-size:9.5px;letter-spacing:.08em;
   text-transform:uppercase;color:var(--dim);font-weight:800;margin-bottom:2px}
-#card .box b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:900}
+#card .box b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:900;white-space:nowrap}
 /* Boost is the product, so it gets the full width and its own row while the
    secondary links share the one below. It was previously a 108px chip wedged
    beside two others, which is how you price something at $149 and present it
@@ -875,7 +934,7 @@ body.embed #brandbadge.on{display:flex}
      floating panel rather than a bottom sheet. Hiding it here left desktop
      users with a blurred backdrop and nothing on it. */
   #card{
-    left:auto;right:18px;bottom:18px;width:340px;
+    left:auto;right:18px;bottom:18px;width:380px;
     border:1px solid var(--line);border-radius:18px;border-top:1px solid var(--line);
     padding:16px;
     transform:translateY(calc(100% + 40px));
@@ -972,6 +1031,8 @@ body.embed #brandbadge.on{display:flex}
 <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14"/></symbol>
 <symbol id="i-bot" viewBox="0 0 24 24"><path d="M6.5 9h11A2.5 2.5 0 0 1 20 11.5v5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-5A2.5 2.5 0 0 1 6.5 9zM12 5.5V9M12 3.2a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM9 13.5v1M15 13.5v1M2 12.5v3M22 12.5v3"/></symbol>
 <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10.5v10.5H9zM15 9V4.5H4.5V15H9"/></symbol>
 <symbol id="i-radar" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9M17 12a5 5 0 1 1-5-5M12 12l7-7M12 12h.01"/></symbol>
 <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3.5l1.9 5.1 5.1 1.9-5.1 1.9L11 17.5l-1.9-5.1L4 10.5l5.1-1.9zM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
 <symbol id="i-trend-up" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></symbol>
@@ -1104,8 +1165,8 @@ body.embed #brandbadge.on{display:flex}
   <!-- Callers: the calls as they are made, and who makes the good ones -->
   <div class="seg" id="clView">
     <button data-cv="calls" class="on"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg>Live calls</button>
-    <button data-cv="callers"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg>Top callers</button>
-    <button data-cv="kols"><svg class="ic" aria-hidden="true"><use href="#i-banknote"/></svg>KOLs</button>
+    <button data-cv="callers" title="Callers ranked by how often their calls reach 2×"><svg class="ic" aria-hidden="true"><use href="#i-trophy"/></svg>Best callers</button>
+    <button data-cv="kols" title="KOLs ranked by what pump.fun paid them for calling"><svg class="ic" aria-hidden="true"><use href="#i-banknote"/></svg>Paid KOLs</button>
   </div>
   <div class="seg" id="kolWin">
     <button data-kw="all" class="on"><span class="sb-full">All time</span><span class="sb-short">All</span></button>
@@ -1189,8 +1250,9 @@ body.embed #brandbadge.on{display:flex}
 </div>
 
 <!-- ================= token card ================= -->
-<div id="card">
+<div id="card" role="dialog" aria-modal="true" aria-labelledby="cSym">
   <div class="grab"></div>
+  <button id="cClose" type="button" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
   <div class="tk">
     <div class="im" id="cIm">?</div>
     <div><div class="nm" id="cSym">—</div><div class="sb" id="cName">—</div></div>
@@ -1199,12 +1261,18 @@ body.embed #brandbadge.on{display:flex}
       <div class="sb" id="cTf">1h</div>
     </div>
   </div>
+  <!-- the contract, one tap to copy: what a trader checks against the project's own -->
+  <div class="caddr" id="cAddr" hidden></div>
   <div class="row2">
     <div class="box"><u>Market cap</u><b id="cMc">—</b></div>
     <div class="box"><u>24h volume</u><b id="cVol">—</b></div>
     <div class="box"><u>5m / 1h</u><b id="cA">—</b></div>
     <div class="box"><u>6h / 24h</u><b id="cB">—</b></div>
   </div>
+  <!-- measured facts beyond the four boxes: pool, holders, age, who is buying -->
+  <div class="cstats" id="cStats" hidden></div>
+  <!-- on Signals: the thresholds this token crossed -->
+  <div id="cSig"></div>
   <div id="cWarn"></div>
   <div class="acts">
     <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
@@ -1421,7 +1489,7 @@ const CARD_MODES=new Set(['cards','packs','pulls','hits']);
 const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
 /* The Traders tab asks pump.fun for one period at a time, so its timeframe
    pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
-const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly'};
+const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly',y1:'all'};
 /* the feed a tab reads: Top traders by the period pill, Smart money by its board tab */
 function feedId(){
   if(S.mode==='traders')return 'traders-'+(TRADER_PERIOD[S.tf]||'daily');
@@ -1471,7 +1539,12 @@ function subbar(){
   /* A pack has a price and an expected value, not a 1H or a 1Y, and its
      size is what it sold: the timeframe and size pills say nothing there. */
   /* Signals' table carries both 1H and 24H, and its order is the signal */
-  const sg=S.mode==='signals';
+  /* Calls and Insiders pick their period in the sub-bar; the 1H…1Y pills
+     changed nothing there and read as broken */
+  /* on Traders the last pill is pump.fun's all-time board, not a year */
+  const y1=document.querySelector('#tf [data-tf="y1"]');
+  if(y1){y1.textContent=S.mode==='traders'?'All':'1Y';y1.title=S.mode==='traders'?'All time — pump.fun’s all-time profit board':''}
+  const sg=S.mode==='signals'||cl||ins;
   document.getElementById('tf').style.display=cc||sg?'none':'';
   document.getElementById('sz').style.display=cc||sg?'none':'';
   el.hidden=!(sm||cl||ins||cp||cc);if(el.hidden)return;
@@ -1522,10 +1595,10 @@ function subbar(){
     document.querySelectorAll('#clWin [data-cw]').forEach(b=>b.classList.toggle('on',b.dataset.cw===(S.callWin||'weekly')));
     document.querySelectorAll('#kolWin [data-kw]').forEach(b=>b.classList.toggle('on',b.dataset.kw===(S.kolWin||'all')));
     document.getElementById('smNote').textContent=S.mode==='calls'
-      ?'new calls on pump.fun from callers with a record \u00b7 peak is what a perfect seller got, now is what a holder has'
+      ?'the newest calls on pump.fun, from callers with a record or calls many people saw \u00b7 peak = the best price since the call \u00b7 now = what someone who bought at the call has today'
       :S.mode==='kols'
-      ?'what pump.fun paid each caller in USDC \u00b7 their last 100 calls: market cap at the call, the median peak, and now \u2014 what a follower who held has \u00b7 not financial advice'
-      :'ranked by how often their calls reach 2\u00d7, adjusted for how many they made \u00b7 not by one lucky call';
+      ?'KOLs ranked by what pump.fun paid them for calling \u00b7 beside it, what their last 100 calls did for someone who bought at the call \u00b7 not financial advice'
+      :'callers ranked by how often their calls reach 2\u00d7 \u00b7 adjusted for how many calls they made, so one lucky call cannot top the list';
     return;
   }
   document.querySelectorAll('#smView [data-sv]').forEach(b=>b.classList.toggle('on',b.dataset.sv===S.mode));
@@ -1570,6 +1643,13 @@ function fixTf(){
   /* Compute mixes coins (1H to 1Y) and companies (24H, 1M, 1Y): it opens on a
      window both carry, so half the map is not grey on arrival */
   if(S.mode==='compute'){
+    if(S.tf==='h24'||S.tf==='d30'||S.tf==='y1')return;
+    S.tf='h24';
+    document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
+    return;
+  }
+  /* Stocks carry 24H, 1M and 1Y — opening on 1H drew a grey map */
+  if(S.mode==='stocks'){
     if(S.tf==='h24'||S.tf==='d30'||S.tf==='y1')return;
     S.tf='h24';
     document.querySelectorAll('[data-tf]').forEach(x=>x.classList.toggle('on',x.dataset.tf==='h24'));
@@ -1678,6 +1758,7 @@ async function fetchLive(){
   S.upstream=j.upstream||''; S.kolMeta=j.kols||null; S.asOf=+j.asOf||0;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   if(src==='signals')S.sigMeta=j.signals||null;
+  if(String(src).startsWith('traders-'))S.earnMeta=j.earnings||null;
   /* the board rides the Compute feed; a response without one keeps the last */
   if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
   /* the pulls, the big hits and the window's totals ride the Cards feed */
@@ -1715,7 +1796,7 @@ async function fetchLive(){
        overwrote the count with null, so the card's "N KOLs" never showed. */
     rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), topHold:NN(t.topHold), organic:t.organic||'', organicShare:NN(t.organicShare), fresh:!!t.fresh, dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
-    positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
+    positions:NN(t.positions), spendSol:NN(t.buySpendSol), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
     smartN:+t.smartN||0, smartBanked:+t.smartBanked||0,
     /* Signals: what each row crossed, in words from our own API, escaped where written */
@@ -1748,7 +1829,7 @@ async function fetchLive(){
     boost:+t.boost||0,                   // server owns this: it is paid for
     boostUsd:+t.boostUsd||0, boostUntil:t.boostUntil||0,
     grad:!!t.grad, ath:+t.ath||0, liveStream:!!t.liveStream,
-    liq:+t.liq||0, mcLiq:t.mcLiq, copies:+t.copies||1, ageH:+t.ageH||0,
+    liq:+t.liq||0, mcLiq:t.mcLiq, copies:+t.copies||1, ageH:NN(t.ageH), created:+t.created||0,
     flags:t.flags||[], solid:!!t.solid
   }));
 }
@@ -2057,6 +2138,23 @@ function renderSignalsTable(box,list){
 }
 /* The bar above a people table: what the table adds up to, and its filters. */
 function tbar(sum,chips){return '<div class="tbar">'+(sum?'<div class="tsum">'+sum+'</div>':'')+(chips?'<div class="seg tseg">'+chips+'</div>':'')+'</div>'}
+/* A table's controls in plain sight: what it adds up to, a "Show" row of
+   filters and a "Sort" row kept apart (a sort sitting among filters read as
+   one more filter), one line saying what the current choice means — a
+   tooltip never reaches a phone — and the columns explained on a tap. */
+function tbarRows(sum,show,sort,desc,legend){
+  return '<div class="tbar">'+(sum?'<div class="tsum">'+sum+'</div>':'')
+    +(show?'<div class="tctl"><span class="tlab">Show</span><div class="seg tseg">'+show+'</div></div>':'')
+    +(sort?'<div class="tctl"><span class="tlab">Sort</span><div class="seg tseg">'+sort+'</div></div>':'')
+    +(desc?'<div class="tdesc">'+desc+'</div>':'')
+    +(legend?'<details class="tlegend"><summary>What the columns mean</summary><dl>'+legend.map(([k,v])=>'<dt>'+k+'</dt><dd>'+v+'</dd>').join('')+'</dl></details>':'')
+    +'</div>';
+}
+/* a filter chip with its count; nothing to show means it cannot be picked */
+function tchipN(attr,val,cur,label,n,tip){
+  const off=n===0&&cur!==val;
+  return `<button class="${cur===val?'on':''}" data-${attr}="${esc(val)}"${off?' disabled':''}${tip?' title="'+esc(tip)+'"':''}>${label}${n!=null?' <span class="tn">'+n+'</span>':''}</button>`;
+}
 function tchip(attr,val,cur,label,tip){return `<button class="${cur===val?'on':''}" data-${attr}="${esc(val)}"${tip?' title="'+esc(tip)+'"':''}>${label}</button>`}
 /* "read 4d ago" once data is older than a couple of hours — pump.fun stopped
    answering servers, and a four-week-old record must not pass for today's */
@@ -2070,13 +2168,50 @@ const rho=v=>v==null||!isFinite(v)?'—':(v>=0?'+':'\u2212')+Math.abs(v).toFixed
    positions — so a KOL's rewards are shown beside it, never inside it, and
    one tap leaves only the people whose money came from trading. */
 let TR_SORT='realized',TR_FILTER='all';
+/* Callouts against trading for one trader, over the same window, from
+   pump.fun's two boards. Only what is proven: both figures when the trader is
+   on both boards; a bound when the payout board is full and they are not on
+   it (paid under its #100); nothing when neither holds. `who` says which was
+   bigger only when the numbers prove it. */
+function earnSplit(t){
+  const m=S.earnMeta||{},bank=Math.max(0,+t.realized||0),r=t.rewards;
+  if(r&&r.paidWin!=null){
+    const pay=+r.paidWin||0,sh=pay+bank>0?pay/(pay+bank):0;
+    return {pay,bank,share:sh,who:pay>bank?'callouts':'trading',exact:true};
+  }
+  if(m.rewardCut!=null){
+    /* not in the window's top 100 payouts: paid under the cutoff, maybe nothing */
+    return {pay:null,under:m.rewardCut,bank,who:bank>=m.rewardCut?'trading':'',exact:false};
+  }
+  return null;
+}
+/* the card: the same comparison in words, and what they spent buying */
+function traderEarnLine(t){
+  const e=earnSplit(t),w={daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[t.period]||'in this window';
+  const parts=[];
+  if(e&&e.exact)parts.push('<b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against <b>'+esc(fmtUsd(e.bank))+'</b> banked trading '+esc(w)+' — more from <b>'+e.who+'</b>');
+  else if(e)parts.push('callout rewards '+esc(w)+' under '+esc(fmtUsd(e.under))+' (not in pump.fun’s top 100 payouts)'+(e.who==='trading'?' — more from <b>trading</b>':''));
+  if(t.rewards&&t.rewards.paid)parts.push(esc(fmtUsd(t.rewards.paid))+' in callout rewards all time');
+  if(t.spendSol!=null)parts.push('spent '+esc(Math.round(t.spendSol).toLocaleString('en-US'))+' SOL buying '+esc(w));
+  return parts.length?'<div class="warn" style="opacity:.9">'+ic('scale')+parts.join(' · ')+'</div>':'';
+}
+function earnCell(t){
+  const e=earnSplit(t);
+  if(!e)return '<span style="color:var(--dim)">\u2014</span>';
+  if(!e.exact)return '<span class="htxt">callouts under '+esc(fmtUsd(e.under))+'</span>'
+    +(e.who==='trading'?'<br><span class="ewho tr">more from trading</span>':'');
+  const pct=Math.round(e.share*100);
+  return '<div class="esplit" title="Callout rewards '+esc(fmtUsd(e.pay))+' · banked trading '+esc(fmtUsd(e.bank))+'"><i style="width:'+pct+'%"></i></div>'
+    +'<span class="htxt">callouts '+pct+'% · trading '+(100-pct)+'%</span><br>'
+    +'<span class="ewho '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>';
+}
 function renderTraderTable(box,list){
   if(!list.some(t=>t.kind==='trader')){box.innerHTML=emptyNote(loadNote()||'Reading pump.fun’s trader leaderboard…');return}
   const key={realized:t=>t.realized||0,total:t=>t.total==null?-1e15:t.total,open:t=>t.unrealized==null?-1e15:t.unrealized,
              positions:t=>t.positions||0,rewards:t=>t.rewards?(t.rewards.paidWin!=null?t.rewards.paidWin:t.rewards.paid||0):-1}[TR_SORT]||(t=>0);
   const all=list.filter(t=>t.kind==='trader');
   const paidRows=all.filter(t=>t.rewards&&(t.rewards.paid>0||t.rewards.paidWin>0));
-  const win={daily:'today',weekly:'this week',monthly:'this month'}[(all[0]||{}).period]||'in this window';
+  const win={daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[(all[0]||{}).period]||'in this window';
   let sum='';
   if(paidRows.length){
     const rw=paidRows.reduce((s,t)=>s+(t.rewards.paidWin||0),0),rAll=paidRows.reduce((s,t)=>s+(t.rewards.paid||0),0);
@@ -2085,10 +2220,20 @@ function renderTraderTable(box,list){
       +(rw?' — <b>'+esc(fmtUsd(rw))+'</b> in callout rewards '+esc(win):'')+(rAll?' ('+esc(fmtUsd(rAll))+' all time)':'')
       +', beside <b>'+esc(fmtUsd(bank))+'</b> they banked trading. Banked is trading profit only; rewards are paid on top, in USDC.';
   }
-  const rows=all.filter(t=>TR_FILTER==='all'||(TR_FILTER==='paid'?paidRows.includes(t):!paidRows.includes(t))).sort((a,b)=>key(b)-key(a));
+  const moreCo=all.filter(t=>{const e=earnSplit(t);return e&&e.who==='callouts'});
+  const rows=all.filter(t=>TR_FILTER==='all'||(TR_FILTER==='co'?moreCo.includes(t):TR_FILTER==='paid'?paidRows.includes(t):!paidRows.includes(t))).sort((a,b)=>key(b)-key(a));
   const chips=paidRows.length?tchip('trf','all',TR_FILTER,'All traders')
     +tchip('trf','pure',TR_FILTER,'Traders only','Leave out everyone pump.fun pays callout rewards to')
-    +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins'):'';
+    +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins')
+    +(moreCo.length?tchip('trf','co',TR_FILTER,'More from callouts '+moreCo.length,'Paid more in callout rewards '+win+' than they banked trading '+win):''):'';
+  /* The KOLs this board cannot show: paid more in the window than the #100
+     trader banked, and on no row of it — so their trading profit in the same
+     window is under that cutoff. Proven by the board's own ranking. */
+  const em=S.earnMeta||{};
+  if(em.kolsOnlyN&&em.tradeCut!=null){
+    sum+=(sum?'<br>':'')+'<b>'+em.kolsOnlyN+'</b> KOL'+(em.kolsOnlyN===1?' was':'s were')+' paid more in callout rewards '+esc(win)+' than the #100 trader here banked ('+esc(fmtUsd(em.tradeCut))+') and '+(em.kolsOnlyN===1?'is':'are')+' not on this board, so '+(em.kolsOnlyN===1?'their':'their')+' trading profit '+esc(win)+' was under '+esc(fmtUsd(em.tradeCut))+': '
+      +em.kolsOnly.map(k=>'<b>'+esc(k.xh?'@'+k.xh:k.name)+'</b> '+esc(fmtUsd(k.paid))).join(', ')+(em.kolsOnlyN>em.kolsOnly.length?' and '+(em.kolsOnlyN-em.kolsOnly.length)+' more':'')+'.';
+  }
   /* pump.fun refusing servers: the board as last read, and what that copy lacks */
   if(S.asOf)sum='<span class="old">pump.fun’s board as last read, '+esc(since(S.asOf))+'</span> — pump.fun is refusing requests from servers, so this is the newest copy we have. Banked profit and rank only; open positions were not part of it.'+(sum?'<br>'+sum:'');
   const bar=tbar(sum,chips);
@@ -2101,18 +2246,19 @@ function renderTraderTable(box,list){
   const rew=r=>!r?'<span style="color:var(--dim)">—</span>'
     :'<b class="mid">'+esc(fmtUsd(r.paidWin!=null?r.paidWin:(r.paid||0)))+'</b>'+(r.paidWin!=null&&r.paid?'<br><span class="htxt">'+esc(fmtUsd(r.paid))+' all time</span>':r.paidWin==null?'<br><span class="htxt">all time</span>':'');
   box.innerHTML=bar+'<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num c-dt')+th('open','Open positions','num c-h1')
-    +th('total','Total PnL','num c-dt')+th('rewards','Callout rewards','num c-dt')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+    +th('total','Total PnL','num c-dt')+th('rewards','Callout rewards','num c-dt')+th('','Callouts vs trading','c-dt c-earn')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
     +'<th class="num c-ph">'+sp('realized','Banked')+' \u00b7 '+sp('total','Total')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
       const handle=t.xh?'@'+t.xh:'';
       return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
-        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc([handle,paidRows.includes(t)?'paid KOL':''].filter(Boolean).join(' · '))}</small></div></div></td>`
+        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc([handle,paidRows.includes(t)?'paid KOL':''].filter(Boolean).join(' · '))}${(()=>{const e=earnSplit(t);return e&&e.who?' <span class="ewho c-ph '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>':''})()}</small></div></div></td>`
         +`<td class="num c-dt"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
         +`<td class="num c-h1">${money(t.unrealized)}</td>`
         +`<td class="num c-dt">${money(t.total)}</td>`
         +`<td class="num c-dt">${rew(t.rewards)}</td>`
+        +`<td class="c-dt c-earn">${earnCell(t)}</td>`
         +`<td class="num c-vol">${t.positions!=null?esc(String(t.positions)):'\u2014'}</td>`
         +`<td class="who c-who">${(t.top||[]).map(p=>'<b>$'+esc(p.sym)+'</b>').join(', ')}</td>`
         +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td>`
@@ -2190,7 +2336,7 @@ function renderCallerTable(box,list){
              paid:t=>t.rewards?paidOf(t.rewards):-1}[CR_SORT]||(t=>0);
   const allRows=list.filter(t=>t.caller);
   const paidRows=allRows.filter(t=>t.rewards&&(t.rewards.paid>0||t.rewards.paidWin>0));
-  const rows=allRows.filter(t=>CR_FILTER!=='paid'||paidRows.includes(t)).sort((a,b)=>key(b)-key(a));
+  const rows=allRows.filter(t=>CR_FILTER==='paid'?paidRows.includes(t):CR_FILTER==='unpaid'?!paidRows.includes(t):true).sort((a,b)=>key(b)-key(a));
   if(!rows.length){box.innerHTML=emptyNote(loadNote()||pumpQuiet()||'Reading the callers’ records… the board fills within a few minutes of a fresh start.');return}
   const st=rows.map(t=>t.caller.statsAt||0).filter(Boolean);
   const nEx=rows.filter(t=>t.caller.exits&&t.caller.exits.n).length;
@@ -2199,16 +2345,34 @@ function renderCallerTable(box,list){
   const top=paidRows.slice().sort((a,b)=>paidOf(b.rewards)-paidOf(a.rewards))[0];
   const earned=paidRows.length?'<b>'+paidRows.length+'</b> of these callers are paid by pump.fun for calling — <b>'+esc(fmtUsd(paidRows.reduce((s,t)=>s+paidOf(t.rewards),0)))+'</b> '+esc(win)
     +(top?' · top earner <b>'+esc(top.xh?'@'+top.xh:top.sym)+'</b> '+esc(fmtUsd(paidOf(top.rewards)))+(top.caller.hit2!=null?' with '+Math.round(top.caller.hit2*100)+'% of calls hitting 2×':''):''):'';
-  const chips=paidRows.length?tchip('crf','all',CR_FILTER,'All callers')+tchip('crf','paid',CR_FILTER,'Paid callers '+paidRows.length,'Only callers pump.fun pays callout rewards to')
-    +'<button class="'+(CR_SORT==='paid'?'on':'')+'" data-rsort="paid" title="Rank by what pump.fun paid them for calling">Most earned</button>':'';
-  const bar=tbar([earned,old?old+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':''):'',
-    nEx?'<b>'+nEx+'</b> of these callers took profit on a call of their own while a follower who bought at the call was under water':''].filter(Boolean).join('<br>'),chips);
+  const show=tchipN('crf','all',CR_FILTER,'All',allRows.length)
+    +tchipN('crf','paid',CR_FILTER,'Paid by pump.fun',paidRows.length,'Callers pump.fun pays callout rewards to')
+    +tchipN('crf','unpaid',CR_FILTER,'Not paid',allRows.length-paidRows.length,'Callers not on pump.fun’s payout board');
+  const sortB=(k,label)=>'<button class="'+(CR_SORT===k?'on':'')+'" data-rsort="'+k+'">'+label+'</button>';
+  const sort=sortB('rank','Hit 2× rate')+sortB('paid','Rewards')+sortB('med','Median peak')+sortB('calls','Most calls');
+  const desc={
+    all:'Every caller with enough calls '+esc(win)+' to judge (pump.fun’s own call stats).',
+    paid:'Only callers pump.fun paid callout rewards '+esc(win)+' (its payout board).',
+    unpaid:'Only callers who are not on pump.fun’s payout board '+esc(win)+'.'}[CR_FILTER]+' '
+    +{rank:'Ranked by how often their calls reached 2×, adjusted for how many calls they made — so one lucky call cannot top the list.',
+      paid:'Ranked by what pump.fun paid them for calling '+esc(win)+'.',
+      med:'Ranked by the median peak: half their calls went higher than this after the call.',
+      calls:'Ranked by how many calls they made '+esc(win)+'.'}[CR_SORT]||'';
+  const legend=[['Hit 2×','Share of their calls whose price reached at least double the price at the call.'],
+    ['Median peak','Half their calls peaked above this multiple after the call. The peak is what a perfect seller could have got.'],
+    ['Best','Their best call’s peak.'],['Time to peak','Typical time from the call to that peak.'],
+    ['Callout rewards','USDC pump.fun paid them for calling, '+esc(win)+' (all time below it).'],
+    ['Trading profit','What they banked trading '+esc(win)+' on pump.fun’s profit board — a dash when they are not on its latest read.'],
+    ['Took profit, holders down','Of the calls we saw, how many times they sold some of their own position at a profit while someone who bought at the call price was below it.'],
+    ['Recent calls','Their latest calls and the multiple now for someone who bought at the call.']];
+  const bar=tbarRows([earned,old?old+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':''):'',
+    nEx?'<b>'+nEx+'</b> of these callers took profit on a call of their own while a follower who bought at the call was under water':''].filter(Boolean).join('<br>'),show,sort,desc,legend);
   if(!rows.length){box.innerHTML=bar+emptyNote('No caller on this board fits that filter.');return}
   const th=(k,label,cls='')=>`<th class="${cls}${CR_SORT===k?' on':''}" ${k?'data-rsort="'+k+'"':''}>${label}${CR_SORT===k?' ↓':''}</th>`;
   const sp=(k,label)=>`<span class="${CR_SORT===k?'on':''}" data-rsort="${k}">${label}${CR_SORT===k?' ↓':''}</span>`;
   box.innerHTML=bar+'<table><thead><tr>'+th('rank','#')+th('','Caller')+th('hit','Hit 2×','num c-dt')+th('med','Median peak','num c-dt')
-    +th('calls','Calls','num c-vol')+th('','Best','num c-h1')+th('','Time to peak','num c-vol')+th('paid','Callout rewards','num c-dt')+th('banked','Banked','num c-vol')
-    +'<th class="num c-vol" title="Calls we saw where the caller took profit on their own position while a follower who bought at the call is under water">Banked, holders down</th>'
+    +th('calls','Calls','num c-vol')+th('','Best','num c-h1')+th('','Time to peak','num c-vol')+th('paid','Callout rewards','num c-dt')+th('banked','Trading profit','num c-vol')
+    +'<th class="num c-vol" title="Calls we saw where the caller took profit on their own position while a follower who bought at the call is under water">Took profit, holders down</th>'
     +th('','Recent calls','c-who')
     +'<th class="num c-ph">'+sp('hit','Hit 2×')+' · '+sp('med','Median')+'</th>'
     +'</tr></thead><tbody>'
@@ -2257,7 +2421,46 @@ const KL_FILTERS={
   up:t=>t.kol.n>=KOL_MIN_CALLS&&t.kol.medNow!=null&&t.kol.medNow>=1,
   real:t=>t.kol.avgMcap!=null&&t.kol.avgMcap>=1e5,
   traders:t=>!!t.kol.trading,
+  co:t=>{const e=kolEarn(t);return !!(e&&e.who==='callouts')},
+  tr:t=>{const e=kolEarn(t);return !!(e&&e.who==='trading')},
 };
+/* Callouts against trading for one KOL in the selected period: the payout
+   board's figure for that period beside pump.fun's trading board for the same
+   period. Both when the KOL is on the board's latest read; the board's #100 as
+   a bound when they are not (it is ranked by banked profit); nothing for all
+   time, which pump.fun does not publish for trading. */
+const KOL_TRADE_WIN={'1d':'daily','1w':'weekly','1m':'monthly',all:'all'};
+function kolEarn(t){
+  const w=KOL_TRADE_WIN[t.period];if(!w||!t.kol)return null;
+  const pay=+t.kol.paid||0,tr=t.kol.trading&&t.kol.trading[w];
+  if(tr){const bank=Math.max(0,+tr.realized||0);return {pay,bank,share:pay+bank>0?pay/(pay+bank):0,who:pay>bank?'callouts':'trading',exact:true}}
+  const cut=S.kolMeta&&S.kolMeta.tradeCuts&&S.kolMeta.tradeCuts[w];
+  if(cut!=null)return {pay,under:cut,who:pay>cut?'callouts':'',exact:false};
+  return null;
+}
+function kolEarnCell(t){
+  const e=kolEarn(t);
+  if(!e)return '<span style="color:var(--dim)">\u2014</span>';
+  if(!e.exact)return '<span class="htxt">trading under '+esc(fmtUsd(e.under))+'<br>(not in the top 100)</span>'
+    +(e.who==='callouts'?'<br><span class="ewho co">more from callouts</span>':'');
+  const pct=Math.round(e.share*100);
+  return '<div class="esplit" title="Callout rewards '+esc(fmtUsd(e.pay))+' · banked trading '+esc(fmtUsd(e.bank))+'"><i style="width:'+pct+'%"></i></div>'
+    +'<span class="htxt">trading '+esc(fmtUsd(e.bank))+'</span><br><span class="ewho '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>';
+}
+const KL_FILTER_DESC={
+  all:'All KOLs on pump.fun’s payout board for this period.',
+  up:'Only KOLs where someone who bought at each call price and held is in profit today, at the median (10+ calls).',
+  real:'Only KOLs whose calls averaged $100K market cap or more — bigger coins than the usual fresh launch.',
+  traders:'Only KOLs who are also on the latest read of pump.fun’s trading-profit boards (today, this week, this month or all time).',
+  co:'Only KOLs pump.fun paid more in callout rewards in this period than they banked trading in the same period.',
+  tr:'Only KOLs who banked more trading in this period than pump.fun paid them for calling.'};
+const KL_SORT_DESC={
+  paid:'Ranked by what pump.fun paid them in callout rewards — pump.fun’s own order.',
+  now:'Ranked by what holders kept: the median multiple today for someone who bought at the call and held.',
+  follow:'Ranked by the share of their calls still above the call price (10+ calls, adjusted for how many). Real followers bought after the call, so they did worse.',
+  hit:'Ranked by the share of their last 100 calls that reached 2×.',
+  mcap:'Ranked by the average market cap at their calls.',fol:'Ranked by followers on pump.fun.',
+  med:'Ranked by the median peak of their last 100 calls.',avg:'Ranked by the average peak of their last 100 calls.',rank:'pump.fun’s own order.'};
 const kolMc=v=>v==null?'':v>=1e6?'up':v>=1e5?'mid':'dn';
 const kolPk=v=>v==null?'':v>=2.5?'up':v>=1.5?'mid':'dn';
 const kolAvg=v=>v==null?'':v>=5?'up':v>=2.5?'mid':'dn';
@@ -2283,18 +2486,39 @@ function renderKolTable(box,list){
     +' <span title="Measured from the calls: someone who bought at the call price and held. Followers who bought after the call paid more, so they did worse.">— from the call price; real followers bought later and did worse</span>';
   if(stale)sum=(sum?sum+'<br>':'')+stale+(pumpQuiet()?' — pump.fun is refusing requests from servers, so nothing newer can be read':'');
   const nUp=allRows.filter(KL_FILTERS.up).length,nReal=allRows.filter(KL_FILTERS.real).length,nTr=allRows.filter(KL_FILTERS.traders).length;
-  const chips=tchip('klf','all',KL_FILTER,'All')
-    +tchip('klf','up',KL_FILTER,'Holders up '+nUp,'KOLs whose calls are above the call price today, at the median — a follower who held kept money')
-    +tchip('klf','real',KL_FILTER,'Calls ≥ $100K '+nReal,'KOLs whose average call is at $100K market cap or more')
-    +'<button class="'+(KL_SORT==='follow'?'on':'')+'" data-ksort="follow" title="Rank by the share of their calls still above the call price ('+KOL_MIN_CALLS+'+ calls, adjusted for how many). Measured from the call price — followers who bought later did worse">Most calls in profit</button>'
-    +(nTr?tchip('klf','traders',KL_FILTER,'Also top traders '+nTr,'KOLs who are also on pump.fun’s PnL boards for what they banked trading'):'');
-  const bar=tbar(sum,chips);
+  const show=tchipN('klf','all',KL_FILTER,'All',allRows.length)
+    +tchipN('klf','up',KL_FILTER,'Holders in profit',nUp,KL_FILTER_DESC.up)
+    +tchipN('klf','real',KL_FILTER,'Bigger coins ($100K+)',nReal,KL_FILTER_DESC.real)
+    +tchipN('klf','traders',KL_FILTER,'Also a top trader now',nTr,KL_FILTER_DESC.traders)
+    +(KOL_TRADE_WIN[(allRows[0]||{}).period]?tchipN('klf','co',KL_FILTER,'More from callouts',allRows.filter(KL_FILTERS.co).length,KL_FILTER_DESC.co)
+      +tchipN('klf','tr',KL_FILTER,'More from trading',allRows.filter(KL_FILTERS.tr).length,KL_FILTER_DESC.tr):'');
+  /* callouts against trading, said once for the whole board */
+  const pw=(allRows[0]||{}).period,pwName={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days',all:'all time'}[pw];
+  if(pwName){
+    const nCo=allRows.filter(KL_FILTERS.co).length,nTrd=allRows.filter(KL_FILTERS.tr).length;
+    sum=(sum?sum+'<br>':'')+(pw==='all'?'All time':'In '+pwName)+': <b>'+nCo+'</b> of these '+allRows.length+' KOLs were paid more for calling than they banked trading, <b>'+nTrd+'</b> banked more trading'
+      +(allRows.length-nCo-nTrd>0?'; for the other '+(allRows.length-nCo-nTrd)+' it cannot be told — paid less than the #100 trader banked and not on the trading board, so both are under that line':'')+'.';
+  }else{
+    sum=(sum?sum+'<br>':'')+'<span class="old">To compare callouts with trading, pick 30D, 7D or 24H</span> — pump.fun publishes trading profit for those periods only, not all time.';
+  }
+  const sortB=(k,label)=>'<button class="'+(KL_SORT===k?'on':'')+'" data-ksort="'+k+'">'+label+'</button>';
+  const sort=sortB('paid','Rewards')+sortB('now','What holders kept')+sortB('follow','Most calls in profit')+sortB('hit','Hit 2× rate');
+  const legend=[['Rewards','USDC pump.fun has paid them for calling, in this period, and how many payouts.'],
+    ['Avg mcap at call','Average market cap at their last 100 calls. Red under $100K: tiny coins, often minutes old.'],
+    ['Followers','Followers on pump.fun.'],
+    ['Median peak','Half their last 100 calls peaked above this multiple — what a perfect seller could have got.'],
+    ['Avg peak','The average of those peaks. One moonshot lifts it, so the median is the fairer number.'],
+    ['Hold now','The median multiple today for someone who bought at each call price and never sold. Under 1× means they lost money. Below it: the share of calls still above the call price.'],
+    ['Hit 2×','Share of the last 100 calls that peaked at 2× or more.'],
+    ['Callouts vs trading','Callout rewards in the selected period (all time, 30D, 7D or 24H) against what they banked trading in the same period, from pump.fun’s trading-profit board. Not on that board means they banked less than its #100, shown as “under $X”.']];
+  const bar=tbarRows(sum,show,sort,(KL_FILTER_DESC[KL_FILTER]||'')+' '+(KL_SORT_DESC[KL_SORT]||''),legend);
   if(!rows.length){box.innerHTML=bar+emptyNote('No KOL on this board fits that filter.');return}
   const th=(k,label,cls='',tip='')=>`<th class="${cls}${KL_SORT===k?' on':''}" ${k?'data-ksort="'+k+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}${KL_SORT===k?' ↓':''}</th>`;
   const sp=(k,label)=>`<span class="${KL_SORT===k?'on':''}" data-ksort="${k}">${label}${KL_SORT===k?' ↓':''}</span>`;
   const dash='<span style="color:var(--dim)">—</span>';
   box.innerHTML=bar+'<table><thead><tr>'+th('rank','#')+th('','KOL')
     +th('paid','Rewards','num c-dt','USDC pump.fun has paid this caller in callout rewards')
+    +(KOL_TRADE_WIN[(allRows[0]||{}).period]?th('','Callouts vs trading','c-dt c-earn','Callout rewards in this period against what they banked trading in the same period, from pump.fun’s two boards'):'')
     +th('mcap','Avg mcap at call','num c-dt','Average market cap when they called, over their last 100 calls. Under $100K is red: tiny coins, little room for a follower')
     +th('fol','Followers','num c-vol','Followers on pump.fun')
     +th('med','Median peak','num c-dt','Half of their last 100 calls peaked above this')
@@ -2309,8 +2533,9 @@ function renderKolTable(box,list){
       const sub=[handle,k.followers!=null?fmtK(k.followers)+' followers':'',tw?'trader #'+tw.rank:''].filter(Boolean).join(' · ');
       const hit=k.hit2!=null?Math.round(k.hit2*100):null;
       return `<tr class="row" data-id="${esc(t.id)}"><td>${esc(String(t.rank||''))}</td>`
-        +`<td><div class="tk">${avatarOf(t.img,t.sym)}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc(sub||(k.payouts?k.payouts+' payouts':''))}</small></div></div></td>`
+        +`<td><div class="tk">${avatarOf(t.img,t.sym)}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc(sub||(k.payouts?k.payouts+' payouts':''))}${(()=>{const e=kolEarn(t);return e&&e.who?' <span class="ewho c-ph '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>':''})()}</small></div></div></td>`
         +`<td class="num c-dt"><b class="up">${esc(fmtUsd(k.paid||0))}</b><br><span class="htxt">${esc(String(k.payouts||0))} payouts</span></td>`
+        +(KOL_TRADE_WIN[t.period]?`<td class="c-dt c-earn">${kolEarnCell(t)}</td>`:'')
         +`<td class="num c-dt">${k.avgMcap!=null?'<b class="'+kolMc(k.avgMcap)+'">'+esc(fmtUsd(k.avgMcap))+'</b>':dash}${k.under100k!=null?'<br><span class="htxt">'+Math.round(k.under100k*100)+'% under $100K</span>':''}</td>`
         +`<td class="num c-vol">${k.followers!=null?esc(fmtK(k.followers)):dash}</td>`
         +`<td class="num c-dt"><b class="${kolPk(k.medPeak)}">${mult(k.medPeak)}</b></td>`
@@ -2336,8 +2561,13 @@ function kolLine(t){
       +(k.histAt&&Date.now()-k.histAt>2*36e5?' · <span style="color:#e8b04a">record read '+esc(since(k.histAt))+'</span>':'')
       +'</div>':'<div class="warn" style="opacity:.7">ⓘ reading this KOL’s calls…</div>')
     +(k.trading?'<div class="warn" style="opacity:.9">'+ic('banknote')+'Also on pump.fun’s PnL boards for trading: '
-      +['daily','weekly','monthly'].filter(w=>k.trading[w]).map(w=>'#'+esc(String(k.trading[w].rank))+' '+({daily:'today',weekly:'this week',monthly:'this month'}[w])+', banked <span class="up">+'+esc(fmtUsd(k.trading[w].realized||0))+'</span>').join(' · ')
-      +' — on top of the rewards</div>':'');
+      +['daily','weekly','monthly','all'].filter(w=>k.trading[w]).map(w=>'#'+esc(String(k.trading[w].rank))+' '+({daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[w])+', banked <span class="up">+'+esc(fmtUsd(k.trading[w].realized||0))+'</span>').join(' · ')
+      +' — on top of the rewards</div>':'')
+    +(()=>{const e=kolEarn(t),pn={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days',all:'all time'}[t.period];
+      if(!e)return t.period==='all'?'<div class="warn" style="opacity:.75">'+ic('scale')+'Callouts against trading: pump.fun publishes trading profit for 24 hours, 7 days and 30 days only — open this KOL from 30D, 7D or 24H to compare.</div>':'';
+      return '<div class="warn" style="opacity:.9">'+ic('scale')+(t.period==='all'?'All time':'In '+pn)+': <b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against '
+        +(e.exact?'<b>'+esc(fmtUsd(e.bank))+'</b> banked trading':'trading profit under <b>'+esc(fmtUsd(e.under))+'</b> (not in pump.fun’s top 100 traders)')
+        +(e.who?' — more from <b>'+e.who+'</b>':'')+'</div>'})();
 }
 /* Insiders: one trade a row, newest filing first. The amount is what the
    filing says — a range for Congress and the White House (all the law asks
@@ -3396,6 +3626,10 @@ function evmSwap(t){
   return ['base','ethereum','robinhood'].includes(c)?'/swap?chain='+c+'&token='+t.addr.toLowerCase():'';
 }
 function openCard(t){
+  /* an insider's row is a filing, not a token: it opens the filing (the table
+     already does this; any other path must too, or the card printed a trade's
+     size under "Market cap") */
+  if(t&&t.ins){if(/^https:\/\//.test(t.ins.link||''))open(t.ins.link,'_blank','noopener');return}
   S.target=t;
   /* A Solana mint: the referral when set up, else our swap. An EVM contract on
      a chain Relay serves: our swap. Nothing else has a Buy. */
@@ -3440,9 +3674,15 @@ function openCard(t){
     ? ((t.kind==='casino'?(t.via==='hot'?'hot wallets':'on-chain casino'):'prediction market')+(t.chains&&t.chains.length?' · '+t.chains.slice(0,3).join(', '):''))
     : (t.name||'').slice(0,32);
   if(t.verified&&(t.kind==='trader'||t.kind==='caller'||t.kind==='kol'))e('cName').insertAdjacentHTML('beforeend',' '+ic('verified','up'));
-  e('cChg').textContent=t.noData?'—':fmtPct(t.chg);
-  e('cChg').className=t.noData?'sb':(t.chg>=0?'up':'dn');
-  e('cTf').textContent=t.mach?'card value vs price':({h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'})[S.tf]||S.tf;
+  /* The headline is the selected window when it was measured, else the
+     shortest window that was — under its own label, so a stock opened on 1H
+     reads "-0.92% 24 hours" instead of "— 1 hour". */
+  const TFL={h1:'1 hour',h24:'24 hours',d7:'7 days',d30:'30 days',y1:'1 year'};
+  const has=w=>t.pc&&t.pc[w]!=null&&Number.isFinite(+t.pc[w]);
+  const hw=has(S.tf)?S.tf:['h1','h24','d7','d30','y1'].find(has);
+  e('cChg').textContent=hw?fmtPct(+t.pc[hw]):'—';
+  e('cChg').className=hw?(+t.pc[hw]>=0?'up':'dn'):'sb';
+  e('cTf').textContent=t.mach?'card value vs price':TFL[hw||S.tf]||S.tf;
   /* `fmtPct(null)` throws — `null >= 0` is true, so the guard passes and
      `null.toFixed` does not exist. Chains and launchpads publish a day and a
      week and nothing shorter, so these four lines threw on every one of them,
@@ -3465,6 +3705,8 @@ function openCard(t){
     /* Realized first — it is the ranking and the size — then the rest of the
        picture, each number labelled for what it is. */
     const signed=v=>(v==null||!Number.isFinite(v))?dash
+      /* under a dollar is flat, in grey — as the table writes it */
+      :Math.abs(v)<1?'<span style="color:var(--dim)">$0</span>'
       :`<span class="${v>=0?'up':'dn'}">${v>=0?'+':'−'}${esc(fmtUsd(Math.abs(v)))}</span>`;
     lab('cMc','Realized profit');
     lab('cVol','Open positions');
@@ -3578,14 +3820,39 @@ function openCard(t){
     e('cA').innerHTML=pct(t.pc.h24);
     e('cB').innerHTML=pad||t.kind==='pm'?`${pct(t.pc.d7)} ${sep} ${pct(t.pc.d30)}`:pct(t.pc.d7);
   }else{
+    /* The windows each asset class actually has. A listed company has no 5m
+       or 1h here, and a coin from the Crypto feed no 5m: printing those as two
+       boxes of dashes hid the windows that are measured (a stock's month and
+       year, a coin's week). */
+    const id=String(t.id||'');
     lab('cMc','Market cap');
     lab('cVol','24h volume');
-    lab('cA','5m / 1h');
-    lab('cB','6h / 24h');
-    e('cVol').textContent=fmtUsd(t.vol);
-    e('cA').innerHTML=`${pct(t.pc.m5)} ${sep} ${pct(t.pc.h1)}`;
-    e('cB').innerHTML=`${pct(t.pc.h6)} ${sep} ${pct(t.pc.h24)}`;
+    e('cVol').innerHTML=t.vol>0?esc(fmtUsd(t.vol)):dash;
+    if(id.startsWith('stock:')){
+      lab('cA','24h');
+      lab('cB','1 month / 1 year');
+      e('cA').innerHTML=pct(t.pc.h24);
+      e('cB').innerHTML=`${pct(t.pc.d30)} ${sep} ${pct(t.pc.y1)}`;
+    }else if(id.startsWith('cg:')){
+      lab('cA','1h / 24h');
+      lab('cB','7d / 30d');
+      e('cA').innerHTML=`${pct(t.pc.h1)} ${sep} ${pct(t.pc.h24)}`;
+      e('cB').innerHTML=`${pct(t.pc.d7)} ${sep} ${pct(t.pc.d30)}`;
+    }else{
+      lab('cA','5m / 1h');
+      lab('cB','6h / 24h');
+      e('cA').innerHTML=`${pct(t.pc.m5)} ${sep} ${pct(t.pc.h1)}`;
+      e('cB').innerHTML=`${pct(t.pc.h6)} ${sep} ${pct(t.pc.h24)}`;
+    }
   }
+  /* The headline of a person or a call is their figure, not a price move: a
+     trader has no 1h change, and "— 1 hour" over a KOL said nothing. */
+  const head=(v,cls,sub)=>{e('cChg').innerHTML=v;e('cChg').className=cls||'';e('cTf').textContent=sub};
+  if(t.kind==='trader')head('+'+esc(fmtUsd(t.realized||0)),'up','banked, '+({daily:'24 hours',weekly:'7 days',monthly:'30 days',all:'all time'}[t.period]||'this window'));
+  else if(t.kind==='caller'&&t.caller)head(esc(Math.round((t.caller.hit2||0)*100)+'%'),'up','of calls hit 2×');
+  else if(t.kind==='kol'&&t.kol)head(esc(fmtUsd(t.kol.paid||0)),'up','paid by pump.fun');
+  else if(t.kind==='call'&&t.call)head(esc(mult(t.call.now)),multCls(t.call.now),'now against the call');
+  cardExtras(t);
   /* the warning belongs on mobile too — that is where most taps happen */
   /* A token from pump.fun's board says so, and shows the measurements that
      put it there — distinct buyers against sellers is the one that tells a
@@ -3609,15 +3876,15 @@ function openCard(t){
       +(t.organicShare!=null?' · '+Math.round(t.organicShare*100)+'% of 24h volume counted organic':'')+' · checks, not a guarantee</div>'
     : '';
   /* a pump.fun coin read from Jupiter: what Jupiter measures that pump.fun's record never carried */
-  const jupLine=t.via==='jupiter'&&(t.holders!=null||t.organic)
-    ? '<div class="warn" style="opacity:.9">'+ic('chart')+[t.holders!=null?nf(t.holders)+' holders':'',
+  /* holders sit in the card's stats now, so this line carries what they do not */
+  const jupLine=t.via==='jupiter'&&((t.txns&&t.txns.traders)||t.organic)
+    ? '<div class="warn" style="opacity:.9">'+ic('chart')+[
         t.txns&&t.txns.traders?nf(t.txns.traders)+' traders 24h':'',
         t.organic?'organic activity: <b>'+esc(t.organic)+'</b> (Jupiter’s score of how much trading is not bots)':''].filter(Boolean).join(' · ')+'</div>'
     : '';
-  const pumpLine=freshLine+jupLine+(t.via==='pump'
+  const pumpLine=freshLine+jupLine+(t.rank&&(t.via==='pump'||t.via==='pump+jup')
     ? '<div class="warn" style="opacity:.9">'+ic('flame')+'#'+esc(String(t.rank))+' on pump.fun trending'+(t.pumpHot?' · <b>HOT</b>':'')+(t.verified?' · '+ic('verified','up')+'verified':'')
       +(t.txns&&t.txns.buyers!=null?' · <b>'+nf(t.txns.buyers)+' buyers</b> / '+nf(t.txns.sellers||0)+' sellers 24h':'')
-      +(t.holders!=null?' · '+nf(t.holders)+' holders':'')
       +(t.tx5!=null?' · '+nf(t.tx5)+' trades in 5m':'')
       +(t.kolN>0?' · '+nf(t.kolN)+' KOLs':'')
       +'</div>'
@@ -3630,10 +3897,10 @@ function openCard(t){
       +'</div>'
     : '';
   const traderLine=t.kind==='trader'
-    ? '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'')+')'
+    ? '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days',all:'all time'}[t.period]||'')+')'
       +' · '+(t.pumpRank?'#'+esc(String(t.pumpRank))+' on pump.fun\u2019s board, which counts paper gains':'not in pump.fun\u2019s top 100, which counts paper gains')
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
-      +'</div>'
+      +'</div>'+traderEarnLine(t)
     : '';
   /* A launchpad: what it kept of those fees, what was traded on it, and its
      month — each only where DefiLlama publishes it. The week and month are
@@ -3655,6 +3922,63 @@ function openCard(t){
       : pumpLine+warnLine(t));
   card.classList.add('on');scrim.classList.add('on');
 }
+/* The parts of the card every token shares: its contract with a copy button,
+   the measured facts the four boxes have no room for, and on Signals the
+   thresholds it crossed. Each appears only when measured — an empty pool is
+   not "$0 liquidity", it is no line at all. */
+const PEOPLE=new Set(['trader','caller','kol','insider']);
+/* $1,234.56 · $0.4821 · $0.00001104 — enough digits that a sub-cent price says something */
+function fmtPrice(v){
+  if(!(v>0))return '—';
+  if(v>=1)return '$'+v.toLocaleString('en-US',{maximumFractionDigits:2,minimumFractionDigits:2});
+  const d=Math.min(12,Math.max(4,2-Math.floor(Math.log10(v))+1));
+  return '$'+v.toFixed(d);
+}
+function cardExtras(t){
+  const e=id=>document.getElementById(id);
+  const ca=t.addr||t.mint||'';
+  const adr=e('cAddr');
+  adr.hidden=!ca||PEOPLE.has(t.kind)||FLOW_KINDS.has(t.kind);
+  if(!adr.hidden){
+    const chain=t.chain&&t.chain!=='mixed'?t.chain:(t.mint?'solana':'');
+    adr.innerHTML='<code>'+esc(ca.slice(0,5)+'…'+ca.slice(-5))+'</code><button type="button" id="cCopy" aria-label="Copy contract address">'+ic('copy')+'Copy</button>'
+      +(chain?'<span class="chain">'+esc(chain)+'</span>':'');
+    e('cCopy').onclick=()=>{
+      const b=e('cCopy'),done=()=>{b.classList.add('ok');b.innerHTML=ic('copy')+'Copied';setTimeout(()=>{if(b.isConnected){b.classList.remove('ok');b.innerHTML=ic('copy')+'Copy'}},1600)};
+      (navigator.clipboard?navigator.clipboard.writeText(ca):Promise.reject()).then(done).catch(()=>{
+        const r=document.createRange();const c=adr.querySelector('code');c.textContent=ca;r.selectNodeContents(c);
+        const sel=getSelection();sel.removeAllRanges();sel.addRange(r);
+      });
+    };
+  }
+  /* stats: only for tokens, only what was measured */
+  const st=[];
+  if(!PEOPLE.has(t.kind)&&!FLOW_KINDS.has(t.kind)&&!t.mach){
+    if(t.liq>0)st.push(['Liquidity',fmtUsd(t.liq)]);
+    if(t.holders!=null&&t.holders>0)st.push(['Holders',Math.round(t.holders).toLocaleString('en-US')]);
+    const ageH=t.ageH!=null?t.ageH:(t.created>0?(Date.now()-t.created)/36e5:null);
+    if(ageH!=null&&ageH>=0)st.push(['Age',ageH<1?Math.max(1,Math.round(ageH*60))+'m':ageH<48?Math.round(ageH)+'h':ageH<24*60?Math.round(ageH/24)+'d':(ageH/24/365).toFixed(1)+'y']);
+    if(st.length<3&&t.price>0)st.push(['Price',fmtPrice(t.price)]);
+  }
+  let html=st.slice(0,3).map(([k,v])=>'<div class="st"><u>'+esc(k)+'</u><b>'+esc(v)+'</b></div>').join('');
+  const tx=t.txns;
+  if(!PEOPLE.has(t.kind)&&tx&&tx.buys!=null&&tx.sells!=null&&tx.buys+tx.sells>=20){
+    const n=tx.buys+tx.sells,b=tx.buys/n;
+    html+='<div class="st bs"><u>Trades 24h'+(tx.window==='all'?' (all time)':'')+'</u>'
+      +'<div class="bar"><i style="width:'+(b*100).toFixed(1)+'%"></i><i style="width:'+((1-b)*100).toFixed(1)+'%"></i></div>'
+      +'<small><span class="up">'+Math.round(b*100)+'% buys · '+tx.buys.toLocaleString('en-US')+'</span><span class="dn">'+tx.sells.toLocaleString('en-US')+' sells</span></small></div>';
+  }
+  e('cStats').innerHTML=html;e('cStats').hidden=!html;
+  /* Signals: what this token crossed, in the table's own words */
+  const sig=Array.isArray(t.signals)?t.signals:[];
+  e('cSig').innerHTML=sig.map(g=>'<div class="sg '+(g.dir==='up'?'up':g.dir==='down'?'dn':'')+'">'
+    +ic((SG_TYPES[g.type]||['','bolt'])[1])+'<span>'+esc(g.why)+'</span></div>').join('');
+  /* one primary action: Buy when it shows, else the first link */
+  const buyOn=e('cBuy').style.display!=='none';
+  e('cOpen').classList.toggle('sec',buyOn);
+  e('cShare').classList.add('sec');
+}
+document.getElementById('cClose').onclick=()=>closeAll();
 function closeAll(){
   card.classList.remove('on');sheet.classList.remove('on');scrim.classList.remove('on');
 }
@@ -4858,7 +5182,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
   /* the share pages link back with the feed id itself */
-  const per={'traders-daily':'h24','traders-weekly':'d7','traders-monthly':'d30'};
+  const per={'traders-daily':'h24','traders-weekly':'d7','traders-monthly':'d30','traders-all':'y1'};
   if(per[src]){S.mode='traders';if(!tf)S.tf=per[src]}
   const brd={'smart-daily':'daily','smart-weekly':'weekly','smart-monthly':'monthly'};
   if(brd[src]){S.mode='smart';S.smartBoard=brd[src]}

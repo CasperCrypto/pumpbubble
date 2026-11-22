@@ -17,7 +17,7 @@
        stops asking the stats endpoint the moment it says 429.
    ========================================================================== */
 
-import { CallerBook, shapeCall, shapeStats, holdStatus, nowMultiple, wilson, pollOnce, isExit, tradingMap,
+import { CallerBook, shapeCall, shapeStats, holdStatus, nowMultiple, wilson, pollOnce, isExit, tradingMap, freshBoard,
   FEED, FEED_NEW, COINS, MIN_CALLS, KEEP_NEW_MIN_CALLS, ALERT_MAX_AGE, STATS_TTL } from '../src/callers.mjs';
 
 let pass = 0, fail = 0;
@@ -259,6 +259,17 @@ console.log('\nwhat callers banked, by wallet');
   const m = tradingMap(b);
   is('a PnL-board caller is in the map', m.get(addr(50, 'T')).weekly.rank, 3);
   is('nobody else is', m.size, 1);
+
+  /* a placement from an older read of the same board is not a current one */
+  const old = new CallerBook();
+  old.seedBoard([{ walletAddress: addr(51, 'T'), rank: 61, realizedPnlUsd: 3351, username: 'gone' }], 'daily', NOW - 30 * 86_400_000);
+  old.seedBoard([{ walletAddress: addr(52, 'T'), rank: 4, realizedPnlUsd: 8000, username: 'now' }], 'daily', NOW);
+  old.seedBoard([{ walletAddress: addr(51, 'T'), rank: 9, realizedPnlUsd: 20000, username: 'gone' }], 'weekly', NOW);
+  const om = tradingMap(old);
+  is('a month-old daily placement is dropped', om.get(addr(51, 'T')).daily, undefined);
+  is('the same wallet keeps its current weekly one', om.get(addr(51, 'T')).weekly.rank, 9);
+  is('the current daily read is kept', om.get(addr(52, 'T')).daily.rank, 4);
+  is('freshBoard of nothing is null', freshBoard(null, {}), null);
 }
 
 console.log('\nthe trader board as last read');

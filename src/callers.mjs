@@ -178,8 +178,29 @@ export function isExit(c) {
    board, beside what pump.fun paid them (src/kols.mjs). */
 export function tradingMap(book) {
   const m = new Map();
-  for (const p of book.callers.values()) if (p.board) m.set(p.wallet, p.board);
+  const latest = book.boardReads();
+  for (const p of book.callers.values()) {
+    const b = freshBoard(p.board, latest);
+    if (b) m.set(p.wallet, b);
+  }
   return m;
+}
+
+/* A caller's placements on pump.fun's PnL boards, kept only where they came
+   from the latest read of that board. The book never forgets a placement, so
+   without this a KOL who was #61 on one daily board a month ago read as a
+   current top trader: on 2026-11-22 the KOLs' "Also top traders" filter said
+   85 of 100, from reads up to 42 days old, and the card printed "#97 today"
+   from one 21 days old. A board is read whole, so every row of one read carries
+   the same time; ten minutes of slack covers a read that straddled a tick. */
+export const BOARD_SLACK_MS = 10 * 60_000;
+export function freshBoard(board, latest) {
+  if (!board) return null;
+  const out = {};
+  for (const [win, v] of Object.entries(board)) {
+    if (v && latest[win] && (v.at || 0) >= latest[win] - BOARD_SLACK_MS) out[win] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 const med = xs => {
@@ -374,6 +395,7 @@ export class CallerBook {
       mine.get(c.wallet).push(c);
     }
     const rows = [];
+    const reads = this.boardReads();
     for (const p of this.callers.values()) {
       const s = p.stats && p.stats[win];
       if (!s || s.n < min) continue;
@@ -385,7 +407,10 @@ export class CallerBook {
          while the people who followed are down — measured from their own
          position in pump.fun's feed, never inferred. */
       const exits = judged.filter(isExit).length;
-      const banked = Math.max(0, ...Object.values(p.board || {}).map(b => num(b.realized)));
+      /* what they banked trading in this same window, from the latest read of
+         that board only — not the largest figure across windows and months */
+      const fb = freshBoard(p.board, reads);
+      const banked = fb && fb[win] ? Math.max(0, num(fb[win].realized)) : 0;
       rows.push({
         wallet: p.wallet, name: p.name, xh: p.xh || '', avatar: p.avatar || '', verified: !!p.verified,
         n: s.n, hit2: s.hit2, hit15: s.hit15, med: s.med, avg: s.avg, ttpMs: s.ttpMs, best: s.best,
@@ -485,6 +510,31 @@ export class CallerBook {
     };
   }
 
+  /* The #100 banked profit on the latest read of each PnL board, when that
+     read was full. The board is pump.fun's realized-profit ranking, top 100,
+     so anyone missing from a full read banked less than this in the window. */
+  boardCuts() {
+    const latest = this.boardReads(), cut = {};
+    for (const win of Object.keys(latest)) {
+      const vals = [];
+      for (const p of this.callers.values()) {
+        const v = p.board && p.board[win];
+        if (v && (v.at || 0) >= latest[win] - BOARD_SLACK_MS) vals.push(num(v.realized));
+      }
+      cut[win] = vals.length >= 100 ? Math.min(...vals) : null;
+    }
+    return cut;
+  }
+
+  /* When each PnL board was last read: the newest placement time per window. */
+  boardReads() {
+    const at = {};
+    for (const p of this.callers.values()) {
+      for (const [win, v] of Object.entries(p.board || {})) if (v && (v.at || 0) > (at[win] || 0)) at[win] = v.at;
+    }
+    return at;
+  }
+
   /* pump.fun's PnL board for a period as this book last read it — the
      Traders table's fallback while pump.fun refuses servers. Every row of one
      read carries that read's time, so the newest time is the last board. */
@@ -528,7 +578,7 @@ export async function pollOnce(book, now = Date.now(), http = defaultHttp()) {
   }
   if (now - due.board >= EVERY.board) {
     due.board = now;
-    for (const period of ['daily', 'weekly', 'monthly']) {
+    for (const period of ['daily', 'weekly', 'monthly', 'all']) {
       try {
         const j = await http.get(LB + '?period=' + period + '&sort=realized&limit=100');
         book.seedBoard(j && j.entries, period, now);
@@ -581,6 +631,9 @@ export function memoryCallers() {
     if (op === 'live') return { ok: true, rows: book.live(now, b.limit || 150) };
     if (op === 'status') return { ok: true, ...book.status(now) };
     if (op === 'tick') { await pollOnce(book, now); return { ok: true }; }
+    /* the PnL-board placements, for the KOL board beside it (as the Worker's CallersDO does) */
+    if (op === 'tradingMap') return tradingMap(book);
+    if (op === 'tradeCuts') return book.boardCuts();
     return { ok: true };
   };
 }

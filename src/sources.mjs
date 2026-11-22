@@ -117,10 +117,13 @@ const paprikaRows = memo(async () => {
         vol: num(q.volume_24h),
         price: num(q.price),
         pc: {
-          m5: 0,
-          h1: num(q.percent_change_1h),
-          h6: num(q.percent_change_6h),
-          h24: num(q.percent_change_24h),
+          /* CoinPaprika publishes no 5-minute window. This was `0`, so every
+             coin's card printed a flat "+0.00%" for a number never measured
+             (2026-11-22). Absent windows are null, as everywhere else. */
+          m5: null,
+          h1: pick(q.percent_change_1h),
+          h6: pick(q.percent_change_6h),
+          h24: pick(q.percent_change_24h),
           /* 7d is real here. 30d and 1y come back as zero for every coin on the
              free tier, so they are reported as absent rather than as no
              movement — the map greys those out instead of painting them flat. */
@@ -450,6 +453,11 @@ export const SOURCES = {
     id: 'traders-monthly', label: 'Traders', group: 'Traders',
     chain: 'mixed', ttl: 300_000, enrich: false, boostable: false, quality: 'major', history: false,
     fetch: () => tradersFor('monthly'),
+  },
+  'traders-all': {
+    id: 'traders-all', label: 'Traders', group: 'Traders',
+    chain: 'mixed', ttl: 600_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => tradersFor('all'),
   },
   /* Signals: measured events across pump.fun, Base, crypto, stocks and
      Smart money — volume surges, breakouts, sharp drops, buy or sell

@@ -165,7 +165,7 @@ const caches = new Map();
    rasteriser and is printed onto an image that carries our domain. */
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending', compute: 'compute',
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
-  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
+  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly', 'traders-all': 'traders-all',
   callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly',
   kols: 'kols-all', 'kols-all': 'kols-all', 'kols-1m': 'kols-1m', 'kols-1w': 'kols-1w', 'kols-1d': 'kols-1d' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H', compute: 'COMPUTE · 24H' };
@@ -173,7 +173,7 @@ const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
   'smart-daily': 'TODAY\u2019S TOP TRADERS HOLD', 'smart-weekly': 'THIS WEEK\u2019S TOP TRADERS HOLD',
   'smart-monthly': 'THIS MONTH\u2019S TOP TRADERS HOLD',
-  'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED',
+  'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED', 'traders-all': 'TOP 10 BANKED',
   trending: 'TOP 10 TRENDING',
   pumpfun: 'TOP 10 ON PUMP.FUN',
   majors: 'TOP 10 IN CRYPTO',
@@ -196,6 +196,7 @@ const TEN_SHARE = {
   'traders-daily': 'Who actually banked on pump.fun today — realized profit, not paper gains',
   'traders-weekly': 'Who actually banked on pump.fun this week — realized profit, not paper gains',
   'traders-monthly': 'Who actually banked on pump.fun this month — realized profit, not paper gains',
+  'traders-all': 'Who actually banked on pump.fun, all time — realized profit, not paper gains',
   trending: 'Trending right now — the top 10, across every chain',
   pumpfun: 'The top 10 on pump.fun right now',
   majors: 'The top 10 in crypto right now',
@@ -542,8 +543,17 @@ async function lastTraders(ctx, period) {
 
 /* Callout rewards by wallet: the all-time payout board and the one for the
    trader board's own window (daily → 1d, weekly → 1w, monthly → 1m). */
-const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m' };
-async function withRewards(ctx, tokens, period) {
+const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m', all: 'all' };
+/* `meta`, when given (Traders only), receives what the table needs to say who
+   earned more from callouts and who from trading, over the same window, from
+   pump.fun's two boards and nothing else:
+   - tradeCut: the #100 trader's banked profit. The board is ranked by banked
+     profit, so anyone missing from a full board banked less than this.
+   - rewardCut: the #100 payout on pump.fun's payout board for the window, the
+     same bound the other way round.
+   - kolsOnly: KOLs paid more than tradeCut in the window who are on no row of
+     the trading board, matched on every wallet their payout row lists. */
+async function withRewards(ctx, tokens, period, meta = null) {
   const [all, win] = await Promise.all([
     callersRead(ctx, 'kols', { period: 'all' }),
     REWARD_WIN[period] ? callersRead(ctx, 'kols', { period: REWARD_WIN[period] }) : null,
@@ -553,7 +563,24 @@ async function withRewards(ctx, tokens, period) {
     for (const r of (d && d.rows) || []) for (const w of [r.wallet, ...(r.wallets || [])]) if (w && !m.has(w)) m.set(w, r);
     return m;
   };
-  const A = index(all), W = index(win && win.period === REWARD_WIN[period] ? win : null);
+  const winOk = win && win.period === REWARD_WIN[period] ? win : null;
+  const A = index(all), W = index(winOk);
+  if (meta) {
+    const traders = tokens.filter(t => t.kind === 'trader');
+    const winRows = (winOk && winOk.rows) || [];
+    meta.window = REWARD_WIN[period] || '';
+    meta.tradeCut = traders.length >= 100 ? Math.min(...traders.map(t => +t.realized || 0)) : null;
+    meta.rewardCut = winRows.length >= 100 ? Math.min(...winRows.map(r => +r.paid || 0)) : null;
+    meta.rewardsAt = (winOk && winOk.at) || 0;
+    if (meta.tradeCut != null) {
+      const onBoard = new Set(traders.map(t => t.wallet));
+      const off = winRows.filter(r => (+r.paid || 0) > meta.tradeCut
+        && ![r.wallet, ...(r.wallets || [])].some(w => w && onBoard.has(w)));
+      off.sort((a, b) => b.paid - a.paid);
+      meta.kolsOnlyN = off.length;
+      meta.kolsOnly = off.slice(0, 8).map(r => ({ name: String(r.name || '').slice(0, 24), xh: r.xh || '', paid: Math.round(r.paid) }));
+    }
+  }
   if (!A.size && !W.size) return tokens;
   return tokens.map(t => {
     const a = A.get(t.wallet), w = W.get(t.wallet);
@@ -615,7 +642,9 @@ async function kolsSnapshot(ctx, period) {
     tokens,
     kols: st ? { at: d.at || 0, earners: d.total || 0, withRecord: st.withHist, withProfile: st.withProfile,
       lastOk: st.lastOk, lastError: String(st.lastError || '').slice(0, 120), backoffS: Math.round((st.backoff || 0) / 1000),
-      summary: d.summary || null } : null,
+      summary: d.summary || null,
+      /* the #100 banked profit on each PnL board's latest read (bounds for the comparison) */
+      tradeCuts: d.tradeCuts || null } : null,
   };
 }
 /* Insiders as rows: one trade each, from Congress, the White House or a
@@ -1487,8 +1516,10 @@ export async function handle(req, ctx) {
          paid them for calling (its payout board). The board ranks the first;
          the second is joined on beside it, never added into it, so the page
          can tell a trader from a KOL whose income is partly rewards. */
+      let earn = null;
       if (src.id.startsWith('traders-')) {
-        try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
+        earn = {};
+        try { tokens = await withRewards(ctx, tokens, src.id.slice(8), earn); } catch { earn = null; /* the table still works */ }
       }
       /* Top callers too: who earns the most from calling, beside how good
          the calls are (daily → 1d, weekly → 1w, monthly → 1m, as for traders) */
@@ -1652,6 +1683,8 @@ export async function handle(req, ctx) {
         /* Signals only: counts by type, which feeds it read, whether the AI brief is on */
         signals: snap.signals || undefined,
         callers: snap.callers || undefined,
+        /* Traders only: the bounds that let callouts and trading be compared (withRewards) */
+        earnings: earn || undefined,
         kols: snap.kols || undefined,
         insiders: snap.insiders || undefined,
         /* Compute only: the GPU-hour price board */
