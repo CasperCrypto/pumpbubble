@@ -342,6 +342,17 @@ h3 .ic{vertical-align:-.12em}
 #smTable td:first-child{border-left:1px solid var(--line);border-radius:12px 0 0 12px;color:var(--dim);font-weight:800;width:28px}
 #smTable td:last-child{border-right:1px solid var(--line);border-radius:0 12px 12px 0}
 #smTable tr.row{cursor:pointer}
+/* callouts against trading, one trader */
+#smTable .c-earn{min-width:150px}
+#smTable .esplit{height:6px;border-radius:99px;background:var(--mint);overflow:hidden;margin:2px 0 4px;max-width:150px}
+#smTable .esplit i{display:block;height:100%;background:var(--gold)}
+#smTable .ewho{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:99px;margin-top:2px;white-space:nowrap}
+#smTable .ewho.co{color:#2b1c00;background:var(--gold)}
+#smTable .ewho.tr{color:#04210f;background:var(--mint)}
+#smTable small .ewho{margin-left:4px;vertical-align:1px}
+/* the name line's tag is for phones, where the column is hidden */
+#smTable small .ewho.c-ph{display:none}
+@media (max-width:700px){#smTable small .ewho.c-ph{display:table;margin:3px 0 0}}
 /* Signals */
 #smTable .brief{max-width:1100px;margin:4px auto 8px;padding:12px 14px;border-radius:14px;
   background:linear-gradient(180deg,rgba(124,92,255,.14),rgba(124,92,255,.05));border:1px solid rgba(150,120,255,.32)}
@@ -1730,6 +1741,7 @@ async function fetchLive(){
   S.upstream=j.upstream||''; S.kolMeta=j.kols||null; S.asOf=+j.asOf||0;
   S.events=Array.isArray(j.events)?j.events:[]; S.arena=j.arena||null; S.callMeta=j.callers||null; S.insMeta=j.insiders||null;
   if(src==='signals')S.sigMeta=j.signals||null;
+  if(String(src).startsWith('traders-'))S.earnMeta=j.earnings||null;
   /* the board rides the Compute feed; a response without one keeps the last */
   if(src==='compute'){S.gpuMeta=j.compute||S.gpuMeta||null;renderGpuBoard()}
   /* the pulls, the big hits and the window's totals ride the Cards feed */
@@ -1767,7 +1779,7 @@ async function fetchLive(){
        overwrote the count with null, so the card's "N KOLs" never showed. */
     rank:+t.rank||0, via:t.via||'', pumpHot:!!t.pumpHot, verified:!!t.verified, holders:NN(t.holders), top10:NN(t.top10), topHold:NN(t.topHold), organic:t.organic||'', organicShare:NN(t.organicShare), fresh:!!t.fresh, dev:NN(t.dev), kolN:typeof t.kol==='number'?NN(t.kol):null, tx5:NN(t.tx5),
     wallet:t.wallet||'', realized:NN(t.realized), unrealized:NN(t.unrealized), total:NN(t.total),
-    positions:NN(t.positions), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
+    positions:NN(t.positions), spendSol:NN(t.buySpendSol), pumpRank:+t.pumpRank||0, xh:t.xh||'', period:t.period||'',
     top:Array.isArray(t.top)?t.top.filter(p=>p&&p.sym).slice(0,3):[],
     smartN:+t.smartN||0, smartBanked:+t.smartBanked||0,
     /* Signals: what each row crossed, in words from our own API, escaped where written */
@@ -2122,6 +2134,43 @@ const rho=v=>v==null||!isFinite(v)?'—':(v>=0?'+':'\u2212')+Math.abs(v).toFixed
    positions — so a KOL's rewards are shown beside it, never inside it, and
    one tap leaves only the people whose money came from trading. */
 let TR_SORT='realized',TR_FILTER='all';
+/* Callouts against trading for one trader, over the same window, from
+   pump.fun's two boards. Only what is proven: both figures when the trader is
+   on both boards; a bound when the payout board is full and they are not on
+   it (paid under its #100); nothing when neither holds. `who` says which was
+   bigger only when the numbers prove it. */
+function earnSplit(t){
+  const m=S.earnMeta||{},bank=Math.max(0,+t.realized||0),r=t.rewards;
+  if(r&&r.paidWin!=null){
+    const pay=+r.paidWin||0,sh=pay+bank>0?pay/(pay+bank):0;
+    return {pay,bank,share:sh,who:pay>bank?'callouts':'trading',exact:true};
+  }
+  if(m.rewardCut!=null){
+    /* not in the window's top 100 payouts: paid under the cutoff, maybe nothing */
+    return {pay:null,under:m.rewardCut,bank,who:bank>=m.rewardCut?'trading':'',exact:false};
+  }
+  return null;
+}
+/* the card: the same comparison in words, and what they spent buying */
+function traderEarnLine(t){
+  const e=earnSplit(t),w={daily:'today',weekly:'this week',monthly:'this month'}[t.period]||'in this window';
+  const parts=[];
+  if(e&&e.exact)parts.push('<b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against <b>'+esc(fmtUsd(e.bank))+'</b> banked trading '+esc(w)+' — more from <b>'+e.who+'</b>');
+  else if(e)parts.push('callout rewards '+esc(w)+' under '+esc(fmtUsd(e.under))+' (not in pump.fun’s top 100 payouts)'+(e.who==='trading'?' — more from <b>trading</b>':''));
+  if(t.rewards&&t.rewards.paid)parts.push(esc(fmtUsd(t.rewards.paid))+' in callout rewards all time');
+  if(t.spendSol!=null)parts.push('spent '+esc(Math.round(t.spendSol).toLocaleString('en-US'))+' SOL buying '+esc(w));
+  return parts.length?'<div class="warn" style="opacity:.9">'+ic('scale')+parts.join(' · ')+'</div>':'';
+}
+function earnCell(t){
+  const e=earnSplit(t);
+  if(!e)return '<span style="color:var(--dim)">\u2014</span>';
+  if(!e.exact)return '<span class="htxt">callouts under '+esc(fmtUsd(e.under))+'</span>'
+    +(e.who==='trading'?'<br><span class="ewho tr">more from trading</span>':'');
+  const pct=Math.round(e.share*100);
+  return '<div class="esplit" title="Callout rewards '+esc(fmtUsd(e.pay))+' · banked trading '+esc(fmtUsd(e.bank))+'"><i style="width:'+pct+'%"></i></div>'
+    +'<span class="htxt">callouts '+pct+'% · trading '+(100-pct)+'%</span><br>'
+    +'<span class="ewho '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>';
+}
 function renderTraderTable(box,list){
   if(!list.some(t=>t.kind==='trader')){box.innerHTML=emptyNote(loadNote()||'Reading pump.fun’s trader leaderboard…');return}
   const key={realized:t=>t.realized||0,total:t=>t.total==null?-1e15:t.total,open:t=>t.unrealized==null?-1e15:t.unrealized,
@@ -2137,10 +2186,20 @@ function renderTraderTable(box,list){
       +(rw?' — <b>'+esc(fmtUsd(rw))+'</b> in callout rewards '+esc(win):'')+(rAll?' ('+esc(fmtUsd(rAll))+' all time)':'')
       +', beside <b>'+esc(fmtUsd(bank))+'</b> they banked trading. Banked is trading profit only; rewards are paid on top, in USDC.';
   }
-  const rows=all.filter(t=>TR_FILTER==='all'||(TR_FILTER==='paid'?paidRows.includes(t):!paidRows.includes(t))).sort((a,b)=>key(b)-key(a));
+  const moreCo=all.filter(t=>{const e=earnSplit(t);return e&&e.who==='callouts'});
+  const rows=all.filter(t=>TR_FILTER==='all'||(TR_FILTER==='co'?moreCo.includes(t):TR_FILTER==='paid'?paidRows.includes(t):!paidRows.includes(t))).sort((a,b)=>key(b)-key(a));
   const chips=paidRows.length?tchip('trf','all',TR_FILTER,'All traders')
     +tchip('trf','pure',TR_FILTER,'Traders only','Leave out everyone pump.fun pays callout rewards to')
-    +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins'):'';
+    +tchip('trf','paid',TR_FILTER,'Paid KOLs '+paidRows.length,'Only the traders who are also paid to call coins')
+    +(moreCo.length?tchip('trf','co',TR_FILTER,'More from callouts '+moreCo.length,'Paid more in callout rewards '+win+' than they banked trading '+win):''):'';
+  /* The KOLs this board cannot show: paid more in the window than the #100
+     trader banked, and on no row of it — so their trading profit in the same
+     window is under that cutoff. Proven by the board's own ranking. */
+  const em=S.earnMeta||{};
+  if(em.kolsOnlyN&&em.tradeCut!=null){
+    sum+=(sum?'<br>':'')+'<b>'+em.kolsOnlyN+'</b> KOL'+(em.kolsOnlyN===1?' was':'s were')+' paid more in callout rewards '+esc(win)+' than the #100 trader here banked ('+esc(fmtUsd(em.tradeCut))+') and '+(em.kolsOnlyN===1?'is':'are')+' not on this board, so '+(em.kolsOnlyN===1?'their':'their')+' trading profit '+esc(win)+' was under '+esc(fmtUsd(em.tradeCut))+': '
+      +em.kolsOnly.map(k=>'<b>'+esc(k.xh?'@'+k.xh:k.name)+'</b> '+esc(fmtUsd(k.paid))).join(', ')+(em.kolsOnlyN>em.kolsOnly.length?' and '+(em.kolsOnlyN-em.kolsOnly.length)+' more':'')+'.';
+  }
   /* pump.fun refusing servers: the board as last read, and what that copy lacks */
   if(S.asOf)sum='<span class="old">pump.fun’s board as last read, '+esc(since(S.asOf))+'</span> — pump.fun is refusing requests from servers, so this is the newest copy we have. Banked profit and rank only; open positions were not part of it.'+(sum?'<br>'+sum:'');
   const bar=tbar(sum,chips);
@@ -2153,18 +2212,19 @@ function renderTraderTable(box,list){
   const rew=r=>!r?'<span style="color:var(--dim)">—</span>'
     :'<b class="mid">'+esc(fmtUsd(r.paidWin!=null?r.paidWin:(r.paid||0)))+'</b>'+(r.paidWin!=null&&r.paid?'<br><span class="htxt">'+esc(fmtUsd(r.paid))+' all time</span>':r.paidWin==null?'<br><span class="htxt">all time</span>':'');
   box.innerHTML=bar+'<table><thead><tr>'+th('','#')+th('','Trader')+th('realized','Banked','num c-dt')+th('open','Open positions','num c-h1')
-    +th('total','Total PnL','num c-dt')+th('rewards','Callout rewards','num c-dt')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
+    +th('total','Total PnL','num c-dt')+th('rewards','Callout rewards','num c-dt')+th('','Callouts vs trading','c-dt c-earn')+th('positions','Positions','num c-vol')+th('','Holding','c-who')+th('','pump.fun rank','num c-vol')
     +'<th class="num c-ph">'+sp('realized','Banked')+' \u00b7 '+sp('total','Total')+'</th>'
     +'</tr></thead><tbody>'
     +rows.map((t,i)=>{
       const av=t.img?`<img src="${esc(t.img)}" alt="" loading="lazy">`:`<span class="ph" style="background:hsl(${hue(t.sym)},40%,30%)">${esc((t.sym||'?')[0])}</span>`;
       const handle=t.xh?'@'+t.xh:'';
       return `<tr class="row" data-id="${esc(t.id)}"><td>${i+1}</td>`
-        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc([handle,paidRows.includes(t)?'paid KOL':''].filter(Boolean).join(' · '))}</small></div></div></td>`
+        +`<td><div class="tk">${av}<div><b>${esc(t.sym)}${t.verified?' '+ic('verified','up'):''}</b><small>${esc([handle,paidRows.includes(t)?'paid KOL':''].filter(Boolean).join(' · '))}${(()=>{const e=earnSplit(t);return e&&e.who?' <span class="ewho c-ph '+(e.who==='callouts'?'co':'tr')+'">more from '+e.who+'</span>':''})()}</small></div></div></td>`
         +`<td class="num c-dt"><span class="up">+${esc(fmtUsd(t.realized||0))}</span></td>`
         +`<td class="num c-h1">${money(t.unrealized)}</td>`
         +`<td class="num c-dt">${money(t.total)}</td>`
         +`<td class="num c-dt">${rew(t.rewards)}</td>`
+        +`<td class="c-dt c-earn">${earnCell(t)}</td>`
         +`<td class="num c-vol">${t.positions!=null?esc(String(t.positions)):'\u2014'}</td>`
         +`<td class="who c-who">${(t.top||[]).map(p=>'<b>$'+esc(p.sym)+'</b>').join(', ')}</td>`
         +`<td class="num c-vol">${t.pumpRank?'#'+t.pumpRank:'<span style="color:var(--dim)">not top 100</span>'}</td>`
@@ -3722,7 +3782,7 @@ function openCard(t){
     ? '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'')+')'
       +' · '+(t.pumpRank?'#'+esc(String(t.pumpRank))+' on pump.fun\u2019s board, which counts paper gains':'not in pump.fun\u2019s top 100, which counts paper gains')
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
-      +'</div>'
+      +'</div>'+traderEarnLine(t)
     : '';
   /* A launchpad: what it kept of those fees, what was traded on it, and its
      month — each only where DefiLlama publishes it. The week and month are

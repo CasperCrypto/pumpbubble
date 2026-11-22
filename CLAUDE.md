@@ -844,6 +844,25 @@ monthly → 1m — matched on every Solana wallet the payout row lists) **beside
 into it**. The table shows a Callout rewards column, a line saying how many of the hundred are paid
 KOLs and what they were paid against what they banked, and "Traders only" / "Paid KOLs" filters.
 
+**Callouts against trading, same window** (2026-11-22, asked as "who earns more from callouts or
+trades — if someone made more from payouts than trading he is a paid KOL rather than a trader").
+pump.fun publishes no all-time trading board, so the comparison is always the same window on both
+sides: daily ↔ 1d payouts, weekly ↔ 1w, monthly ↔ 1m. The Top traders table has a **Callouts vs
+trading** column (split bar, "more from callouts" / "more from trading"), a **More from callouts**
+filter, the card says it in words with the all-time rewards and `buySpendSol` ("spent N SOL buying"),
+and a summary line names the KOLs this board cannot show. Only what is proven (`earnSplit()`,
+`withRewards(…, meta)`):
+- On both boards: both figures, and which is bigger.
+- Not in the window's top 100 payouts (board full): "callouts under $X", where X is the #100 payout;
+  "more from trading" only when banked ≥ X.
+- Not on the trading board: the board is ranked by banked profit, so a full board's #100 is a bound —
+  `kolsOnly` lists KOLs paid more than that bound in the window and on no row of the board, matched
+  on every wallet their payout row lists. On 2026-11-22 (30 days): 56, led by PoorGoat $437K,
+  HarryPaulDavies $404K, chairman $309K, all with trading profit under $35.6K.
+- Never "not a trader" or "$0": a bound is printed as a bound. Allocations and tokens received
+  without a buy cannot be told apart from earlier buys on pump.fun's board (its per-token PnL
+  endpoint 404s), so the page shows "spent on buys" beside "banked" and draws no conclusion.
+
 **While pump.fun refuses servers, Top traders shows its last read** (`lastTraders()` in api.mjs,
 `tradersBoard()` in callers.mjs, the CallersDO's `traders` op): the Calls watcher kept every
 PnL-board row it read (rank and realized, with the read's time), so the table serves the newest

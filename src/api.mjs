@@ -543,7 +543,16 @@ async function lastTraders(ctx, period) {
 /* Callout rewards by wallet: the all-time payout board and the one for the
    trader board's own window (daily → 1d, weekly → 1w, monthly → 1m). */
 const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m' };
-async function withRewards(ctx, tokens, period) {
+/* `meta`, when given (Traders only), receives what the table needs to say who
+   earned more from callouts and who from trading, over the same window, from
+   pump.fun's two boards and nothing else:
+   - tradeCut: the #100 trader's banked profit. The board is ranked by banked
+     profit, so anyone missing from a full board banked less than this.
+   - rewardCut: the #100 payout on pump.fun's payout board for the window, the
+     same bound the other way round.
+   - kolsOnly: KOLs paid more than tradeCut in the window who are on no row of
+     the trading board, matched on every wallet their payout row lists. */
+async function withRewards(ctx, tokens, period, meta = null) {
   const [all, win] = await Promise.all([
     callersRead(ctx, 'kols', { period: 'all' }),
     REWARD_WIN[period] ? callersRead(ctx, 'kols', { period: REWARD_WIN[period] }) : null,
@@ -553,7 +562,24 @@ async function withRewards(ctx, tokens, period) {
     for (const r of (d && d.rows) || []) for (const w of [r.wallet, ...(r.wallets || [])]) if (w && !m.has(w)) m.set(w, r);
     return m;
   };
-  const A = index(all), W = index(win && win.period === REWARD_WIN[period] ? win : null);
+  const winOk = win && win.period === REWARD_WIN[period] ? win : null;
+  const A = index(all), W = index(winOk);
+  if (meta) {
+    const traders = tokens.filter(t => t.kind === 'trader');
+    const winRows = (winOk && winOk.rows) || [];
+    meta.window = REWARD_WIN[period] || '';
+    meta.tradeCut = traders.length >= 100 ? Math.min(...traders.map(t => +t.realized || 0)) : null;
+    meta.rewardCut = winRows.length >= 100 ? Math.min(...winRows.map(r => +r.paid || 0)) : null;
+    meta.rewardsAt = (winOk && winOk.at) || 0;
+    if (meta.tradeCut != null) {
+      const onBoard = new Set(traders.map(t => t.wallet));
+      const off = winRows.filter(r => (+r.paid || 0) > meta.tradeCut
+        && ![r.wallet, ...(r.wallets || [])].some(w => w && onBoard.has(w)));
+      off.sort((a, b) => b.paid - a.paid);
+      meta.kolsOnlyN = off.length;
+      meta.kolsOnly = off.slice(0, 8).map(r => ({ name: String(r.name || '').slice(0, 24), xh: r.xh || '', paid: Math.round(r.paid) }));
+    }
+  }
   if (!A.size && !W.size) return tokens;
   return tokens.map(t => {
     const a = A.get(t.wallet), w = W.get(t.wallet);
@@ -1487,8 +1513,10 @@ export async function handle(req, ctx) {
          paid them for calling (its payout board). The board ranks the first;
          the second is joined on beside it, never added into it, so the page
          can tell a trader from a KOL whose income is partly rewards. */
+      let earn = null;
       if (src.id.startsWith('traders-')) {
-        try { tokens = await withRewards(ctx, tokens, src.id.slice(8)); } catch { /* the table still works */ }
+        earn = {};
+        try { tokens = await withRewards(ctx, tokens, src.id.slice(8), earn); } catch { earn = null; /* the table still works */ }
       }
       /* Top callers too: who earns the most from calling, beside how good
          the calls are (daily → 1d, weekly → 1w, monthly → 1m, as for traders) */
@@ -1652,6 +1680,8 @@ export async function handle(req, ctx) {
         /* Signals only: counts by type, which feeds it read, whether the AI brief is on */
         signals: snap.signals || undefined,
         callers: snap.callers || undefined,
+        /* Traders only: the bounds that let callouts and trading be compared (withRewards) */
+        earnings: earn || undefined,
         kols: snap.kols || undefined,
         insiders: snap.insiders || undefined,
         /* Compute only: the GPU-hour price board */
