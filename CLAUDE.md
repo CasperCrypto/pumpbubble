@@ -1057,6 +1057,35 @@ same paced fan-out queue the wallet tracker uses, with Buy (our swap), Chart and
 is considered once per call and only while under 15 minutes old — a restart does not replay the
 past hour.
 
+### The Calls tab's controls (2026-11-22)
+
+Asked as "I don't understand many tabs or filters there, like top 85 traders or most calls in
+profit — check and fix all filters". What was wrong and what it is now:
+
+- **"Also top traders 85" was false.** The book never forgets a PnL-board placement, so a KOL who was
+  #61 on one daily board a month ago counted as a top trader: reads up to 42 days old, and the KOL
+  card printed "#97 today" from one 21 days old. `freshBoard()` / `boardReads()` (callers.mjs) keep a
+  placement only from the latest read of that board (ten minutes' slack); `tradingMap()` and the
+  callers' Trading profit column go through it. That column is now the **same window** as the view
+  — it was the largest figure across daily, weekly and monthly. The dev server's KOL board gets the
+  map too (`callers('tradingMap')`), as the Worker's CallersDO always passed it.
+- **Filters and sorts were one row**: "Most earned" and "Most calls in profit" re-sorted the table
+  while sitting among filters. Now `tbarRows()` gives a **Show** row (filters, each with its count,
+  disabled at zero — `tchipN()`) and a **Sort** row, one plain line saying what the current choice
+  means (tooltips never reach a phone), and **"What the columns mean"** as a `<details>`.
+- **Names**: Top callers → **Best callers** (hit-2× rate), KOLs → **Paid KOLs** (what pump.fun paid);
+  "Banked" → **Trading profit**; "Banked, holders down" → **Took profit, holders down**; "Holders up" →
+  **Holders in profit**; "Calls ≥ $100K" → **Bigger coins ($100K+)** (it is the *average* call);
+  "Also top traders" → **Also a top trader now**; callers gain a **Not paid** filter.
+- **Callouts vs trading on Paid KOLs too** (same day: "I see all-time earnings and no all-time trading
+  PnL — we need to see if they earn more from callouts or trades"). For 30D / 7D / 24H the table has
+  the same comparison as Top traders (`kolEarn()`): the period's payout against that period's trading
+  board — both figures when the KOL is on its latest read, else "trading under $X" from the board's
+  #100 (`boardCuts()`, sent as `kols.tradeCuts`; only from a full read of 100). Filters **More from
+  callouts / More from trading**, a summary count, the card says it. **All time cannot be compared**:
+  pump.fun publishes trading profit for 24h, 7d and 30d only, and the page says so in words rather
+  than set all-time rewards against a month of trading.
+
 ## Pages to be found (SEO and AI assistants)
 
 `src/pages.mjs`, routed in `handle()` before the share pages: `/kols`, `/kol/<name>` (one per KOL on

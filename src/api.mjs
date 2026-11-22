@@ -641,7 +641,9 @@ async function kolsSnapshot(ctx, period) {
     tokens,
     kols: st ? { at: d.at || 0, earners: d.total || 0, withRecord: st.withHist, withProfile: st.withProfile,
       lastOk: st.lastOk, lastError: String(st.lastError || '').slice(0, 120), backoffS: Math.round((st.backoff || 0) / 1000),
-      summary: d.summary || null } : null,
+      summary: d.summary || null,
+      /* the #100 banked profit on each PnL board's latest read (bounds for the comparison) */
+      tradeCuts: d.tradeCuts || null } : null,
   };
 }
 /* Insiders as rows: one trade each, from Congress, the White House or a

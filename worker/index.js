@@ -772,7 +772,7 @@ export class CallersDO {
       case 'traders': out = { ok: true, ...this.book.tradersBoard(['daily', 'weekly', 'monthly'].includes(b.period) ? b.period : 'weekly') }; break;
       case 'kols': {
         const period = KOL_PERIODS[b.period] !== undefined ? b.period : 'all';
-        out = { ok: true, period, ...this.kols.board(period, tradingMap(this.book)), status: this.kols.status(now) };
+        out = { ok: true, period, ...this.kols.board(period, tradingMap(this.book)), tradeCuts: this.book.boardCuts(), status: this.kols.status(now) };
         break;
       }
       default: out = { ok: true };
