@@ -32,7 +32,9 @@ import { clean } from './core.mjs';
 import { pumpFetch } from './pumpgate.mjs';
 
 export const LB = 'https://frontend-api-v3.pump.fun/pnl-leaderboard';
-export const PERIODS = { daily: 'h24', weekly: 'd7', monthly: 'd30' };
+/* `all` is pump.fun's all-time board (period=all — its own validator lists daily, weekly,
+   monthly, all); it rides the 1Y pill, which reads "All" on this tab. */
+export const PERIODS = { daily: 'h24', weekly: 'd7', monthly: 'd30', all: 'y1' };
 const UA = 'pumpbubble.fun/1.0 (+https://pumpbubble.fun)';
 const num = v => { const n = +v; return Number.isFinite(n) ? n : null; };
 

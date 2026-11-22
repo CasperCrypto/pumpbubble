@@ -165,7 +165,7 @@ const caches = new Map();
    rasteriser and is printed onto an image that carries our domain. */
 const BOARD_SRC = { pumpfun: 'pumpfun', majors: 'majors', stocks: 'stocks', robinhood: 'robinhood', base: 'base', trending: 'trending', compute: 'compute',
   smart: 'smart', 'smart-daily': 'smart-daily', 'smart-weekly': 'smart-weekly', 'smart-monthly': 'smart-monthly',
-  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly',
+  traders: 'traders-daily', 'traders-daily': 'traders-daily', 'traders-weekly': 'traders-weekly', 'traders-monthly': 'traders-monthly', 'traders-all': 'traders-all',
   callers: 'callers-weekly', 'callers-daily': 'callers-daily', 'callers-weekly': 'callers-weekly', 'callers-monthly': 'callers-monthly',
   kols: 'kols-all', 'kols-all': 'kols-all', 'kols-1m': 'kols-1m', 'kols-1w': 'kols-1w', 'kols-1d': 'kols-1d' };
 const BOARD_SUB = { pumpfun: 'PUMP.FUN · 24H', majors: 'CRYPTO · 24H', stocks: 'STOCKS · 24H', compute: 'COMPUTE · 24H' };
@@ -173,7 +173,7 @@ const TEN_TITLE = {
   smart: 'WHAT TOP TRADERS HOLD',
   'smart-daily': 'TODAY\u2019S TOP TRADERS HOLD', 'smart-weekly': 'THIS WEEK\u2019S TOP TRADERS HOLD',
   'smart-monthly': 'THIS MONTH\u2019S TOP TRADERS HOLD',
-  'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED',
+  'traders-daily': 'TOP 10 BANKED', 'traders-weekly': 'TOP 10 BANKED', 'traders-monthly': 'TOP 10 BANKED', 'traders-all': 'TOP 10 BANKED',
   trending: 'TOP 10 TRENDING',
   pumpfun: 'TOP 10 ON PUMP.FUN',
   majors: 'TOP 10 IN CRYPTO',
@@ -196,6 +196,7 @@ const TEN_SHARE = {
   'traders-daily': 'Who actually banked on pump.fun today — realized profit, not paper gains',
   'traders-weekly': 'Who actually banked on pump.fun this week — realized profit, not paper gains',
   'traders-monthly': 'Who actually banked on pump.fun this month — realized profit, not paper gains',
+  'traders-all': 'Who actually banked on pump.fun, all time — realized profit, not paper gains',
   trending: 'Trending right now — the top 10, across every chain',
   pumpfun: 'The top 10 on pump.fun right now',
   majors: 'The top 10 in crypto right now',
@@ -542,7 +543,7 @@ async function lastTraders(ctx, period) {
 
 /* Callout rewards by wallet: the all-time payout board and the one for the
    trader board's own window (daily → 1d, weekly → 1w, monthly → 1m). */
-const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m' };
+const REWARD_WIN = { daily: '1d', weekly: '1w', monthly: '1m', all: 'all' };
 /* `meta`, when given (Traders only), receives what the table needs to say who
    earned more from callouts and who from trading, over the same window, from
    pump.fun's two boards and nothing else:

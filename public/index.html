@@ -1489,7 +1489,7 @@ const CARD_MODES=new Set(['cards','packs','pulls','hits']);
 const FLOW_KINDS=new Set(['chain','pad','pm','casino','trader']);
 /* The Traders tab asks pump.fun for one period at a time, so its timeframe
    pill *is* the query: 24H is the daily board, 1W weekly, 1M monthly. */
-const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly'};
+const TRADER_PERIOD={h24:'daily',d7:'weekly',d30:'monthly',y1:'all'};
 /* the feed a tab reads: Top traders by the period pill, Smart money by its board tab */
 function feedId(){
   if(S.mode==='traders')return 'traders-'+(TRADER_PERIOD[S.tf]||'daily');
@@ -1541,6 +1541,9 @@ function subbar(){
   /* Signals' table carries both 1H and 24H, and its order is the signal */
   /* Calls and Insiders pick their period in the sub-bar; the 1H…1Y pills
      changed nothing there and read as broken */
+  /* on Traders the last pill is pump.fun's all-time board, not a year */
+  const y1=document.querySelector('#tf [data-tf="y1"]');
+  if(y1){y1.textContent=S.mode==='traders'?'All':'1Y';y1.title=S.mode==='traders'?'All time — pump.fun’s all-time profit board':''}
   const sg=S.mode==='signals'||cl||ins;
   document.getElementById('tf').style.display=cc||sg?'none':'';
   document.getElementById('sz').style.display=cc||sg?'none':'';
@@ -2184,7 +2187,7 @@ function earnSplit(t){
 }
 /* the card: the same comparison in words, and what they spent buying */
 function traderEarnLine(t){
-  const e=earnSplit(t),w={daily:'today',weekly:'this week',monthly:'this month'}[t.period]||'in this window';
+  const e=earnSplit(t),w={daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[t.period]||'in this window';
   const parts=[];
   if(e&&e.exact)parts.push('<b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against <b>'+esc(fmtUsd(e.bank))+'</b> banked trading '+esc(w)+' — more from <b>'+e.who+'</b>');
   else if(e)parts.push('callout rewards '+esc(w)+' under '+esc(fmtUsd(e.under))+' (not in pump.fun’s top 100 payouts)'+(e.who==='trading'?' — more from <b>trading</b>':''));
@@ -2208,7 +2211,7 @@ function renderTraderTable(box,list){
              positions:t=>t.positions||0,rewards:t=>t.rewards?(t.rewards.paidWin!=null?t.rewards.paidWin:t.rewards.paid||0):-1}[TR_SORT]||(t=>0);
   const all=list.filter(t=>t.kind==='trader');
   const paidRows=all.filter(t=>t.rewards&&(t.rewards.paid>0||t.rewards.paidWin>0));
-  const win={daily:'today',weekly:'this week',monthly:'this month'}[(all[0]||{}).period]||'in this window';
+  const win={daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[(all[0]||{}).period]||'in this window';
   let sum='';
   if(paidRows.length){
     const rw=paidRows.reduce((s,t)=>s+(t.rewards.paidWin||0),0),rAll=paidRows.reduce((s,t)=>s+(t.rewards.paid||0),0);
@@ -2426,7 +2429,7 @@ const KL_FILTERS={
    period. Both when the KOL is on the board's latest read; the board's #100 as
    a bound when they are not (it is ranked by banked profit); nothing for all
    time, which pump.fun does not publish for trading. */
-const KOL_TRADE_WIN={'1d':'daily','1w':'weekly','1m':'monthly'};
+const KOL_TRADE_WIN={'1d':'daily','1w':'weekly','1m':'monthly',all:'all'};
 function kolEarn(t){
   const w=KOL_TRADE_WIN[t.period];if(!w||!t.kol)return null;
   const pay=+t.kol.paid||0,tr=t.kol.trading&&t.kol.trading[w];
@@ -2448,7 +2451,7 @@ const KL_FILTER_DESC={
   all:'All KOLs on pump.fun’s payout board for this period.',
   up:'Only KOLs where someone who bought at each call price and held is in profit today, at the median (10+ calls).',
   real:'Only KOLs whose calls averaged $100K market cap or more — bigger coins than the usual fresh launch.',
-  traders:'Only KOLs who are also on the latest read of pump.fun’s trading-profit boards (today, this week or this month).',
+  traders:'Only KOLs who are also on the latest read of pump.fun’s trading-profit boards (today, this week, this month or all time).',
   co:'Only KOLs pump.fun paid more in callout rewards in this period than they banked trading in the same period.',
   tr:'Only KOLs who banked more trading in this period than pump.fun paid them for calling.'};
 const KL_SORT_DESC={
@@ -2490,10 +2493,10 @@ function renderKolTable(box,list){
     +(KOL_TRADE_WIN[(allRows[0]||{}).period]?tchipN('klf','co',KL_FILTER,'More from callouts',allRows.filter(KL_FILTERS.co).length,KL_FILTER_DESC.co)
       +tchipN('klf','tr',KL_FILTER,'More from trading',allRows.filter(KL_FILTERS.tr).length,KL_FILTER_DESC.tr):'');
   /* callouts against trading, said once for the whole board */
-  const pw=(allRows[0]||{}).period,pwName={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days'}[pw];
+  const pw=(allRows[0]||{}).period,pwName={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days',all:'all time'}[pw];
   if(pwName){
     const nCo=allRows.filter(KL_FILTERS.co).length,nTrd=allRows.filter(KL_FILTERS.tr).length;
-    sum=(sum?sum+'<br>':'')+'In '+pwName+': <b>'+nCo+'</b> of these '+allRows.length+' KOLs were paid more for calling than they banked trading, <b>'+nTrd+'</b> banked more trading'
+    sum=(sum?sum+'<br>':'')+(pw==='all'?'All time':'In '+pwName)+': <b>'+nCo+'</b> of these '+allRows.length+' KOLs were paid more for calling than they banked trading, <b>'+nTrd+'</b> banked more trading'
       +(allRows.length-nCo-nTrd>0?'; for the other '+(allRows.length-nCo-nTrd)+' it cannot be told — paid less than the #100 trader banked and not on the trading board, so both are under that line':'')+'.';
   }else{
     sum=(sum?sum+'<br>':'')+'<span class="old">To compare callouts with trading, pick 30D, 7D or 24H</span> — pump.fun publishes trading profit for those periods only, not all time.';
@@ -2507,7 +2510,7 @@ function renderKolTable(box,list){
     ['Avg peak','The average of those peaks. One moonshot lifts it, so the median is the fairer number.'],
     ['Hold now','The median multiple today for someone who bought at each call price and never sold. Under 1× means they lost money. Below it: the share of calls still above the call price.'],
     ['Hit 2×','Share of the last 100 calls that peaked at 2× or more.'],
-    ['Callouts vs trading','For 24H, 7D and 30D: callout rewards in that period against what they banked trading in the same period (pump.fun’s trading-profit board). Not on that board means they banked less than its #100, shown as “under $X”.']];
+    ['Callouts vs trading','Callout rewards in the selected period (all time, 30D, 7D or 24H) against what they banked trading in the same period, from pump.fun’s trading-profit board. Not on that board means they banked less than its #100, shown as “under $X”.']];
   const bar=tbarRows(sum,show,sort,(KL_FILTER_DESC[KL_FILTER]||'')+' '+(KL_SORT_DESC[KL_SORT]||''),legend);
   if(!rows.length){box.innerHTML=bar+emptyNote('No KOL on this board fits that filter.');return}
   const th=(k,label,cls='',tip='')=>`<th class="${cls}${KL_SORT===k?' on':''}" ${k?'data-ksort="'+k+'"':''}${tip?' title="'+esc(tip)+'"':''}>${label}${KL_SORT===k?' ↓':''}</th>`;
@@ -2558,11 +2561,11 @@ function kolLine(t){
       +(k.histAt&&Date.now()-k.histAt>2*36e5?' · <span style="color:#e8b04a">record read '+esc(since(k.histAt))+'</span>':'')
       +'</div>':'<div class="warn" style="opacity:.7">ⓘ reading this KOL’s calls…</div>')
     +(k.trading?'<div class="warn" style="opacity:.9">'+ic('banknote')+'Also on pump.fun’s PnL boards for trading: '
-      +['daily','weekly','monthly'].filter(w=>k.trading[w]).map(w=>'#'+esc(String(k.trading[w].rank))+' '+({daily:'today',weekly:'this week',monthly:'this month'}[w])+', banked <span class="up">+'+esc(fmtUsd(k.trading[w].realized||0))+'</span>').join(' · ')
+      +['daily','weekly','monthly','all'].filter(w=>k.trading[w]).map(w=>'#'+esc(String(k.trading[w].rank))+' '+({daily:'today',weekly:'this week',monthly:'this month',all:'all time'}[w])+', banked <span class="up">+'+esc(fmtUsd(k.trading[w].realized||0))+'</span>').join(' · ')
       +' — on top of the rewards</div>':'')
-    +(()=>{const e=kolEarn(t),pn={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days'}[t.period];
+    +(()=>{const e=kolEarn(t),pn={'1d':'the last 24 hours','1w':'the last 7 days','1m':'the last 30 days',all:'all time'}[t.period];
       if(!e)return t.period==='all'?'<div class="warn" style="opacity:.75">'+ic('scale')+'Callouts against trading: pump.fun publishes trading profit for 24 hours, 7 days and 30 days only — open this KOL from 30D, 7D or 24H to compare.</div>':'';
-      return '<div class="warn" style="opacity:.9">'+ic('scale')+'In '+pn+': <b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against '
+      return '<div class="warn" style="opacity:.9">'+ic('scale')+(t.period==='all'?'All time':'In '+pn)+': <b>'+esc(fmtUsd(e.pay))+'</b> in callout rewards against '
         +(e.exact?'<b>'+esc(fmtUsd(e.bank))+'</b> banked trading':'trading profit under <b>'+esc(fmtUsd(e.under))+'</b> (not in pump.fun’s top 100 traders)')
         +(e.who?' — more from <b>'+e.who+'</b>':'')+'</div>'})();
 }
@@ -3845,7 +3848,7 @@ function openCard(t){
   /* The headline of a person or a call is their figure, not a price move: a
      trader has no 1h change, and "— 1 hour" over a KOL said nothing. */
   const head=(v,cls,sub)=>{e('cChg').innerHTML=v;e('cChg').className=cls||'';e('cTf').textContent=sub};
-  if(t.kind==='trader')head('+'+esc(fmtUsd(t.realized||0)),'up','banked, '+({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'this window'));
+  if(t.kind==='trader')head('+'+esc(fmtUsd(t.realized||0)),'up','banked, '+({daily:'24 hours',weekly:'7 days',monthly:'30 days',all:'all time'}[t.period]||'this window'));
   else if(t.kind==='caller'&&t.caller)head(esc(Math.round((t.caller.hit2||0)*100)+'%'),'up','of calls hit 2×');
   else if(t.kind==='kol'&&t.kol)head(esc(fmtUsd(t.kol.paid||0)),'up','paid by pump.fun');
   else if(t.kind==='call'&&t.call)head(esc(mult(t.call.now)),multCls(t.call.now),'now against the call');
@@ -3894,7 +3897,7 @@ function openCard(t){
       +'</div>'
     : '';
   const traderLine=t.kind==='trader'
-    ? '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days'}[t.period]||'')+')'
+    ? '<div class="warn" style="opacity:.9">'+ic('banknote')+'#'+esc(String(t.rank||0))+' by realized profit ('+esc({daily:'24 hours',weekly:'7 days',monthly:'30 days',all:'all time'}[t.period]||'')+')'
       +' · '+(t.pumpRank?'#'+esc(String(t.pumpRank))+' on pump.fun\u2019s board, which counts paper gains':'not in pump.fun\u2019s top 100, which counts paper gains')
       +(t.top&&t.top.length?' · holding '+t.top.map(p=>'$'+esc(p.sym)).join(', '):'')
       +'</div>'+traderEarnLine(t)
@@ -5179,7 +5182,7 @@ const EMBED=/^\/embed\/?$/.test(location.pathname)||new URLSearchParams(location
   const tf=q.get('tf');
   if(['m5','h1','h6','h24','d7','d30','y1'].includes(tf))S.tf=tf;
   /* the share pages link back with the feed id itself */
-  const per={'traders-daily':'h24','traders-weekly':'d7','traders-monthly':'d30'};
+  const per={'traders-daily':'h24','traders-weekly':'d7','traders-monthly':'d30','traders-all':'y1'};
   if(per[src]){S.mode='traders';if(!tf)S.tf=per[src]}
   const brd={'smart-daily':'daily','smart-weekly':'weekly','smart-monthly':'monthly'};
   if(brd[src]){S.mode='smart';S.smartBoard=brd[src]}

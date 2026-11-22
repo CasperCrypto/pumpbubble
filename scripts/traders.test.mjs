@@ -51,7 +51,7 @@ console.log('\ncolour is the total, in the tab’s own window');
   is('monthly fills d30', shapeTrader(row(), 'monthly').pc.d30, -2.44);
   is('banked but underwater is negative overall', d.total < 0 && d.realized > 0, true);
   is('open positions carried with their sign', d.unrealized, -95772);
-  is('the three periods map to the three tf pills', Object.values(PERIODS).join(','), 'h24,d7,d30');
+  is('the four periods map to the tf pills (all time rides 1Y)', Object.values(PERIODS).join(','), 'h24,d7,d30,y1');
 }
 
 console.log('\na trader is not a token');

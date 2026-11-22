@@ -578,7 +578,7 @@ export async function pollOnce(book, now = Date.now(), http = defaultHttp()) {
   }
   if (now - due.board >= EVERY.board) {
     due.board = now;
-    for (const period of ['daily', 'weekly', 'monthly']) {
+    for (const period of ['daily', 'weekly', 'monthly', 'all']) {
       try {
         const j = await http.get(LB + '?period=' + period + '&sort=realized&limit=100');
         book.seedBoard(j && j.entries, period, now);

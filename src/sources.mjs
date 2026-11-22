@@ -454,6 +454,11 @@ export const SOURCES = {
     chain: 'mixed', ttl: 300_000, enrich: false, boostable: false, quality: 'major', history: false,
     fetch: () => tradersFor('monthly'),
   },
+  'traders-all': {
+    id: 'traders-all', label: 'Traders', group: 'Traders',
+    chain: 'mixed', ttl: 600_000, enrich: false, boostable: false, quality: 'major', history: false,
+    fetch: () => tradersFor('all'),
+  },
   /* Signals: measured events across pump.fun, Base, crypto, stocks and
      Smart money — volume surges, breakouts, sharp drops, buy or sell
      pressure, top-trader holdings. Composed in snapshot() from the other

@@ -1082,9 +1082,13 @@ profit — check and fix all filters". What was wrong and what it is now:
   the same comparison as Top traders (`kolEarn()`): the period's payout against that period's trading
   board — both figures when the KOL is on its latest read, else "trading under $X" from the board's
   #100 (`boardCuts()`, sent as `kols.tradeCuts`; only from a full read of 100). Filters **More from
-  callouts / More from trading**, a summary count, the card says it. **All time cannot be compared**:
-  pump.fun publishes trading profit for 24h, 7d and 30d only, and the page says so in words rather
-  than set all-time rewards against a month of trading.
+  callouts / More from trading**, a summary count, the card says it. **All time too**: pump.fun has an
+  all-time PnL board (`period=all` — its validator lists daily, weekly, monthly, all; first missed
+  here), so `traders-all` exists, the Calls watcher reads it with the others, the Traders tab's last
+  pill reads **All** (it rides `y1`), and Paid KOLs' All time compares all-time rewards with all-time
+  trading. Checked against pump.fun on 2026-11-22: 100 rows sorted by realized, #100 at $206,450;
+  PoorGoat ($827.7K rewards), chairman ($740.8K) and HarryPaulDavies ($621.1K) are not on it, so each
+  banked under $206K trading all time; cupsey #30 with $411K banked against $771.5K in rewards.
 
 ## Pages to be found (SEO and AI assistants)
 
