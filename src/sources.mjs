@@ -581,8 +581,14 @@ const nasdaqRows = memo(async () => {
         name: rawName.replace(/\s+(Common Stock|Capital Stock|Class [A-Z].*)$/i, '').slice(0, 48),
         companyKey: companyKey(rawName),
         /* Logos come from a symbol-keyed CDN, so no per-company lookup is
-           needed. A miss renders as initials like any other missing art. */
-        rawImg: 'https://assets.parqet.com/logos/symbol/' + encodeURIComponent(sym) + '?format=png',
+           needed. A miss (404) renders as initials like any other missing art.
+           Financial Modeling Prep's public image path, not Parqet's: Parqet
+           put a Cloudflare block in front of its logos (403 "Attention
+           Required" to every request, 2026-11-23) and the tab lost every
+           picture. FMP answered 37 of 37 tickers with a PNG — PNG matters,
+           the share cards' rasteriser cannot read WebP. Nasdaq writes share
+           classes with a slash (BRK/B); FMP wants a dot. */
+        rawImg: 'https://financialmodelingprep.com/image-stock/' + encodeURIComponent(sym.replace('/', '.')) + '.png',
         img: '',
         mcap,
         ath: 0,
