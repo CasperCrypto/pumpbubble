@@ -59,7 +59,7 @@ import { pumpCoin, pumpStatus, jupStatus, feedVia } from './core.mjs';
 import { activityStatus } from './activity.mjs';
 import { setJupKey } from './jupfeed.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
-import { isSeoPath, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
+import { isSeoPath, SEO_ALIASES, toolsPage, smartMoneyPage, signalsPage, freshPage, copyTradingPage, kolsPage, kolPage, callersPage, tradersPage, trendingPage, robinhoodPage, gpuPage, botPage, sitemapXml, llmsTxt, slug as kolSlug } from './pages.mjs';
 import { renderMarketPage, marketTable, marketSummary, marketJsonLd,
          boardTable, boardSummary, boardJsonLd } from './seo.mjs';
 import { resolveReferral, statement, getAffiliate, isCode } from './affiliates.mjs';
@@ -2231,6 +2231,9 @@ export async function handle(req, ctx) {
     /* The boards as server-rendered pages (src/pages.mjs), one page per KOL,
        the sitemap that lists them all, and llms.txt. A crawler that runs no
        JavaScript gets the numbers as text; people get a way to the live map. */
+    if ((req.method === 'GET' || req.method === 'HEAD') && SEO_ALIASES[path.replace(/\/+$/, '').toLowerCase()]) {
+      return new Response(null, { status: 301, headers: { location: url.origin + SEO_ALIASES[path.replace(/\/+$/, '').toLowerCase()] + url.search, 'cache-control': 'public, max-age=86400' } });
+    }
     if (req.method === 'GET' && (isSeoPath(path) || path === '/sitemap.xml' || path === '/llms.txt')) {
       const now = Date.now();
       const html = (body, status = 200) => new Response(body, { status, headers: {
@@ -2259,6 +2262,11 @@ export async function handle(req, ctx) {
       if (path === '/robinhood') return html(robinhoodPage(shown((await feed('robinhood')).filter(t => t.solid !== false)), now));
       if (path === '/gpu-prices') return html(gpuPage(gpuFeed(await gpuBoardCached(ctx), null), now));
       if (path === '/bot') return html(botPage(now));
+      if (path === '/pump-fun-analytics') return html(toolsPage(now));
+      if (path === '/copy-trading') return html(copyTradingPage(now));
+      if (path === '/smart-money') return html(smartMoneyPage(shown(await feed('smart')), now));
+      if (path === '/signals') return html(signalsPage(shown(await feed('signals')), now));
+      if (path === '/new-pump-fun-tokens') return html(freshPage(shown(await feed('fresh')), now));
     }
 
     if (path === '/s/top10') {

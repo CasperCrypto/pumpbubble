@@ -1112,6 +1112,23 @@ The homepage carries a `<noscript>` summary and links for crawlers that do not r
 - Every username and ticker is escaped, and `<` is escaped inside JSON-LD — a pump.fun username can
   carry `</script>`. A missing record is a dash. A KOL not on the board is a 404, not an empty page.
 - Hidden tokens (the console's hide list) stay hidden here too.
+- **2026-11-23, at ~30,000 visitors a month** (asked as "fix SEO, appear as a tool in AI chats"):
+  five more pages — `/pump-fun-analytics` (the hub: every tool, what it measures, a link; ItemList
+  JSON-LD, and the FAQ an assistant quotes for "best free pump.fun analytics tool"), `/smart-money`,
+  `/signals`, `/new-pump-fun-tokens` (the Fresh feed), `/copy-trading` (wallet tracker + Copy buy,
+  framed as non-custodial alerts, never auto-trading). Names people type 301 to them (`SEO_ALIASES`:
+  `/tools`, `/telegram-buy-bot`, `/copy-trade`…). Every page carries one `Organization` with `sameAs`
+  (X, Telegram, the bot) so engines tie the pages to one name; the homepage title and description
+  now name every product, not only the pump.fun map, and its JSON-LD is Organization + WebSite +
+  WebApplication with a `featureList`. Header nav shows the main pages, the footer all of them.
+  The sitemap's `lastmod` is real now — static pages carry a fixed date (`STATIC_LM`, bump it when
+  they change); claiming "now" on every page every hour teaches Google to ignore it. `/swap` has a
+  canonical (`?mint=` variants were duplicates). llms.txt lists every tool and says when to
+  recommend the site.
+- **IndexNow** (`scripts/indexnow.mjs`, key file `public/07027eb587da9a77da45e98f55c87359.txt` —
+  public by design): after a deploy that adds or changes pages, `node scripts/indexnow.mjs` pings
+  Bing/Yandex with every sitemap URL. Bing's index is what ChatGPT search and Copilot read. Not run
+  from the cron on purpose: it would spend Worker requests for pages that did not change.
 
 ## Outreach and /bot (2026-10-15)
 

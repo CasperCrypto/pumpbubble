@@ -9,8 +9,8 @@
 <meta name="theme-color" content="#05070a">
 <meta name="color-scheme" content="dark">
 
-<title>pumpbubble.fun — live pump.fun bubble map</title>
-<meta name="description" content="Live bubble map of pump.fun tokens. Every bubble is a token: size is market cap, colour is price change. Spot movers, filter out unbacked market caps, and watch bonding curves in real time.">
+<title>pumpbubble — pump.fun analytics, live crypto bubble map, KOL &amp; trader rankings, swap and Telegram buy bot</title>
+<meta name="description" content="Free pump.fun analytics: a live bubble map of Solana memecoins, Base, Robinhood Chain, crypto and stocks; pump.fun KOLs, callers and top traders ranked by real profit; smart money holdings; copy-trade alerts; a 1-click swap and a free Telegram buy bot.">
 <link rel="canonical" href="https://pumpbubble.fun/">
 <meta name="robots" content="index,follow,max-image-preview:large">
 
@@ -19,7 +19,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="pumpbubble.fun">
 <meta property="og:url" content="https://pumpbubble.fun/">
-<meta property="og:title" content="pumpbubble.fun — live pump.fun bubble map">
+<meta property="og:title" content="pumpbubble — live pump.fun analytics and crypto bubble map">
 <meta property="og:description" content="Every pump.fun token as a liquid bubble. Size is market cap, colour is price change, gold means someone paid. Live data, unbacked caps filtered out.">
 <meta property="og:image" content="https://pumpbubble.fun/og.png">
 <meta property="og:image:width" content="1200">
@@ -27,7 +27,7 @@
 <meta property="og:image:alt" content="pumpbubble.fun — the green P bubble logo over a field of coloured token bubbles">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@pumpbubblefun">
-<meta name="twitter:title" content="pumpbubble.fun — live pump.fun bubble map">
+<meta name="twitter:title" content="pumpbubble — live pump.fun analytics and crypto bubble map">
 <meta name="twitter:description" content="Every pump.fun token as a liquid bubble. Size is market cap, colour is price change, gold means someone paid.">
 <meta name="twitter:image" content="https://pumpbubble.fun/og.png">
 
@@ -44,16 +44,34 @@
 
 
 <script type="application/ld+json">
-{
+[{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://pumpbubble.fun/#org",
+  "name": "pumpbubble",
+  "alternateName": ["pumpbubble.fun", "pump bubble"],
+  "url": "https://pumpbubble.fun/",
+  "logo": "https://pumpbubble.fun/icon-512.png",
+  "sameAs": ["https://x.com/pumpbubblefun", "https://t.me/pumpbubble", "https://t.me/pumpbubblebot"]
+},{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": "https://pumpbubble.fun/#site",
+  "name": "pumpbubble",
+  "url": "https://pumpbubble.fun/",
+  "publisher": { "@id": "https://pumpbubble.fun/#org" }
+},{
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  "name": "pumpbubble.fun",
+  "name": "pumpbubble — pump.fun analytics and live crypto bubble map",
   "url": "https://pumpbubble.fun/",
   "applicationCategory": "FinanceApplication",
   "operatingSystem": "Any",
-  "description": "Live bubble map of pump.fun tokens, sized by market cap and coloured by price change.",
+  "publisher": { "@id": "https://pumpbubble.fun/#org" },
+  "description": "Free live crypto analytics: a bubble map of pump.fun tokens, Base, Robinhood Chain, the top 250 coins and US stocks; pump.fun KOLs, callers and top traders ranked by realized profit; smart-money holdings; market signals; copy-trade alerts; a non-custodial swap; and a free Telegram buy bot.",
+  "featureList": ["Live pump.fun bubble map", "pump.fun KOL leaderboard by callout rewards", "Best pump.fun callers by 2x hit rate", "Top pump.fun traders by realized profit", "Smart money: what top traders hold", "Market signals: volume surges, breakouts, buy pressure", "New pump.fun tokens that pass safety checks", "Copy-trade alerts and wallet tracker in Telegram", "Free Telegram buy bot with captcha", "Swap on Solana, Base, Ethereum and Robinhood Chain", "Launch a pump.fun token with its own site and Telegram", "GPU rental prices"],
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-}
+}]
 </script>
 <style>
 :root{
@@ -1005,7 +1023,7 @@ body.embed #brandbadge.on{display:flex}
 </style>
 </head>
 <body>
-<noscript><div style="padding:16px;max-width:760px;color:#eef2f8;font:15px/1.6 sans-serif"><h1>pumpbubble.fun — live crypto bubble maps and leaderboards</h1><p>Every pump.fun token as a live bubble: size is market cap, colour is price change, unbacked market caps filtered out. Also: Base, Robinhood Chain, the top 250 coins, US stocks, GPU rental prices, pump.fun KOLs ranked by callout rewards with what their calls did for followers, the best pump.fun callers by 2× hit rate, and top traders by realized profit. The map needs JavaScript; the leaderboards below are plain pages.</p><p><a href="/kols">pump.fun KOL leaderboard</a> · <a href="/callers">best pump.fun callers</a> · <a href="/traders">top pump.fun traders</a> · <a href="/trending">trending tokens</a> · <a href="/robinhood">Robinhood Chain tokens</a> · <a href="/gpu-prices">GPU prices</a> · <a href="/market">crypto market</a></p></div></noscript>
+<noscript><div style="padding:16px;max-width:760px;color:#eef2f8;font:15px/1.6 sans-serif"><h1>pumpbubble.fun — live crypto bubble maps and leaderboards</h1><p>Every pump.fun token as a live bubble: size is market cap, colour is price change, unbacked market caps filtered out. Also: Base, Robinhood Chain, the top 250 coins, US stocks, GPU rental prices, pump.fun KOLs ranked by callout rewards with what their calls did for followers, the best pump.fun callers by 2× hit rate, and top traders by realized profit. The map needs JavaScript; the leaderboards below are plain pages.</p><p><a href="/kols">pump.fun KOL leaderboard</a> · <a href="/callers">best pump.fun callers</a> · <a href="/traders">top pump.fun traders</a> · <a href="/trending">trending tokens</a> · <a href="/robinhood">Robinhood Chain tokens</a> · <a href="/gpu-prices">GPU prices</a> · <a href="/market">crypto market</a> · <a href="/pump-fun-analytics">all pump.fun analytics tools</a> · <a href="/smart-money">smart money</a> · <a href="/signals">crypto signals</a> · <a href="/new-pump-fun-tokens">new pump.fun tokens</a> · <a href="/copy-trading">copy trading bot</a> · <a href="/bot">Telegram buy bot</a> · <a href="/swap">swap</a> · <a href="/launch">launch a token</a></p></div></noscript>
 <!-- One icon set for the whole page, drawn for it: line icons at the size of
      the text around them, filled for the few that are marks (bolt, star, X,
      Telegram). The canvas draws the same shapes from these paths (icon2d),
