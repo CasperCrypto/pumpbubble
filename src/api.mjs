@@ -2235,6 +2235,16 @@ export async function handle(req, ctx) {
       return new Response(null, { status: 301, headers: { location: url.origin + SEO_ALIASES[path.replace(/\/+$/, '').toLowerCase()] + url.search, 'cache-control': 'public, max-age=86400' } });
     }
     if (req.method === 'GET' && (isSeoPath(path) || path === '/sitemap.xml' || path === '/llms.txt')) {
+      /* Held at the edge for five minutes: a cold build of Trending or Smart
+         money takes 1–3 s, and a crawler that waits that long crawls less of
+         the site. The key drops the query string, so ?utm= cannot bust it. */
+      const edge = globalThis.caches && globalThis.caches.default;
+      const ek = new Request(url.origin + '/__seo/v1' + path);
+      if (edge && !url.searchParams.has('fresh')) {
+        const hit = await edge.match(ek).catch(() => null);
+        if (hit) return hit;
+      }
+      const res = await (async () => {
       const now = Date.now();
       const html = (body, status = 200) => new Response(body, { status, headers: {
         'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });
@@ -2247,7 +2257,11 @@ export async function handle(req, ctx) {
           return new Response(llmsTxt({ kols, now }), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=600' } });
         }
         const slugs = [...new Set(kols.map(t => kolSlug(t.sym)).filter(Boolean))];
-        return new Response(sitemapXml(slugs, now), { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600' } });
+        /* every live pump.fun token's own page: what "<ticker> price" searches land on.
+           Backed tokens only, the hide list respected, Solana mints only (/t/ is pump.fun's). */
+        const [pf, tr] = await Promise.all([feed('pumpfun'), feed('trending')]);
+        const mints = [...new Set(shown([...tr, ...pf]).filter(t => t && t.solid !== false && isKey(t.mint || '')).map(t => t.mint))].slice(0, 400);
+        return new Response(sitemapXml(slugs, now, mints), { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600' } });
       }
       if (path.startsWith('/kol/')) {
         const all = await feed('kols-all');
@@ -2267,6 +2281,12 @@ export async function handle(req, ctx) {
       if (path === '/smart-money') return html(smartMoneyPage(shown(await feed('smart')), now));
       if (path === '/signals') return html(signalsPage(shown(await feed('signals')), now));
       if (path === '/new-pump-fun-tokens') return html(freshPage(shown(await feed('fresh')), now));
+      })();
+      if (res && edge && res.status === 200) {
+        const put = edge.put(ek, res.clone()).catch(() => {});
+        if (ctx.waitUntil) ctx.waitUntil(put);
+      }
+      if (res) return res;
     }
 
     if (path === '/s/top10') {

@@ -582,6 +582,8 @@ h3 .ic{vertical-align:-.12em}
   #shareTen .ic{width:19px;height:19px}
   /* the arena bar owns the bottom of Tap wars; the dock steps aside */
   #stage:has(#tapbar.on) #dock{display:none}
+  /* the timeframe pills mean nothing on the compute map, and the dock sat on its bottom sheet */
+  #stage:has(#cmView:not([hidden])) #dock{display:none}
   /* the tab row scrolls sideways: say so with a fade at its right edge */
   #chips{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
     mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);scroll-padding-inline:24px}

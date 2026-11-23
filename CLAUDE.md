@@ -1125,6 +1125,12 @@ The homepage carries a `<noscript>` summary and links for crawlers that do not r
   they change); claiming "now" on every page every hour teaches Google to ignore it. `/swap` has a
   canonical (`?mint=` variants were duplicates). llms.txt lists every tool and says when to
   recommend the site.
+- **Token pages in the sitemap and edge-cached boards** (2026-11-23): `/sitemap.xml` lists up to 400
+  `/t/<mint>` pages (Trending first, then the pump.fun feed; backed only, hide list respected) —
+  "<ticker> price" is what people search, and the token page's title now says "price, chart and
+  market cap". Every page in this section is held in the edge cache five minutes (`/__seo/v1<path>`,
+  query string ignored, `?fresh` skips it): a cold Trending or Smart money build took 1–3 s per
+  crawler hit. The growth plan (competition, features in order, distribution) is `docs/growth.md`.
 - **IndexNow** (`scripts/indexnow.mjs`, key file `public/07027eb587da9a77da45e98f55c87359.txt` —
   public by design): after a deploy that adds or changes pages, `node scripts/indexnow.mjs` pings
   Bing/Yandex with every sitemap URL. Bing's index is what ChatGPT search and Copilot read. Not run
@@ -1479,6 +1485,12 @@ while the canvas and the bubble physics rest (`mapOn()`, like the tables). Data 
   "—" is zero, NA/W/words unknown, ">N" a floor. Germanium is absent: USGS withholds it by
   country. No mineral prices: the free ones do not exist (SMM, Argus, Fastmarkets are sold).
   `scripts/minerals.test.mjs`.
+- **More countries** (2026-11-23): Eurostat's 20–70 GWh band fills countries its 70–150 GWh band
+  leaves empty (`EUROSTAT_SMALL`, `band` on the row, a note on the card that it runs a little high):
+  Croatia, Luxembourg, Iceland, Montenegro, Moldova, Kosovo; a fallback older than last year is not
+  used (Georgia stops in 2024). Published tariffs added for Saudi Arabia (SEC, 20 halalas), Dubai
+  (DEWA 38 fils + fuel surcharge), Indonesia (PLN I-4) and South Africa (Eskom standard). On a phone
+  the timeframe dock hides while the map shows — it sat on the bottom sheet and means nothing there.
 - **A posted GPU price below its model's floor is not a price** (`min` in `GPUS`). Akash posted the
   B300 at $0.23/h on 2026-11-19 (one listing, nothing free) and the strip printed it. Floors are
   about a fifth of what each card rents for anywhere.

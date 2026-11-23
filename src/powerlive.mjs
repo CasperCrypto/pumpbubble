@@ -33,6 +33,11 @@ import { US_STATES as STATES } from './datacenters.mjs';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) pumpbubble.fun/1.0 (power-prices)';
 export const EUROSTAT = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_pc_205?format=JSON&lang=EN&nrg_cons=MWH70000-149999&tax=X_VAT&currency=EUR&unit=KWH&sinceTimePeriod=2024-S2';
+/* The next band down, 20–70 GWh/year. Croatia, Luxembourg, Iceland, Montenegro,
+   Georgia, Moldova and Kosovo publish nothing at 70–150 GWh (confidential, or no
+   consumer that size), but do here — so a country the main band leaves empty
+   takes this one, labelled with its band, rather than drawing grey. */
+export const EUROSTAT_SMALL = EUROSTAT.replace('MWH70000-149999', 'MWH20000-69999');
 export const EIA = 'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_b';
 export const ECB = 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=jsondata';
 export const ecbMonthlyUrl = (from = '2024-01') => `https://data-api.ecb.europa.eu/service/data/EXR/M.USD.EUR.SP00.A?startPeriod=${from}&format=jsondata`;
@@ -95,14 +100,19 @@ export function semesterRate(monthly, period) {
 export const isoOf = cc => cc === 'EL' ? 'GR' : cc === 'UK' ? 'GB' : cc;
 
 /* The four reads, shaped like src/powerprices.mjs's POWER */
-export function buildPower({ es, eia, fx, monthly, today }) {
+export function buildPower({ es, es2, eia, fx, monthly, today }) {
   const eu = eurostatPrices(es), us = eiaPrices(eia);
+  const small = es2 ? eurostatPrices(es2) : {};
   const countries = {};
   /* each semester's euros at that semester's average dollar rate; the latest daily rate only when the semester has none yet */
-  for (const [cc, p] of Object.entries(eu)) {
+  const put = (cc, p, band) => {
     const rate = semesterRate(monthly, p.period) || fx.usdPerEur;
-    countries[isoOf(cc)] = { usd: Math.round(p.eur * rate * 10000) / 10000, period: p.period, src: 'eurostat' };
-  }
+    countries[isoOf(cc)] = { usd: Math.round(p.eur * rate * 10000) / 10000, period: p.period, src: 'eurostat', ...(band ? { band } : {}) };
+  };
+  for (const [cc, p] of Object.entries(eu)) put(cc, p);
+  /* only a figure from the last two years: Georgia's 20–70 GWh row stops in 2024 */
+  const fresh = p => { const m = /^(\d{4})-S/.exec(p.period || ''); return m && +m[1] >= new Date(today || Date.now()).getUTCFullYear() - 1; };
+  for (const [cc, p] of Object.entries(small)) if (!eu[cc] && fresh(p)) put(cc, p, '20–70 GWh/yr');
   if (us.cents.US) countries.US = { usd: Math.round(us.cents.US * 100) / 10000, period: us.period, src: 'eia' };
   const states = Object.fromEntries(Object.entries(us.cents).filter(([k]) => k !== 'US').map(([k, v]) => [k, Math.round(v * 100) / 10000]));
   return { asOf: today, euUpdated: es.updated || '', usPeriod: us.period, usdPerEur: fx.usdPerEur, fxDate: fx.date, countries, states };
@@ -123,10 +133,11 @@ async function get(fetcher, url, as, ms = 15000) {
 
 export async function readIndustrial(fetcher = fetch, now = Date.now()) {
   const y = new Date(now).getUTCFullYear() - 2;
-  const [es, eia, ecb, ecbM] = await Promise.all([
+  const [es, eia, ecb, ecbM, es2] = await Promise.all([
     get(fetcher, EUROSTAT, 'json'), get(fetcher, EIA, 'html'), get(fetcher, ECB, 'json'), get(fetcher, ecbMonthlyUrl(y + '-01'), 'json'),
+    get(fetcher, EUROSTAT_SMALL, 'json').catch(() => null),   // the fallback band never fails the read
   ]);
-  return buildPower({ es, eia, fx: ecbRate(ecb), monthly: ecbMonthly(ecbM), today: new Date(now).toISOString().slice(0, 10) });
+  return buildPower({ es, es2, eia, fx: ecbRate(ecb), monthly: ecbMonthly(ecbM), today: new Date(now).toISOString().slice(0, 10) });
 }
 
 /* ----------------------------------------------------- day-ahead, Europe */

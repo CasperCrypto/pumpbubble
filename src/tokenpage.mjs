@@ -53,8 +53,10 @@ export function tokenPage({ origin, t, raw = {}, launched = null, bot = 'pumpbub
   ].filter(([, u]) => u && !u.startsWith(origin + '/t/') && !(site && u.replace(/\/+$/, '') === site));
   const url = site || origin + '/t/' + mint;
   const tweet = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent('$' + sym + ' — ' + name) + '&url=' + encodeURIComponent(url) + '&via=pumpbubblefun';
-  const title = '$' + sym + ' — ' + name + ' | pumpbubble.fun';
-  const descMeta = (desc || name + ' ($' + sym + ') on pump.fun') + ' · Market cap ' + money(t.mcap) + (pc ? ' · 24h ' + pc : '');
+  /* what people type is "<ticker> price" / "<ticker> chart": the title says both */
+  const title = '$' + sym + ' price, chart and market cap — ' + name + ' | pumpbubble';
+  const descMeta = '$' + sym + ' (' + name + ') live: market cap ' + money(t.mcap) + (pc ? ', 24h ' + pc : '')
+    + '. Chart, holders and a swap from your own wallet.' + (desc ? ' ' + desc : '');
   const og = cardUrl || (img ? origin + img : origin + '/og.png');
   /* pictures stay relative: the subdomain serves /api/img and the icons
      itself, and its CSP allows images only from itself */

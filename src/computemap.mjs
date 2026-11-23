@@ -114,7 +114,8 @@ export function countryData() {
   const out = {};
   const at = cc => (out[cc] = out[cc] || {});
   for (const [cc, c] of Object.entries(PW().countries)) Object.assign(at(cc), { ind: c.usd, indP: c.src === 'eia' ? c.period : c.src === 'desnz' ? c.period.replace(/^(\d{4})-Q(\d)$/, 'Q$2 $1') : semLabel(c.period),
-    ...(c.src === 'desnz' ? { indWhat: UK_POWER.what, indSrc: UK_POWER.src } : {}) });
+    ...(c.src === 'desnz' ? { indWhat: UK_POWER.what, indSrc: UK_POWER.src } : {}),
+    ...(c.band ? { indWhat: 'Eurostat\u2019s ' + c.band + ' band — this country publishes nothing for the 70–150 GWh band the rest of Europe is shown in, so its price runs a little higher than a data center would pay.' } : {}) });
   for (const [cc, t] of Object.entries(TARIFFS.countries)) Object.assign(at(cc), { tar: t.usd, tarP: monthLabel(t.ym), tarWhat: t.what, tarSrc: t.src });
   for (const [cc, w] of Object.entries(WHOLESALE)) Object.assign(at(cc), { whl: w.usd, whlP: monthLabel(w.from) + ' – ' + monthLabel(w.to), whlM: w.market });
   /* a week of day-ahead prices replaces a year-old wholesale average, and

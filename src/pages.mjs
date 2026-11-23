@@ -530,7 +530,7 @@ export function copyTradingPage(now = Date.now()) {
 
 /* -------------------------------------------------------- sitemap, llms */
 const STATIC_LM = '2026-11-23T00:00:00Z';
-export function sitemapXml(kols = [], now = Date.now()) {
+export function sitemapXml(kols = [], now = Date.now(), mints = []) {
   const lm = new Date(now).toISOString();
   const urls = [
     ['/', 'hourly', '1.0', lm],
@@ -538,6 +538,7 @@ export function sitemapXml(kols = [], now = Date.now()) {
     ['/market', 'hourly', '0.8', lm], ['/board', 'hourly', '0.5', lm],
     ['/swap', 'weekly', '0.8', STATIC_LM], ['/launch', 'weekly', '0.7', STATIC_LM], ['/partners', 'monthly', '0.4', STATIC_LM],
     ...kols.map(s => ['/kol/' + s, 'daily', '0.5', lm]),
+    ...mints.map(m => ['/t/' + m, 'daily', '0.4', lm]),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
     + urls.map(([u, f, p, d]) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${d}</lastmod><changefreq>${f}</changefreq><priority>${p}</priority></url>`).join('\n')

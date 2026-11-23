@@ -13,9 +13,12 @@
    charge alone, without the capacity charge). Asked for on 2026-10-19 ("also
    add energy prices — China etc.").
 
-   Read 2026-10-19. Japan, Taiwan, Saudi Arabia, Malaysia, Kazakhstan and
-   Iceland were looked for and left out: no current figure could be
-   confirmed from a source that publishes it.
+   Read 2026-10-19; Saudi Arabia, Dubai, Indonesia and South Africa added
+   2026-11-23. Japan, Taiwan, Malaysia, Kazakhstan, Mexico, Thailand and
+   Vietnam were looked for and left out: no industrial figure could be
+   confirmed (Thailand and Vietnam publish a single all-customer average;
+   Malaysia's July 2025 schedule was only found second-hand; Taiwan's dollar
+   has no ECB rate). Iceland now comes from Eurostat's 20–70 GWh band.
    ========================================================================== */
 
 import { writeFileSync } from 'node:fs';
@@ -39,6 +42,11 @@ export const ROWS = [
   ['KR', 179.23, 'KRW', '2025-03', 'KEPCO’s average price for industrial power, Jan–Jun 2025 (its SEC filing)', 'https://www.sec.gov/Archives/edgar/data/0000887225/000119312525202690/d55270d6k.htm'],
   ['CA', 0.0682, 'CAD', '2026-04', 'Québec: what large industrial customers pay on average under Hydro-Québec’s Rate L (2026 filing)', 'https://www.ctvnews.ca/montreal/article/hydro-quebec-to-face-off-against-industry-actors-like-google-in-data-centre-hearing/'],
   ['ET', 0.040, 'USD', '2025-12', 'Ethiopian Electric Power’s tariff for crypto miners from 1 Dec 2025: 4¢ base, 6¢ from 18:00 to 22:00', 'https://shega.co/news/ethiopia-flirts-with-a-kazakhstan-moment-as-bitcoin-miners-weigh-exit'],
+  /* the riyal and the dirham are pegged (3.75 and 3.6725 to the dollar), so these are entered in dollars at the peg */
+  ['SA', 0.20 / 3.75, 'USD', '2025-05', 'Saudi Electricity Company’s industrial tariff, 20 halalas/kWh (non-eligible establishments pay 2 halalas more from 28 May 2025; 23 halalas from Jan 2027)', 'https://www.se.com.sa/en/Ourservices/ColumnC/Bills-and-Consumption/ConsumptionTariffs'],
+  ['AE', (0.38 + 0.06) / 3.6725, 'USD', '2026-07', 'Dubai (DEWA) industrial: 38 fils/kWh above 10,000 kWh a month plus the 6-fils fuel surcharge of July 2026', 'https://dewa.gov.ae/en/consumer/billing/slab-tariff'],
+  ['ID', 996.74, 'IDR', '2025-10', 'PLN’s I-4/TT tariff for industry at 30,000 kVA and above, Q4 2025 (unchanged from Q3)', 'https://ekonomi.bisnis.com/read/20250924/44/1914399/tok-tarif-listrik-oktober-desember-2025-tidak-naik'],
+  ['ZA', 2.2092, 'ZAR', '2025-04', 'Eskom’s average standard tariff for its direct customers from 1 Apr 2025 (NERSA’s 12.74% increase), 220.92 c/kWh', 'https://www.engineeringnews.co.za/article/nersa-approves-tariff-hike-for-april-1-as-eskom-reports-r16bn-interim-profit-2025-01-30'],
   ['PY', 0.03725 + 5.27 / 730, 'USD', '2026-01', 'ANDE’s 220 kV intensive-industry tariff at full load: $0.03725/kWh plus $5.27/kW a month', 'https://hashrateindex.com/blog/the-state-of-bitcoin-mining-in-paraguay-2026-2/'],
 ];
 
@@ -61,7 +69,7 @@ export const toUsd = (local, cur, ym, rates) => {
 
 if (process.argv[1] && process.argv[1].endsWith('tariffs.mjs')) {
   const rates = {};
-  for (const cur of ['USD', 'CNY', 'KRW', 'CAD']) rates[cur] = ecbMonthly(await (await fetch(ECB(cur))).json());
+  for (const cur of [...new Set(['USD', 'CNY', ...ROWS.map(r => r[2])])]) rates[cur] = ecbMonthly(await (await fetch(ECB(cur))).json());
   const r4 = v => Math.round(v * 10000) / 10000;
   const countries = {}, regions = {};
   for (const [cc, local, cur, ym, what, src] of ROWS) countries[cc] = { usd: r4(toUsd(local, cur, ym, rates)), local: +local.toFixed(5), cur, ym, what, src };

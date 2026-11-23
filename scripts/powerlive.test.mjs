@@ -52,6 +52,12 @@ const es = { updated: 'x', dimension: { geo: { category: { index: { FR: 0, EL: 1
 const eia = '<table><tr><th>State</th><th>a</th><th>b</th><th>c</th><th>d</th><th>Aug 2026 YTD</th></tr><tr><td>Texas</td><td>1</td><td>1</td><td>1</td><td>1</td><td>6.5</td></tr><tr><td>U.S. Total</td><td>1</td><td>1</td><td>1</td><td>1</td><td>9.1</td></tr></table>';
 const b = buildPower({ es, eia, fx: { usdPerEur: 1.1, date: '2026-11-18' }, monthly: { '2026-01': 1.2, '2026-02': 1.2 }, today: '2026-11-19' });
 ok(b.countries.GR && b.countries.FR.usd === 0.096 && !b.countries.EU, 'Eurostat: semester rate, ISO codes, aggregates dropped');
+const es2 = { dimension: { geo: { category: { index: { FR: 0, HR: 1, GE: 2 }, label: {} } }, time: { category: { index: { '2024-S2': 0, '2026-S1': 1 } } } },
+  value: { 0: 0.2, 1: 0.2, 2: 0.15, 3: 0.12, 4: 0.07, 5: 0 } };
+const b2 = buildPower({ es, es2, eia, fx: { usdPerEur: 1.1, date: '2026-11-18' }, monthly: { '2026-01': 1.2, '2026-02': 1.2 }, today: '2026-11-19' });
+ok(b2.countries.HR && b2.countries.HR.band === '20–70 GWh/yr' && b2.countries.HR.usd === 0.144, 'a country missing from the main band takes the 20–70 GWh band, labelled');
+ok(b2.countries.FR.usd === 0.096 && !b2.countries.FR.band, 'the main band always wins where it has a figure');
+ok(!b2.countries.GE, 'a fallback figure two years old is not used');
 ok(b.countries.US.usd === 0.091 && b.states.TX === 0.065 && b.usdPerEur === 1.1, 'EIA by state, and the rate is kept for day-ahead');
 
 console.log('the keeper');
