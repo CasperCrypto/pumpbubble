@@ -1851,7 +1851,8 @@ function demo(){
     const mcap=t>.95?1.2e7+R()*2.2e8:t>.78?7e5+R()*8e6:t>.42?7e4+R()*6e5:5e3+R()*8e4;
     const b=(R()-.44), h1=b*95*(.35+R());
     const liq=mcap/(6+R()*40);
-    return{id:'d'+i,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
+    /* `demo` is what tick() checks: only a generated coin may move on its own */
+    return{id:'d'+i,demo:true,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
       vol:mcap*(.12+R()*2.6),
       pc:{m5:h1*(.12+R()*.5),h1,h6:h1*(.65+R()*1.7),h24:h1*(.45+R()*2.8)},boost:0,
       /* the quality fields the real feed carries. Without `solid` the "Real
@@ -1938,9 +1939,15 @@ function setLive(on,txt){
 /* Demo data has to move on its own or the map looks frozen. Live data must
    never be nudged — an invented number on a screener is a lie, and the whole
    product is "these are the real caps right now". */
+/* `S.live` alone was not that guard. A refresh that fails sets it false and
+   keeps the real tokens on screen ("could not refresh"), so every 2.5 s the
+   real numbers took a random walk — and a window with no figure became one,
+   `null + 0.3` being 0.3 — until the next refresh landed. Only a generated
+   coin, on a page allowed to show them, ever moves here. */
 function tick(){
-  if(S.live)return;
+  if(S.live||!DEMO_OK)return;
   S.tokens.forEach(t=>{
+    if(!t.demo)return;
     const d=()=>Math.random()-.5;
     t.pc.m5+=d()*.9; t.pc.h1+=d()*.3; t.pc.h6+=d()*.15; t.pc.h24+=d()*.09;
     t.mcap*=1+d()*.003;

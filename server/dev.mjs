@@ -22,6 +22,7 @@ import { withKols } from '../src/kols.mjs';
 import { PowerKeeper } from '../src/powerlive.mjs';
 import { readAkashSites } from '../src/computemap.mjs';
 import { LaunchBook, launchOp } from '../src/launch.mjs';
+import { altGateways } from '../src/core.mjs';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = +(process.env.PORT || 8787);
@@ -93,30 +94,36 @@ const ctx = {
   },
   /* Dev has no edge cache; the browser cache is enough to keep the map smooth.
      Some IPFS gateways stall for many seconds, so cap the wait and let the
-     front end fall back to its letter avatar. */
+     front end fall back to its letter avatar.
+
+     The same gateway walk as the Worker's imageFetcher: a rate-limited IPFS
+     gateway is not a missing image, the CID is on every other gateway. Dev
+     used to try only the first URL — ipfs.io answers a busy machine 429 —
+     so most of the map wore letters locally that production never shows,
+     and a screenshot from dev said nothing about the real page. */
   async fetchImage(target, ttl) {
-    let r;
-    try {
-      r = await fetch(target, {
-        headers: { 'user-agent': 'pumpbubble.fun/1.0' },
-        signal: AbortSignal.timeout(8000),
+    for (const href of [target, ...altGateways(target)]) {
+      let r;
+      try {
+        r = await fetch(href, {
+          headers: { 'user-agent': 'pumpbubble.fun/1.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch { continue; }
+      /* Same guard the Worker applies: a gateway that answers with an HTML or
+         plain-text error page must not be passed through as if it were art. */
+      const type = r.headers.get('content-type') || '';
+      if (!r.ok || !/^image\//i.test(type)) { try { await r.body?.cancel(); } catch {} continue; }
+      return new Response(r.body, {
+        status: 200,
+        headers: {
+          'content-type': type,
+          'cache-control': `public, max-age=${ttl}, immutable`,
+          'access-control-allow-origin': '*',
+        },
       });
-    } catch (e) {
-      return new Response('upstream unreachable', { status: 502 });
     }
-    if (!r.ok) return new Response('upstream ' + r.status, { status: 502 });
-    /* Same guard the Worker applies: a gateway that answers with an HTML or
-       plain-text error page must not be passed through as if it were art. */
-    const type = r.headers.get('content-type') || 'image/png';
-    if (!/^image\//i.test(type)) return new Response('not an image', { status: 415 });
-    return new Response(r.body, {
-      status: 200,
-      headers: {
-        'content-type': type,
-        'cache-control': `public, max-age=${ttl}, immutable`,
-        'access-control-allow-origin': '*',
-      },
-    });
+    return new Response('upstream unreachable', { status: 502 });
   },
 };
 

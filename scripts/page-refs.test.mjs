@@ -117,6 +117,39 @@ for (const [name, fn, input, want] of cases) {
   else no(name + '(' + String(input) + ')', 'got ' + got + ', want ' + want);
 }
 
+/* tick() animates generated coins and nothing else. It used to check only
+   `S.live`, which a failed refresh also sets false while the real tokens stay
+   on screen — so real numbers took a random walk every 2.5 s, and a window
+   with no figure became one (`null + 0.3`). Run, not read. */
+{
+  const m = html.match(/function tick\(\)\{/);
+  let src = '';
+  if (m) {
+    let d = 0, i = html.indexOf('{', m.index);
+    for (; i < html.length; i++) { if (html[i] === '{') d++; else if (html[i] === '}' && --d === 0) { i++; break; } }
+    src = html.slice(m.index, i);
+  }
+  const make = (S, DEMO_OK) => { try { return new Function('S', 'DEMO_OK', src + ';return tick')(S, DEMO_OK); } catch { return null; } };
+  const real = () => ({ id: 'X', mcap: 1000, pc: { m5: 1, h1: null, h6: 2, h24: 3 } });
+  const run = (live, demoOk, tokens) => { const S = { live, tokens }; const tick = make(S, demoOk); if (tick) tick(); return { tick, S }; };
+  {
+    const t = real(); const { tick } = run(false, false, [t]);
+    if (!tick) no('tick() is liftable');
+    else if (t.mcap === 1000 && t.pc.m5 === 1 && t.pc.h1 === null) ok('a failed refresh never moves the real numbers on screen');
+    else no('a failed refresh never moves the real numbers on screen', JSON.stringify(t));
+  }
+  {
+    const t = real(); run(false, true, [t]);
+    if (t.mcap === 1000 && t.pc.h1 === null) ok('a real token in a demo page is not moved either');
+    else no('a real token in a demo page is not moved either', JSON.stringify(t));
+  }
+  {
+    const t = { ...real(), demo: true, pc: { m5: 1, h1: 1, h6: 1, h24: 1 } }; run(false, true, [t]);
+    if (t.mcap !== 1000) ok('a generated coin still moves');
+    else no('a generated coin still moves');
+  }
+}
+
 /* Every inline script must parse. A redeclared `const` inside one function is
    a SyntaxError that stops the whole page — the map, the tabs, everything —
    and nothing above notices, because it reads the page as text. That exact

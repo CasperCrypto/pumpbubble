@@ -127,7 +127,13 @@ export function normalizeCoin(c) {
     mcap,
     ath: num(c.ath_market_cap),
     vol: 0,                                  // DexScreener fills this
-    pc: { m5: 0, h1: 0, h6: 0, h24: 0 },     // ditto — pump.fun has no change field
+    /* pump.fun has no change field, so every window starts unmeasured. It
+       started at zero, and a coin no upstream priced (DexScreener refusing,
+       Jupiter and pump.fun's activity silent) kept those zeros: the map
+       painted "+0.00%" on a market nobody had measured, and the token page
+       printed it as the 24h move. enrich() and our own history fill what is
+       measured; the rest stays null and draws grey. */
+    pc: { m5: null, h1: null, h6: null, h24: null },
     grad: !!c.complete,                      // graduated off the bonding curve
     liveStream: !!c.is_currently_live,
     pumpBoost: !!(c.boost_mode && c.boost_mode !== 'NONE'),
@@ -721,15 +727,22 @@ export const ONEWAY_MIN_TXNS = 30;
 const WINDOWS = { m5: 3e5, h1: 36e5, h6: 216e5, h24: 864e5 };
 const TIERS = [[6e5, 0], [36e5, 12e4], [216e5, 9e5], [864e5, 36e5]];
 
+/* History is keyed by Solana mint and only by mint. It was written under
+   `t.mint` and read under `t.id`, which agree only where the id is the mint
+   (pump.fun). Every other feed's tokens carry `mint: ''`, so all of them —
+   majors, stocks, Base, every chain and launchpad — were pushed into one
+   shared array under the empty key, saved to KV with it, and never read back.
+   A token with no mint is now simply not recorded. */
 export function pushHistory(hist, tokens, now = Date.now()) {
   for (const t of tokens) {
+    if (!t || !t.mint) continue;
     let h = hist.get(t.mint);
     if (!h) hist.set(t.mint, (h = []));
     h.push(now, t.mcap);
   }
   /* drop tokens that fell out of the feed entirely */
   if (hist.size > 4000) {
-    const live = new Set(tokens.map(t => t.mint));
+    const live = new Set(tokens.map(t => t && t.mint).filter(Boolean));
     for (const k of [...hist.keys()]) if (!live.has(k)) hist.delete(k);
   }
   pruneHistory(hist, now);
@@ -955,19 +968,26 @@ export async function buildSnapshot({ source, hist, secret, store } = {}) {
 
   scoreQuality(tokens, sol, source.quality);
 
-  /* History is keyed by token id, which is unique per source — a Solana mint
-     for launchpads, a coingecko id for the wider market. */
-  /* A source whose `mcap` is not a market cap opts out. Traders size by
+  /* History is keyed by Solana mint (see pushHistory): written and read under
+     the same key. It used to be read by `t.id`, which only matched where the
+     id is the mint, so it was pump.fun-only in practice whatever this comment
+     claimed — and that stays the scope, now on purpose: the saved copy is
+     parsed by every fresh isolate on a 10 ms CPU budget, and doubling it with
+     chains that DexScreener already prices is not worth that.
+     A source whose `mcap` is not a market cap opts out. Traders size by
      realized profit, and pushing that into the price history would back-fill
      their 1H and 6H "price change" from how their profit moved — a number
      with a price change's label and nothing of one's meaning. */
   if (hist && source.history !== false) {
     pushHistory(hist, tokens, now);
     for (const t of tokens) {
-      const own = changeFromHistory(hist, t.id, t.mcap, now);
-      /* our own history only fills gaps the feed left */
+      if (!t.mint) continue;
+      const own = changeFromHistory(hist, t.mint, t.mcap, now);
+      if (!t.pc) t.pc = {};
+      /* Our own history only fills windows the feed left unmeasured. `!t.pc[k]`
+         also took a measured 0 for a gap and replaced it with our estimate. */
       for (const k of ['m5', 'h1', 'h6', 'h24']) {
-        if (own[k] !== undefined && !t.pc[k]) t.pc[k] = own[k];
+        if (own[k] !== undefined && t.pc[k] == null) t.pc[k] = own[k];
       }
     }
   }
