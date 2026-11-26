@@ -56,6 +56,7 @@ import { checkLaunch, imageType, EXT, MAX_IMG, MAX_DEV_BUY, contentId, metadata,
          slugFrom, subOf, siteUrl } from './launch.mjs';
 import { tokenPage, TOKEN_CSP } from './tokenpage.mjs';
 import { pumpCoin, pumpStatus, jupStatus, feedVia } from './core.mjs';
+import { searchPeople, lookupTrader, cleanQuery } from './traderlookup.mjs';
 import { activityStatus } from './activity.mjs';
 import { setJupKey } from './jupfeed.mjs';
 import { readCards, mergePulls, cardsBoard, cardsOn } from './cards.mjs';
@@ -1959,6 +1960,48 @@ export async function handle(req, ctx) {
       const chain = String(url.searchParams.get('chain') || '');
       if (!SWAP_LIST_SRC[chain]) return json({ ok: false, error: 'no list for that chain' }, 400);
       return json({ ok: true, chain, tokens: await swapList(ctx, chain) }, 200, { 'cache-control': 'public, max-age=60' });
+    }
+
+    /* -------------------------------------------------- /api/trader/* */
+    /* Any pump.fun account, trading against callout rewards, same windows on
+       both sides (src/traderlookup.mjs). Two routes: who matches a name, and
+       one wallet's figures. Each costs three or four pump.fun reads, so both
+       are cached per isolate for five minutes and limited per caller. */
+    if (path === '/api/trader/search' || path === '/api/trader') {
+      const limited = path === '/api/trader/search'
+        ? rateLimit(req, 'tsearch', 40, 60_000) : rateLimit(req, 'trader', 20, 60_000);
+      if (limited) return limited;
+      /* avatars through the signed proxy: the page's CSP allows images from itself only */
+      const sign = async p => {
+        if (p && p.avatar && ctx.env.IMG_SECRET) {
+          try { p.avatar = '/api/img?u=' + encodeURIComponent(p.avatar) + '&s=' + await signUrl(p.avatar, ctx.env.IMG_SECRET); }
+          catch { p.avatar = ''; }
+        } else if (p) p.avatar = '';
+        return p;
+      };
+      try {
+        if (path === '/api/trader/search') {
+          const q = cleanQuery(url.searchParams.get('q'));
+          if (!q) return json({ ok: false, error: 'type at least two letters of a username, or a wallet' }, 400);
+          const people = (await searchPeople(q)).map(p => ({ ...p }));
+          await Promise.all(people.map(sign));
+          return json({ ok: true, q, people }, 200, { 'cache-control': 'public, max-age=120' });
+        }
+        const w = (url.searchParams.get('w') || '').trim();
+        if (!isMint(w)) return json({ ok: false, error: 'that is not a Solana wallet' }, 400);
+        const r = await lookupTrader(w);
+        const out = { ...r, profile: { ...r.profile } };
+        await sign(out.profile);
+        /* a read that ran out of time is worth asking again; the rest is final for five minutes */
+        const again = Object.values(r.errors || {}).includes('timeout');
+        return json({ ok: true, ...out }, 200, { 'cache-control': again ? 'no-store' : 'public, max-age=120' });
+      } catch (e) {
+        if (e && e.challenge) {
+          return json({ ok: false, pump: true,
+            error: 'pump.fun is refusing requests from servers right now — try again in a few minutes' }, 503);
+        }
+        return json({ ok: false, error: 'pump.fun did not answer (' + String((e && (e.status || e.message)) || 'error').slice(0, 60) + ')' }, 502);
+      }
     }
 
     /* --------------------------------------------------------- /api/token */

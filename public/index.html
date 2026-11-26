@@ -1002,6 +1002,89 @@ body.embed #brandbadge.on{display:flex}
   font:500 12.5px/1.55 ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap}
 #shPostTx:focus{outline:none;border-color:rgba(255,201,60,.5)}
 #shNote b{color:var(--ink);font-weight:700}
+
+/* ============ trader lookup ============
+   Any pump.fun account: what it banked trading against what pump.fun paid it
+   for callouts, the same window on both sides (src/traderlookup.mjs). */
+#tlveil{position:fixed;inset:0;z-index:61;display:none;place-items:end center}
+#tlveil.on{display:grid}
+#tlveil .bg{position:absolute;inset:0;background:rgba(3,5,8,.72);backdrop-filter:blur(6px)}
+#tlveil .modal{max-width:620px;border-top-color:rgba(40,224,140,.3)}
+.tl-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.tl-head h3{margin:0;flex:1}
+.tl-head h3 em{color:var(--mint2)}
+.tl-q{position:relative}
+.tl-q .ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--dim);width:17px;height:17px}
+#tlIn{width:100%;height:46px;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+  color:var(--ink);padding:0 14px 0 40px;font:inherit;font-size:15px;font-weight:600;outline:none}
+#tlIn:focus{border-color:rgba(40,224,140,.55)}
+.tl-hint{font-size:11.5px;color:var(--dim);font-weight:600;margin:7px 2px 0;line-height:1.45}
+#tlList{display:grid;gap:6px;margin-top:10px}
+#tlList:empty{display:none}
+.tl-p{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:12px;border:1px solid var(--line);
+  background:var(--glass);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.tl-p:hover,.tl-p.on{background:var(--glass2);border-color:rgba(40,224,140,.4)}
+.tl-av{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:0 0 auto;display:grid;place-items:center;
+  font-weight:900;font-size:13px;color:#08110c;background:#2a3140}
+.tl-p b{font-weight:800}
+.tl-p small{display:block;color:var(--dim);font-size:11px;font-weight:700}
+.tl-p .go{margin-left:auto;color:var(--dim);font-size:12px;font-weight:800;white-space:nowrap}
+#tlProf:empty{display:none}
+#tlProf{margin-top:12px}
+.tl-who{display:flex;align-items:center;gap:12px}
+.tl-who .tl-av{width:52px;height:52px;font-size:20px}
+.tl-who .nm{font-size:19px;font-weight:900;letter-spacing:-.02em}
+.tl-who .sb{font-size:12px;color:var(--dim);font-weight:700;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.tl-who .sb a{color:var(--ink);text-decoration:none;border-bottom:1px solid rgba(255,255,255,.25)}
+.tl-who .sb button{height:24px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:var(--glass);
+  color:var(--ink);font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+.tl-who .sb button.ok{color:var(--mint);border-color:rgba(40,224,140,.5)}
+.tl-verdict{margin:12px 0 4px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--glass)}
+.tl-verdict b{display:block;font-size:17px;font-weight:900;letter-spacing:-.01em}
+.tl-verdict p{margin:4px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink);opacity:.85;font-weight:600}
+.tl-verdict.co{border-color:rgba(255,201,60,.5);background:linear-gradient(180deg,rgba(255,201,60,.14),rgba(255,201,60,.04))}
+.tl-verdict.co b{color:var(--gold)}
+.tl-verdict.tr{border-color:rgba(40,224,140,.45);background:linear-gradient(180deg,rgba(40,224,140,.13),rgba(40,224,140,.03))}
+.tl-verdict.tr b{color:var(--mint2)}
+.tl-sec{margin-top:14px}
+.tl-sec>h4{margin:0 0 7px;font-size:10.5px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.tl-tab{width:100%;border-collapse:separate;border-spacing:0 5px;font-size:13px}
+.tl-tab th{white-space:normal!important;vertical-align:bottom;line-height:1.25}
+.tl-tab th{text-align:right;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:0 8px;white-space:nowrap}
+.tl-tab th:first-child{text-align:left}
+.tl-tab td{padding:8px;background:var(--glass);border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  text-align:right;font-variant-numeric:tabular-nums;font-weight:800;white-space:nowrap}
+.tl-tab td:first-child{text-align:left;border-left:1px solid var(--line);border-radius:10px 0 0 10px;color:var(--ink)}
+.tl-tab td:last-child{border-right:1px solid var(--line);border-radius:0 10px 10px 0}
+.tl-tab td small{display:block;font-size:10.5px;color:var(--dim);font-weight:700}
+.tl-bar{height:6px;border-radius:99px;background:var(--mint);overflow:hidden;min-width:48px;margin:2px 0 3px}
+.tl-bar i{display:block;height:100%;background:var(--gold)}
+.tl-bar.none{background:rgba(255,255,255,.08)}
+.tl-tag{display:inline-block;font-size:10.5px;font-weight:900;padding:1px 7px;border-radius:99px;white-space:nowrap}
+.tl-tag.co{color:#2b1c00;background:var(--gold)}
+.tl-tag.tr{color:#04210f;background:var(--mint)}
+.tl-tag.no{color:var(--dim);background:rgba(255,255,255,.07)}
+.tl-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tl-note b{white-space:nowrap}
+.tl-facts div{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:7px 9px;min-width:0}
+.tl-facts u{display:block;text-decoration:none;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:800}
+.tl-facts b{font-size:14px;font-weight:900;font-variant-numeric:tabular-nums}
+.tl-note{margin:12px 0 0;font-size:11px;line-height:1.5;color:var(--dim);font-weight:600}
+.tl-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.tl-acts a,.tl-acts button{flex:1 1 0;min-width:120px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+  color:var(--ink);font:inherit;font-size:13px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none}
+.tl-acts .x{background:#fff;color:#000;border-color:#fff}
+.tl-load{padding:18px 4px;text-align:center;color:var(--dim);font-weight:700;font-size:12.5px}
+.tl-err{padding:12px;border-radius:12px;border:1px solid rgba(255,77,106,.35);background:rgba(255,77,106,.07);font-size:12.5px;font-weight:700;line-height:1.5}
+/* the way in from the people tables: looks like a search field, opens the panel */
+#smTable .tlook{display:flex;align-items:center;gap:9px;width:100%;height:44px;padding:0 14px;border-radius:13px;cursor:pointer;
+  border:1px solid rgba(40,224,140,.35);background:linear-gradient(180deg,rgba(40,224,140,.10),rgba(40,224,140,.03));
+  color:var(--dim);font:inherit;font-size:13.5px;font-weight:700;text-align:left}
+#smTable .tlook:hover{border-color:rgba(40,224,140,.6);color:var(--ink)}
+#smTable .tlook .ic{color:var(--mint2);width:17px;height:17px}
+#smTable .tlook b{color:var(--ink)}
+@media (max-width:560px){.tl-tab{font-size:12.5px}.tl-tab .c-dt{display:none}.tl-tab td,.tl-tab th{padding-left:6px;padding-right:6px}.tl-facts b{font-size:13px}}
+@media (min-width:820px){#tlveil{place-items:center;padding:20px}}
 </style>
 </head>
 <body>
@@ -1050,6 +1133,7 @@ body.embed #brandbadge.on{display:flex}
 <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8.5h15M15.5 5l3.5 3.5-3.5 3.5M20 15.5H5M8.5 12 5 15.5 8.5 19"/></symbol>
 <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></symbol>
 <symbol id="i-x" viewBox="0 0 24 24"><path d="M17.75 3h3.07l-6.72 7.68L22 21h-6.19l-4.85-6.34L5.41 21H2.34l7.19-8.21L1.95 3h6.35l4.38 5.79zM16.67 19.18h1.7L7.38 4.72H5.56z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.3 15.3 20 20"/></symbol>
 <symbol id="i-telegram" viewBox="0 0 24 24"><path d="M21.9 4.3 18.7 19.5c-.2 1-.9 1.3-1.7.8l-4.8-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.9 8.9-8c.4-.3-.1-.5-.6-.2L6.5 13.3 1.8 11.8c-1-.3-1-1 .2-1.5L20.5 3.2c.9-.3 1.6.2 1.4 1.1z"/></symbol>
 </defs></svg>
 
@@ -1139,6 +1223,8 @@ body.embed #brandbadge.on{display:flex}
   <!-- The embed is the distribution engine: every site that takes it sends
        traffic back. Worth a permanent link, not a buried footer. -->
   <a class="iconbtn sw" href="/swap" title="Swap any Solana token from your own wallet"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>Swap</a>
+  <!-- any pump.fun account, trading against callout rewards: opens the lookup panel -->
+  <a class="iconbtn" id="lookLink" href="/?trader=" title="Look up any pump.fun trader: what they banked trading against what pump.fun paid them for callouts"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Trader lookup</a>
   <a class="iconbtn" href="/market" title="The whole crypto market, with prices and market caps"><svg class="ic" aria-hidden="true"><use href="#i-chart"/></svg>Market overview</a>
   <a class="iconbtn" href="/partners" title="Partner with us, or embed a live map on your site"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Partners</a>
   <a class="iconbtn" href="/launch" title="Launch a pump.fun token with its page, a Telegram group and the buy bot"><svg class="ic" aria-hidden="true"><use href="#i-rocket"/></svg>Launch a token</a>
@@ -1278,6 +1364,8 @@ body.embed #brandbadge.on{display:flex}
     <button class="pf" id="cBuy" style="display:none">Buy ↗</button>
     <button class="pf" id="cOpen">Chart ↗</button>
     <button class="pf" id="cShare">Share ↗</button>
+    <!-- a trader, caller or KOL: their trading against their callout rewards -->
+    <button class="pf" id="cLook" style="display:none">Trading vs callouts</button>
     <button class="bo" id="cBoost"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.4 2 4 13.6h5.6L9.2 22 20 10.2h-6.1z"/></svg>BOOST</button>
   </div>
   <a id="cBot" class="join" target="_blank" rel="noopener" href="https://t.me/pumpbubblebot?startgroup=setup&amp;admin=delete_messages+restrict_members+pin_messages+invite_users"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg> Free buy alerts for this token in your Telegram group →</a>
@@ -1389,6 +1477,28 @@ body.embed #brandbadge.on{display:flex}
       <textarea id="shPostTx" rows="9" spellcheck="false" aria-label="Ready post text"></textarea>
     </div>
     <p id="shNote">X reads the image straight off the link — <b>post it and the card shows up in the tweet</b>. No upload needed.</p>
+  </div>
+</div>
+
+<!-- ================= trader lookup ================= -->
+<!-- Any pump.fun account: banked trading against callout rewards, the same
+     window on both sides. Opened from the people tables, the toolbar, a
+     trader's card, or ?trader=<name>. -->
+<div id="tlveil" role="dialog" aria-modal="true" aria-labelledby="tlTitle">
+  <div class="bg"></div>
+  <div class="modal">
+    <div class="grab"></div>
+    <div class="tl-head">
+      <h3 id="tlTitle">Trading <em>vs</em> callouts</h3>
+      <button class="bx-x" id="tlClose" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div class="tl-q"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="tlIn" type="search" spellcheck="false" autocomplete="off" enterkeyhint="search"
+             placeholder="Any pump.fun username or wallet" aria-label="pump.fun username or wallet"
+             role="combobox" aria-controls="tlList" aria-expanded="false"></div>
+    <div class="tl-hint" id="tlHint">Does an account make its money trading, or from what pump.fun pays it for callouts? Type a name — <b>netvyxe</b>, <b>slingoor</b> — or paste a wallet.</div>
+    <div id="tlList" role="listbox" aria-label="Accounts"></div>
+    <div id="tlProf" aria-live="polite"></div>
   </div>
 </div>
 
@@ -1851,7 +1961,8 @@ function demo(){
     const mcap=t>.95?1.2e7+R()*2.2e8:t>.78?7e5+R()*8e6:t>.42?7e4+R()*6e5:5e3+R()*8e4;
     const b=(R()-.44), h1=b*95*(.35+R());
     const liq=mcap/(6+R()*40);
-    return{id:'d'+i,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
+    /* `demo` is what tick() checks: only a generated coin may move on its own */
+    return{id:'d'+i,demo:true,mint:'',sym:n,name:n.toLowerCase()+' coin',img:null,mcap,
       vol:mcap*(.12+R()*2.6),
       pc:{m5:h1*(.12+R()*.5),h1,h6:h1*(.65+R()*1.7),h24:h1*(.45+R()*2.8)},boost:0,
       /* the quality fields the real feed carries. Without `solid` the "Real
@@ -1938,9 +2049,15 @@ function setLive(on,txt){
 /* Demo data has to move on its own or the map looks frozen. Live data must
    never be nudged — an invented number on a screener is a lie, and the whole
    product is "these are the real caps right now". */
+/* `S.live` alone was not that guard. A refresh that fails sets it false and
+   keeps the real tokens on screen ("could not refresh"), so every 2.5 s the
+   real numbers took a random walk — and a window with no figure became one,
+   `null + 0.3` being 0.3 — until the next refresh landed. Only a generated
+   coin, on a page allowed to show them, ever moves here. */
 function tick(){
-  if(S.live)return;
+  if(S.live||!DEMO_OK)return;
   S.tokens.forEach(t=>{
+    if(!t.demo)return;
     const d=()=>Math.random()-.5;
     t.pc.m5+=d()*.9; t.pc.h1+=d()*.3; t.pc.h6+=d()*.15; t.pc.h24+=d()*.09;
     t.mcap*=1+d()*.003;
@@ -2043,10 +2160,10 @@ function renderSmartTable(list){
   document.getElementById('cv').style.visibility=on||mapOn()?'hidden':'';
   if(!on)return;
   if(S.mode==='signals')return renderSignalsTable(box,list);
-  if(S.mode==='traders')return renderTraderTable(box,list);
+  if(S.mode==='traders'){renderTraderTable(box,list);return lookFirst(box)}
   if(S.mode==='calls')return renderCallsTable(box,list);
-  if(S.mode==='callers')return renderCallerTable(box,list);
-  if(S.mode==='kols')return renderKolTable(box,list);
+  if(S.mode==='callers'){renderCallerTable(box,list);return lookFirst(box)}
+  if(S.mode==='kols'){renderKolTable(box,list);return lookFirst(box)}
   if(S.mode==='insiders')return renderInsidersTable(box,list);
   if(S.mode==='packs')return renderPacksTable(box,list);
   if(S.mode==='pulls'||S.mode==='hits')return renderPullsTable(box);
@@ -2075,6 +2192,12 @@ function renderSmartTable(list){
         +`<td class="num c-ph stk"><b>${esc(fmtUsd(t.mcap||0))}</b><small>${pc(t.pc&&t.pc.h24)}</small></td></tr>`;
     }).join('')
     +'</tbody></table>';
+}
+/* Top traders, Best callers and Paid KOLs always open on the way to look
+   anyone up — an empty or loading board included, which is when a name
+   somebody has in mind is most likely not on it */
+function lookFirst(box){
+  if(!box.querySelector('.tlook'))box.insertAdjacentHTML('afterbegin','<div class="tbar">'+LOOK_BTN+'</div>');
 }
 /* Signals as rows: each token with the thresholds it crossed, in words, and
    the numbers behind them. The AI brief sits on top when the server has a
@@ -2143,7 +2266,9 @@ function tbar(sum,chips){return '<div class="tbar">'+(sum?'<div class="tsum">'+s
    one more filter), one line saying what the current choice means — a
    tooltip never reaches a phone — and the columns explained on a tap. */
 function tbarRows(sum,show,sort,desc,legend){
-  return '<div class="tbar">'+(sum?'<div class="tsum">'+sum+'</div>':'')
+  /* Top traders, Best callers and Paid KOLs open on the way to look anyone up */
+  const look=(S.mode==='traders'||S.mode==='callers'||S.mode==='kols')?LOOK_BTN:'';
+  return '<div class="tbar">'+look+(sum?'<div class="tsum">'+sum+'</div>':'')
     +(show?'<div class="tctl"><span class="tlab">Show</span><div class="seg tseg">'+show+'</div></div>':'')
     +(sort?'<div class="tctl"><span class="tlab">Sort</span><div class="seg tseg">'+sort+'</div></div>':'')
     +(desc?'<div class="tdesc">'+desc+'</div>':'')
@@ -3665,6 +3790,9 @@ function openCard(t){
   /* a pack machine has no share card: the card renderer draws a price move */
   const cs=document.getElementById('cShare');
   if(cs)cs.style.display=t.mach?'none':'';
+  /* a trader, caller or KOL: what they banked trading against what pump.fun paid them to call */
+  const cl=document.getElementById('cLook');
+  if(cl)cl.style.display=(t.kind==='trader'||t.kind==='caller'||t.kind==='kol')&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t.wallet||'')?'':'none';
   e('cSym').innerHTML=esc(t.sym)+(t.boost>0?' '+ic('star','f gold'):'');
   /* A venue's subtitle says what it is and where it runs, so "Off Chain" is
      said out loud on the ones that are not crypto at all. */
@@ -3974,8 +4102,8 @@ function cardExtras(t){
   e('cSig').innerHTML=sig.map(g=>'<div class="sg '+(g.dir==='up'?'up':g.dir==='down'?'dn':'')+'">'
     +ic((SG_TYPES[g.type]||['','bolt'])[1])+'<span>'+esc(g.why)+'</span></div>').join('');
   /* one primary action: Buy when it shows, else the first link */
-  const buyOn=e('cBuy').style.display!=='none';
-  e('cOpen').classList.toggle('sec',buyOn);
+  const buyOn=e('cBuy').style.display!=='none',lookOn=e('cLook').style.display!=='none';
+  e('cOpen').classList.toggle('sec',buyOn||lookOn);
   e('cShare').classList.add('sec');
 }
 document.getElementById('cClose').onclick=()=>closeAll();
@@ -4134,6 +4262,180 @@ document.getElementById('cBuy').onclick=()=>{
   closeAll();
 };
 document.getElementById('cBoost').onclick=()=>{const t=S.target;closeAll();openBoost(t)};
+
+/* ------------------------------------------------------- trader lookup */
+/* Any pump.fun account, found by name or wallet: what it banked trading
+   against what pump.fun paid it for callouts, the same window on both sides
+   (src/traderlookup.mjs says which reads, and why a day is not compared).
+   Every figure is pump.fun's own; a side it did not answer is a dash. */
+const tlveil=document.getElementById('tlveil'),tlIn=document.getElementById('tlIn');
+const tlList=document.getElementById('tlList'),tlProf=document.getElementById('tlProf'),tlHint=document.getElementById('tlHint');
+const TL={timer:0,seq:0,people:[],sel:-1,wallet:'',name:'',retried:false,back:null};
+const tlMoney=v=>v==null||!Number.isFinite(+v)?'—':Math.abs(v)<1?'$0':(v<0?'−':'+')+fmtUsd(Math.abs(v));
+const tlPaid=v=>v==null||!Number.isFinite(+v)?'—':v<1?'$0':fmtUsd(v);
+const tlCls=v=>v==null?'':v<0?'dn':v>=1?'up':'';
+const tlK=n=>n==null?'—':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':String(Math.round(n));
+function tlAvatar(p){
+  return p&&p.avatar?`<img class="tl-av" src="${esc(p.avatar)}" alt="">`
+    :`<span class="tl-av" style="background:hsl(${hue((p&&p.name)||'?')},45%,55%)">${esc(((p&&p.name)||'?')[0])}</span>`;
+}
+function tlUrl(name){
+  try{
+    const u=new URL(location.href);
+    if(name)u.searchParams.set('trader',name);else u.searchParams.delete('trader');
+    history.replaceState(null,'',u.pathname+(u.search||'')+u.hash);
+  }catch(e){}
+}
+function openLookup(q,wallet,name){
+  TL.back=document.activeElement;
+  tlveil.classList.add('on');
+  tlIn.value=q||name||'';
+  tlList.innerHTML='';TL.people=[];TL.sel=-1;tlIn.setAttribute('aria-expanded','false');
+  if(wallet){tlLoad(wallet,name||'');return}
+  tlProf.innerHTML='';tlHint.hidden=false;
+  if(q)tlSearch(q,true);
+  /* not on a phone with a profile already loading: the keyboard would cover it */
+  else setTimeout(()=>tlIn.focus(),30);
+}
+function closeLookup(){
+  tlveil.classList.remove('on');clearTimeout(TL.timer);TL.seq++;tlUrl('');
+  if(TL.back&&TL.back.focus&&TL.back.isConnected)try{TL.back.focus()}catch(e){}
+}
+document.getElementById('tlClose').onclick=closeLookup;
+tlveil.querySelector('.bg').onclick=closeLookup;
+tlIn.addEventListener('input',()=>{
+  clearTimeout(TL.timer);
+  const q=tlIn.value.trim();
+  if(q.replace(/^@+/,'').length<2){tlList.innerHTML='';TL.people=[];tlIn.setAttribute('aria-expanded','false');return}
+  TL.timer=setTimeout(()=>tlSearch(q,false),280);
+});
+tlIn.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    if(!TL.people.length)return;e.preventDefault();
+    TL.sel=(TL.sel+(e.key==='ArrowDown'?1:-1)+TL.people.length)%TL.people.length;tlPaint();
+  }else if(e.key==='Enter'){
+    e.preventDefault();clearTimeout(TL.timer);
+    const p=TL.people[TL.sel>=0?TL.sel:0];
+    if(p)tlLoad(p.wallet,p.hasName?p.name:'');else if(tlIn.value.trim())tlSearch(tlIn.value.trim(),true);
+  }
+});
+async function tlSearch(q,pick){
+  const my=++TL.seq;
+  tlList.innerHTML='<div class="tl-load">Searching pump.fun…</div>';
+  let j=null;
+  try{j=await jget('/api/trader/search?q='+encodeURIComponent(q),12000)}
+  catch(e){if(my!==TL.seq)return;tlList.innerHTML='<div class="tl-err">'+esc((e.body&&e.body.error)||'Search did not answer — try again.')+'</div>';return}
+  if(my!==TL.seq)return;
+  TL.people=Array.isArray(j&&j.people)?j.people:[];TL.sel=-1;
+  if(!TL.people.length){tlList.innerHTML='<div class="tl-load">No pump.fun account matches “'+esc(q)+'”.</div>';return}
+  /* a deep link, or Enter on a name: open the first, which is an exact match when there is one */
+  if(pick){const p=TL.people[0];tlLoad(p.wallet,p.hasName?p.name:'');return}
+  tlPaint();
+}
+function tlPaint(){
+  tlIn.setAttribute('aria-expanded',TL.people.length?'true':'false');
+  tlList.innerHTML=TL.people.map((p,i)=>`<button type="button" class="tl-p${i===TL.sel?' on':''}" role="option" aria-selected="${i===TL.sel}" data-i="${i}">`
+    +tlAvatar(p)+`<div><b>${esc(p.name)}</b>${p.banned?' <span class="tl-tag no">banned</span>':''}`
+    +`<small>${p.followers!=null?esc(tlK(p.followers))+' followers':''}${p.xh?' · @'+esc(p.xh):''} · ${esc(p.wallet.slice(0,4)+'…'+p.wallet.slice(-4))}</small></div>`
+    +`<span class="go">See →</span></button>`).join('');
+}
+tlList.addEventListener('click',e=>{
+  const b=e.target.closest('.tl-p');if(!b)return;
+  const p=TL.people[+b.dataset.i];if(p)tlLoad(p.wallet,p.hasName?p.name:'');
+});
+async function tlLoad(wallet,name,again){
+  const my=++TL.seq;
+  if(!again)TL.retried=false;
+  TL.wallet=wallet;TL.name=name||'';
+  tlList.innerHTML='';TL.people=[];tlIn.setAttribute('aria-expanded','false');tlHint.hidden=true;
+  if(!again)tlProf.innerHTML='<div class="tl-load">Reading '+esc(name||'this account')+' from pump.fun…</div>';
+  let r=null;
+  try{r=await jget('/api/trader?w='+encodeURIComponent(wallet),35000)}
+  catch(e){if(my!==TL.seq)return;tlProf.innerHTML='<div class="tl-err">'+esc((e.body&&e.body.error)||'pump.fun did not answer — try again in a moment.')+'</div>';return}
+  if(my!==TL.seq)return;
+  tlProf.innerHTML=tlRender(r);
+  tlUrl((r.profile&&r.profile.hasName&&r.profile.name)||wallet);
+  /* pump.fun works an account's PnL out on the first ask and caches it, so a
+     read that ran out of time answers moments later */
+  if(r.errors&&r.errors.trading==='timeout'&&!TL.retried){
+    TL.retried=true;
+    setTimeout(()=>{if(TL.seq===my&&tlveil.classList.contains('on'))tlLoad(wallet,name,true)},2500);
+  }
+}
+function tlRender(r){
+  const p=r.profile||{},cmp=r.compare||{},tr=r.trading,co=r.callouts,err=r.errors||{};
+  const nm=p.hasName?p.name:p.wallet.slice(0,4)+'…'+p.wallet.slice(-4);
+  let h='<div class="tl-who">'+tlAvatar(p)+'<div style="min-width:0"><div class="nm">'+esc(nm)+'</div><div class="sb">'
+    +(p.followers!=null?'<span>'+esc(tlK(p.followers))+' followers</span>':'')
+    +(p.xh?'<a href="https://x.com/'+encodeURIComponent(p.xh)+'" target="_blank" rel="noopener">@'+esc(p.xh)+'</a>':'')
+    +'<a href="https://pump.fun/profile/'+encodeURIComponent(p.wallet)+'" target="_blank" rel="noopener">pump.fun profile ↗</a>'
+    +'<button type="button" id="tlCopy">'+esc(p.wallet.slice(0,4)+'…'+p.wallet.slice(-4))+' · Copy</button>'
+    +(p.banned?'<span class="tl-tag no">banned on pump.fun</span>':'')
+    +'</div></div></div>';
+  /* the verdict, from the widest window measured on both sides */
+  const hl=r.headline;
+  if(hl){
+    const t=hl.more==='callouts'?'Makes more from callouts than trading':hl.more==='trading'?'Makes more from trading than callouts':'Earned nothing from either';
+    h+='<div class="tl-verdict '+(hl.more==='callouts'?'co':hl.more==='trading'?'tr':'')+'"><b>'+esc(t)+'</b><p>'+esc(hl.text)+'</p></div>';
+  }else if(err.trading==='timeout'){
+    h+='<div class="tl-verdict"><b>Reading trading figures…</b><p>pump.fun works out an account’s PnL the first time it is asked, which takes a few seconds for a busy wallet. Asking again.</p></div>';
+  }else{
+    h+='<div class="tl-verdict"><b>No comparison for this account</b><p>'+esc(!tr&&!co?'pump.fun returned neither trading figures nor a callout record for it.':!tr?'pump.fun returned no trading figures for it.':'pump.fun returned no callout record for it.')+'</p></div>';
+  }
+  /* the comparison: only windows both sides measure */
+  const W=[['w1','7 days'],['m1','30 days'],['all','All time']];
+  h+='<div class="tl-sec"><h4>Trading banked vs callout rewards</h4><table class="tl-tab"><thead><tr><th>Window</th><th>Trading<span class="sb-full"> banked</span></th><th>Callout<span class="sb-short">s</span><span class="sb-full"> rewards</span></th><th class="c-dt">Share from callouts</th><th>More from</th></tr></thead><tbody>'
+    +W.map(([id,lab])=>{
+      const c=cmp[id]||{};
+      const share=c.trade!=null&&c.trade<=0&&c.paid>0?1:c.calloutShare;
+      const bar=share==null?'<div class="tl-bar none"></div><small>—</small>'
+        :'<div class="tl-bar"><i style="width:'+(share*100).toFixed(1)+'%"></i></div><small>'+Math.round(share*100)+'% callouts</small>';
+      const tag=c.more==='callouts'?'<span class="tl-tag co">callouts</span>':c.more==='trading'?'<span class="tl-tag tr">trading</span>':c.more==='neither'?'<span class="tl-tag no">neither</span>':'<span class="tl-tag no">—</span>';
+      return '<tr><td>'+esc(lab)+(id==='all'?'<small>trading since 1 Jul</small>':'')+'</td>'
+        +'<td class="'+tlCls(c.trade)+'">'+esc(tlMoney(c.trade))+'</td>'
+        +'<td style="color:var(--gold)">'+esc(tlPaid(c.paid))+'</td>'
+        +'<td class="c-dt">'+bar+'</td><td>'+tag+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+  /* the trading side, every window pump.fun reports */
+  if(tr){
+    const T=[['d1','24 hours'],['w1','7 days'],['m1','30 days'],['all','Since 1 Jul']];
+    h+='<div class="tl-sec"><h4>Trading, pump.fun’s PnL for this wallet</h4><table class="tl-tab"><thead><tr><th>Window</th><th>Banked</th><th>Open now</th><th title="pump.fun’s PnL for the window, which also marks the bags held when it opened">Total</th><th class="c-dt">Spent on buys</th></tr></thead><tbody>'
+      +T.map(([id,lab])=>{const x=tr[id];if(!x)return '<tr><td>'+esc(lab)+'</td><td>—</td><td>—</td><td>—</td><td class="c-dt">—</td></tr>';
+        return '<tr><td>'+esc(lab)+'</td><td class="'+tlCls(x.realized)+'">'+esc(tlMoney(x.realized))+'</td><td class="'+tlCls(x.unrealized)+'">'+esc(tlMoney(x.unrealized))+'</td>'
+          +'<td class="'+tlCls(x.total)+'">'+esc(tlMoney(x.total))+'</td><td class="c-dt">'+esc(tlPaid(x.spent))+'</td></tr>'}).join('')
+      +'</tbody></table></div>';
+  }
+  /* the callout side: the record, and what the people who bought through the calls made */
+  if(co&&co.all){
+    const a=co.all,m=co.m1||{};
+    h+='<div class="tl-sec"><h4>Callouts, all time</h4><div class="tl-facts">'
+      +'<div><u>Calls made</u><b>'+esc(a.calls!=null?Math.round(a.calls).toLocaleString('en-US'):'—')+'</b></div>'
+      +'<div><u>Reached 2×</u><b>'+esc(a.hit2!=null?Math.round(a.hit2)+'%':'—')+'</b></div>'
+      +'<div><u>Median peak</u><b>'+esc(mult(a.medPeak))+'</b></div>'
+      +'</div>';
+    const tail=(x,lab)=>x&&x.tailers?'<b>'+esc(Math.round(x.tailers).toLocaleString('en-US'))+'</b> people bought through the calls '+esc(lab)+(x.tailPnl24h!=null?' — together <b class="'+tlCls(x.tailPnl24h)+'">'+esc(tlMoney(x.tailPnl24h))+'</b> 24 hours after':''):'';
+    const lines=[tail(a,'all time'),tail(m,'in the last 30 days')].filter(Boolean);
+    if(lines.length)h+='<p class="tl-note" style="color:var(--ink);opacity:.85">'+lines.join('<br>')+'. pump.fun’s own figures for its followers who bought through a call (“tailers”).</p>';
+    if(co.lastRound&&co.lastRound.paid!=null)h+='<p class="tl-note">Last payout round: <b style="color:var(--gold)">'+esc(tlPaid(co.lastRound.paid))+'</b> for '+esc(String(co.lastRound.calls||0))+' calls'+(co.lastRound.endsAt?', closed '+esc(since(co.lastRound.endsAt)):'')+'.</p>';
+  }
+  const link=location.origin+'/?trader='+encodeURIComponent(p.hasName?p.name:p.wallet);
+  h+='<div class="tl-acts">'+(hl?'<button type="button" class="x" id="tlX">'+ic('x','f')+'Post on X</button>':'')+'<button type="button" id="tlLink">Copy link</button></div>'
+    +'<p class="tl-note">Both sides are pump.fun’s own numbers. Trading: PnL for the account’s main wallet, Solana and EVM, where “all” starts 1 July 2026, when pump.fun’s PnL data begins. Callout rewards: confirmed USDC payouts across every wallet the account owns, in the same rolling window. A day is not compared: today’s payout round has not paid yet. Not financial advice.</p>';
+  setTimeout(()=>{
+    const cp=document.getElementById('tlCopy');
+    if(cp)cp.onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(p.wallet):Promise.reject()).then(()=>{cp.classList.add('ok');cp.textContent='Copied'}).catch(()=>{})};
+    const ln=document.getElementById('tlLink');
+    if(ln)ln.onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(link):Promise.reject()).then(()=>{ln.textContent='Copied'}).catch(()=>{ln.textContent='Copy failed'});setTimeout(()=>{if(ln.isConnected)ln.textContent='Copy link'},1500)};
+    const x=document.getElementById('tlX');
+    if(x&&hl)x.onclick=()=>open('https://twitter.com/intent/tweet?text='+encodeURIComponent(hl.text)+'&url='+encodeURIComponent(link)+'&via=pumpbubblefun','_blank','noopener');
+  },0);
+  return h;
+}
+/* the ways in */
+document.getElementById('lookLink').addEventListener('click',e=>{e.preventDefault();closeAll();openLookup('')});
+document.getElementById('cLook').onclick=()=>{const t=S.target;if(!t||!t.wallet)return;closeAll();openLookup('',t.wallet,t.sym||'')};
+document.getElementById('smTable').addEventListener('click',e=>{if(e.target.closest('.tlook')){e.stopPropagation();openLookup('')}},true);
+const LOOK_BTN='<button type="button" class="tlook">'+ic('search')+'<span>Look up <b>any pump.fun trader</b> — trading vs callout rewards</span></button>';
 
 /* ---------------------------------------------------------------- sheet */
 const sheet=document.getElementById('sheet');
@@ -5266,6 +5568,14 @@ if(DEMO_OK)merge(demo());
 setLive(false,'loading…');
 resize();rebuild();rail();loop();
 refresh(true);loadAds();resumePendingOrder();shareTenBtn();
+/* ?trader=netvyxe (or a wallet) opens that account's trading against its callouts */
+(function(){
+  const sp=new URLSearchParams(location.search);
+  if(!sp.has('trader'))return;
+  const q=(sp.get('trader')||'').trim().slice(0,44);
+  if(!q){openLookup('');return}
+  if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q))openLookup('',q,'');else openLookup(q.replace(/[^A-Za-z0-9_.@-]/g,''));
+})();
 /* The server caches pump.fun for 10s, so polling faster than that only costs
    us bandwidth — 15s keeps the map live without hammering anything. */
 /* A tab nobody is looking at does not poll. Every refresh is a Worker request
@@ -5288,6 +5598,7 @@ setInterval(()=>{
 addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   if(sveil.classList.contains('on'))closeShare();
+  else if(tlveil.classList.contains('on'))closeLookup();
   else if(veil.classList.contains('on'))closeVeil();
   else if(card.classList.contains('on')||sheet.classList.contains('on'))closeAll();
 });
