@@ -1090,6 +1090,48 @@ profit — check and fix all filters". What was wrong and what it is now:
   PoorGoat ($827.7K rewards), chairman ($740.8K) and HarryPaulDavies ($621.1K) are not on it, so each
   banked under $206K trading all time; cupsey #30 with $411K banked against $771.5K in rewards.
 
+## Trader lookup (2026-11-26)
+
+`src/traderlookup.mjs`, `/api/trader/search?q=` and `/api/trader?w=<wallet>`, the **Trading vs
+callouts** panel in index.html (`openLookup()`), `scripts/traderlookup.test.mjs`. Asked for as "I
+still can't see if a trader made more from callouts than trades — search any trader, slingoorio,
+netvyxe, and see if they make money trading or from callouts". The boards could only answer it for
+the hundred wallets on them; this answers it for **any pump.fun account**, from four public reads
+found in pump.fun's own API contract (the zod schemas in its app bundle carry descriptions):
+
+| what | endpoint | note |
+|---|---|---|
+| people by name | `GET /users/search-v2?searchTerm=` | fuzzy, pump.fun's order; an exact username is lifted first, `@` dropped |
+| profile | `GET /users/<wallet>` | followers, X handle |
+| trading | `GET /portfolio-summary?user=<wallet>&periods=1d,1w,1m,all` | realized, unrealized, total, spent on buys per window; takes a username too; the account's main wallet, Solana + EVM merged; **"all" starts 2026-07-01**, pump.fun's PnL data floor |
+| callouts | `GET /users/<wallet>/callout-stats` | `paidV1Usd + paidV2Usd` = confirmed USDC rewards over every wallet the person owns — netvyxe's all-time pair is $108,623.26, the payout board's figure to the cent; plus the record and what the people who bought *through* the calls made ("tailers": cohort and PnL 24 h after) |
+
+- **Only the same window is compared.** callout-stats' weekly/monthly are the rolling 7 and 30 days,
+  as portfolio-summary's 1w/1m are. Its daily window carries no payout (the open round has not
+  paid; `paidV1Usd` is null there), so 24 hours is shown for trading and never compared. All time is
+  rewards ever against trading since 1 July, and the panel says so on the row.
+- **Verdict** (`verdict()`): losing money trading while being paid for calls is "callouts"; paid more
+  than banked is "callouts"; nothing earned either way is "neither"; a side pump.fun did not answer
+  is null — never zero, never a verdict. A window present with zeros (never called) *is* an answer:
+  "trading". First live reads: **slingoor −$2.46M trading since 1 Jul vs $643.8K rewards**;
+  **netvyxe +$155.4K vs $108.6K** (but −$12.9K trading vs $22.1K rewards over 30 days).
+- **Total ≠ banked + open**: pump.fun's window PnL also marks the bags held when the window opened.
+  The panel shows pump.fun's three figures as pump.fun gives them, with that in the header's title.
+- **pump.fun computes an account's PnL on the first ask** — ~7 s cold for slingoor, 0.2 s after — so
+  the trading read has its own 25 s deadline (`READ_MS`), a timeout is reported as `timeout`, and
+  the page asks once more 2.5 s later. Both routes cache per isolate for five minutes (no KV) and
+  are limited per caller (40 searches, 20 lookups a minute). Every read goes through `pumpFetch`:
+  a challenge answers 503 "pump.fun is refusing requests from servers", nothing invented.
+- Ways in: the search field heading Top traders, Best callers and Paid KOLs (`lookFirst()` — a
+  button shaped like a field, because those tables re-render every 15 s and would eat typing), the
+  **Trader lookup** toolbar link, **Trading vs callouts** on any trader/caller/KOL card, and
+  `?trader=<name|wallet>`, which the panel writes into the address bar so a result can be shared.
+  Post on X uses the headline sentence (`headline()`).
+- **Verified from a cloud machine, not from the Worker.** pump.fun answered every read here on
+  2026-11-26; if Cloudflare's egress is still challenged, the panel says so. The contract also names
+  `api.pump.fun`, an API-key host (`user` is "required when calling with an API key") — the
+  sanctioned path for a server if the challenge stays.
+
 ## Pages to be found (SEO and AI assistants)
 
 `src/pages.mjs`, routed in `handle()` before the share pages: `/kols`, `/kol/<name>` (one per KOL on
@@ -2230,8 +2272,18 @@ including the ones this project generates itself.
 window entirely when nothing traded in it — LINK on Robinhood Chain comes back as `{h24:-1.38}`
 with no `h1` key at all — and `num(undefined)` is 0, so the map asserted a flat hour on a price
 nothing had measured. Invisible on pump.fun, where everything trades every minute; obvious on a
-chain full of quiet pairs. Absent is null now, and our own market-cap history still fills what it
-legitimately can.
+chain full of quiet pairs. Absent is null now. Our own market-cap history fills gaps for **Solana
+mints only** (pump.fun, Fresh): it was written under `t.mint` and read under `t.id`, so every other
+feed's tokens (`mint: ''`) were pushed into one shared array under the empty key and never read back
+(fixed 2026-11-26, `scripts/history.test.mjs`). It stays mint-only on purpose — every fresh isolate
+parses the saved copy on a 10 ms CPU budget. And it fills only a window that is `null`: `!t.pc[k]`
+used to replace a measured 0 with our estimate. pump.fun's normaliser seeds every window `null`
+too; it seeded `0`, so a coin no upstream priced printed "+0.00%".
+
+**`tick()` animates generated coins only** (`t.demo`, on a `DEMO_OK` page). It checked `S.live`
+alone, which a failed refresh also sets false while the real tokens stay on screen — so for as
+long as refreshes failed, real numbers took a random walk every 2.5 s and a null window became a
+number (`null + 0.3`). `scripts/page-refs.test.mjs` runs it.
 
 **A test suite that never imports a module cannot tell you the module is broken.** Moving one helper
 dropped `export` from `clean` in core.mjs, so `sources.mjs` could not import it — every feed on the
